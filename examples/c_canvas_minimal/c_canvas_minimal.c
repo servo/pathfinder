@@ -58,15 +58,13 @@ int main(int argc, const char **argv) {
         PFGLDestFramebufferCreateFullWindow(&(PFVector2I){640, 480});
     PFGLRendererRef renderer = PFGLRendererCreate(PFGLDeviceCreate(PF_GL_VERSION_GL3, 0),
                                                   PFFilesystemResourceLoaderLocate(),
-                                                  dest_framebuffer);
-
-    // Clear to white.
-    PFGLDeviceClear(PFGLRendererGetDevice(renderer), &(PFClearParams){
-        (PFColorF){1.0, 1.0, 1.0, 1.0}, 0.0, 0, {0}, PF_CLEAR_FLAGS_HAS_COLOR
+                                                  dest_framebuffer,
+                                                  &(PFRendererOptions){
+        (PFColorF){1.0, 1.0, 1.0, 1.0}, PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR
     });
 
     // Make a canvas. We're going to draw a house.
-    PFCanvasRef canvas = PFCanvasCreate(PFCanvasFontContextCreate(),
+    PFCanvasRef canvas = PFCanvasCreate(PFCanvasFontContextCreateWithSystemSource(),
                                         &(PFVector2F){640.0f, 480.0f});
 
     // Set line width.
@@ -89,7 +87,7 @@ int main(int argc, const char **argv) {
     // Render the canvas to screen.
     PFSceneRef scene = PFCanvasCreateScene(canvas);
     PFSceneProxyRef scene_proxy = PFSceneProxyCreateFromSceneAndRayonExecutor(scene);
-    PFSceneProxyBuildAndRenderGL(scene_proxy, renderer, &(PFRenderOptions){0});
+    PFSceneProxyBuildAndRenderGL(scene_proxy, renderer, &(PFBuildOptions){0});
     SDL_GL_SwapWindow(window);
 
     // Wait for a keypress.

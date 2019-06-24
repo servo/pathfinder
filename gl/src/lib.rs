@@ -14,13 +14,13 @@
 extern crate log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
-use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};
+use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::mem;
@@ -60,10 +60,32 @@ impl GLDevice {
         }
     }
 
-    fn set_render_state(&self, render_state: &RenderState) {
+    fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
+        self.bind_render_target(render_state.target);
+
+        unsafe {
+            let (origin, size) = (render_state.viewport.origin(), render_state.viewport.size());
+            gl::Viewport(origin.x(), origin.y(), size.x(), size.y());
+        }
+
+        if render_state.options.clear_ops.has_ops() {
+            self.clear(&render_state.options.clear_ops);
+        }
+
+        self.use_program(render_state.program);
+        self.bind_vertex_array(render_state.vertex_array);
+        for (texture_unit, texture) in render_state.textures.iter().enumerate() {
+            self.bind_texture(texture, texture_unit as u32);
+        }
+
+        render_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
+        self.set_render_options(&render_state.options);
+    }
+
+    fn set_render_options(&self, render_options: &RenderOptions) {
         unsafe {
             // Set blend.
-            match render_state.blend {
+            match render_options.blend {
                 BlendState::Off => {
                     gl::Disable(gl::BLEND); ck();
                 }
@@ -91,7 +113,7 @@ impl GLDevice {
             }
 
             // Set depth.
-            match render_state.depth {
+            match render_options.depth {
                 None => {
                     gl::Disable(gl::DEPTH_TEST); ck();
                 }
@@ -103,7 +125,7 @@ impl GLDevice {
             }
 
             // Set stencil.
-            match render_state.stencil {
+            match render_options.stencil {
                 None => {
                     gl::Disable(gl::STENCIL_TEST); ck();
                 }
@@ -123,14 +145,50 @@ impl GLDevice {
             }
 
             // Set color mask.
-            let color_mask = render_state.color_mask as GLboolean;
+            let color_mask = render_options.color_mask as GLboolean;
             gl::ColorMask(color_mask, color_mask, color_mask, color_mask); ck();
         }
     }
 
-    fn reset_render_state(&self, render_state: &RenderState) {
+    fn set_uniform(&self, uniform: &GLUniform, data: &UniformData) {
         unsafe {
-            match render_state.blend {
+            match *data {
+                UniformData::Int(value) => {
+                    gl::Uniform1i(uniform.location, value); ck();
+                }
+                UniformData::Mat4(data) => {
+                    assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
+                    let data_ptr: *const F32x4 = data.as_ptr();
+                    gl::UniformMatrix4fv(uniform.location,
+                                         1,
+                                         gl::FALSE,
+                                         data_ptr as *const GLfloat);
+                }
+                UniformData::Vec2(data) => {
+                    gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
+                }
+                UniformData::Vec4(data) => {
+                    gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
+                }
+                UniformData::TextureUnit(unit) => {
+                    gl::Uniform1i(uniform.location, unit as GLint); ck();
+                }
+            }
+        }
+    }
+
+    fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
+        self.reset_render_options(&render_state.options);
+        for texture_unit in 0..(render_state.textures.len() as u32) {
+            self.unbind_texture(texture_unit);
+        }
+        self.unuse_program();
+        self.unbind_vertex_array();
+    }
+
+    fn reset_render_options(&self, render_options: &RenderOptions) {
+        unsafe {
+            match render_options.blend {
                 BlendState::Off => {}
                 BlendState::RGBOneAlphaOneMinusSrcAlpha |
                 BlendState::RGBOneAlphaOne |
@@ -139,11 +197,11 @@ impl GLDevice {
                 }
             }
 
-            if render_state.depth.is_some() {
+            if render_options.depth.is_some() {
                 gl::Disable(gl::DEPTH_TEST); ck();
             }
 
-            if render_state.stencil.is_some() {
+            if render_options.stencil.is_some() {
                 gl::StencilMask(!0); ck();
                 gl::Disable(gl::STENCIL_TEST); ck();
             }
@@ -165,37 +223,18 @@ impl Device for GLDevice {
     type VertexAttr = GLVertexAttr;
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> GLTexture {
-        let (gl_internal_format, gl_format, gl_type);
-        match format {
-            TextureFormat::R8 => {
-                gl_internal_format = gl::R8 as GLint;
-                gl_format = gl::RED;
-                gl_type = gl::UNSIGNED_BYTE;
-            }
-            TextureFormat::R16F => {
-                gl_internal_format = gl::R16F as GLint;
-                gl_format = gl::RED;
-                gl_type = gl::HALF_FLOAT;
-            }
-            TextureFormat::RGBA8 => {
-                gl_internal_format = gl::RGBA as GLint;
-                gl_format = gl::RGBA;
-                gl_type = gl::UNSIGNED_BYTE;
-            }
-        }
-
-        let mut texture = GLTexture { gl_texture: 0, size };
+        let mut texture = GLTexture { gl_texture: 0, size, format };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture); ck();
             self.bind_texture(&texture, 0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
-                           gl_internal_format,
+                           format.gl_internal_format(),
                            size.x() as GLsizei,
                            size.y() as GLsizei,
                            0,
-                           gl_format,
-                           gl_type,
+                           format.gl_format(),
+                           format.gl_type(),
                            ptr::null()); ck();
         }
 
@@ -206,7 +245,7 @@ impl Device for GLDevice {
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> GLTexture {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
 
-        let mut texture = GLTexture { gl_texture: 0, size };
+        let mut texture = GLTexture { gl_texture: 0, size, format: TextureFormat::R8 };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture); ck();
             self.bind_texture(&texture, 0);
@@ -304,12 +343,16 @@ impl Device for GLDevice {
         }
     }
 
-    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> GLVertexAttr {
+    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<GLVertexAttr> {
         let name = CString::new(format!("a{}", name)).unwrap();
         let attr = unsafe {
-            gl::GetAttribLocation(program.gl_program, name.as_ptr() as *const GLchar) as GLuint
+            gl::GetAttribLocation(program.gl_program, name.as_ptr() as *const GLchar)
         }; ck();
-        GLVertexAttr { attr }
+        if attr < 0 {
+            None
+        } else {
+            Some(GLVertexAttr { attr: attr as GLuint })
+        }
     }
 
     fn get_uniform(&self, program: &GLProgram, name: &str) -> GLUniform {
@@ -320,13 +363,14 @@ impl Device for GLDevice {
         GLUniform { location }
     }
 
-    fn use_program(&self, program: &Self::Program) {
-        unsafe {
-            gl::UseProgram(program.gl_program); ck();
-        }
-    }
+    fn configure_vertex_attr(&self,
+                             vertex_array: &GLVertexArray,
+                             attr: &GLVertexAttr,
+                             descriptor: &VertexAttrDescriptor) {
+        debug_assert_ne!(descriptor.stride, 0);
 
-    fn configure_vertex_attr(&self, attr: &GLVertexAttr, descriptor: &VertexAttrDescriptor) {
+        self.bind_vertex_array(vertex_array);
+
         unsafe {
             let attr_type = descriptor.attr_type.to_gl_type();
             match descriptor.class {
@@ -355,41 +399,8 @@ impl Device for GLDevice {
             gl::VertexAttribDivisor(attr.attr, descriptor.divisor); ck();
             gl::EnableVertexAttribArray(attr.attr); ck();
         }
-    }
 
-    fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData) {
-        unsafe {
-            match data {
-                UniformData::Int(value) => {
-                    gl::Uniform1i(uniform.location, value); ck();
-                }
-                UniformData::Mat2(data) => {
-                    assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
-                    let data_ptr: *const F32x4 = &data;
-                    gl::UniformMatrix2fv(uniform.location,
-                                         1,
-                                         gl::FALSE,
-                                         data_ptr as *const GLfloat);
-                }
-                UniformData::Mat4(data) => {
-                    assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
-                    let data_ptr: *const F32x4 = data.as_ptr();
-                    gl::UniformMatrix4fv(uniform.location,
-                                         1,
-                                         gl::FALSE,
-                                         data_ptr as *const GLfloat);
-                }
-                UniformData::Vec2(data) => {
-                    gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
-                }
-                UniformData::Vec4(data) => {
-                    gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
-                }
-                UniformData::TextureUnit(unit) => {
-                    gl::Uniform1i(uniform.location, unit as GLint); ck();
-                }
-            }
-        }
+        self.unbind_vertex_array();
     }
 
     fn create_framebuffer(&self, texture: GLTexture) -> GLFramebuffer {
@@ -466,77 +477,67 @@ impl Device for GLDevice {
         self.set_texture_parameters(texture);
     }
 
-    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8> {
-        let mut pixels = vec![0; size.x() as usize * size.y() as usize * 4];
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
-            gl::ReadPixels(0,
-                           0,
-                           size.x() as GLsizei,
-                           size.y() as GLsizei,
-                           gl::RGBA,
-                           gl::UNSIGNED_BYTE,
-                           pixels.as_mut_ptr() as *mut GLvoid); ck();
-        }
+    fn read_pixels(&self, render_target: &RenderTarget<GLDevice>, viewport: RectI) -> TextureData {
+        let (origin, size) = (viewport.origin(), viewport.size());
+        let format = self.render_target_format(render_target);
+        self.bind_render_target(render_target);
 
-        // Flip right-side-up.
-        let stride = size.x() as usize * 4;
-        for y in 0..(size.y() as usize / 2) {
-            let (index_a, index_b) = (y * stride, (size.y() as usize - y - 1) * stride);
-            for offset in 0..stride {
-                pixels.swap(index_a + offset, index_b + offset);
+        match format {
+            TextureFormat::R8 | TextureFormat::RGBA8 => {
+                let channels = format.channels();
+                let mut pixels = vec![0; size.x() as usize * size.y() as usize * channels];
+                unsafe {
+                    gl::ReadPixels(origin.x(),
+                                   origin.y(),
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   format.gl_format(),
+                                   format.gl_type(),
+                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
+                }
+                flip_y(&mut pixels, size, channels);
+                TextureData::U8(pixels)
             }
-        }
-
-        pixels
-    }
-
-    fn clear(&self, params: &ClearParams) {
-        unsafe {
-            if let Some(rect) = params.rect {
-                let (origin, size) = (rect.origin(), rect.size());
-                gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
-                gl::Enable(gl::SCISSOR_TEST); ck();
-            }
-
-            let mut flags = 0;
-            if let Some(color) = params.color {
-                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
-                gl::ClearColor(color.r(), color.g(), color.b(), color.a()); ck();
-                flags |= gl::COLOR_BUFFER_BIT;
-            }
-            if let Some(depth) = params.depth {
-                gl::DepthMask(gl::TRUE); ck();
-                gl::ClearDepthf(depth as _); ck(); // FIXME(pcwalton): GLES
-                flags |= gl::DEPTH_BUFFER_BIT;
-            }
-            if let Some(stencil) = params.stencil {
-                gl::StencilMask(!0); ck();
-                gl::ClearStencil(stencil as GLint); ck();
-                flags |= gl::STENCIL_BUFFER_BIT;
-            }
-            if flags != 0 {
-                gl::Clear(flags); ck();
-            }
-
-            if params.rect.is_some() {
-                gl::Disable(gl::SCISSOR_TEST); ck();
+            TextureFormat::R16F => {
+                let mut pixels = vec![0; size.x() as usize * size.y() as usize];
+                unsafe {
+                    gl::ReadPixels(origin.x(),
+                                   origin.y(),
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   format.gl_format(),
+                                   format.gl_type(),
+                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
+                }
+                flip_y(&mut pixels, size, 1);
+                TextureData::U16(pixels)
             }
         }
     }
 
-    fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState) {
+    fn begin_commands(&self) {
+        // TODO(pcwalton): Add some checks in debug mode to make sure render commands are bracketed
+        // by these?
+    }
+
+    fn end_commands(&self) {
+        unsafe { gl::Flush(); }
+    }
+
+    fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawArrays(primitive.to_gl_primitive(), 0, index_count as GLsizei); ck();
+            gl::DrawArrays(render_state.primitive.to_gl_primitive(),
+                           0,
+                           index_count as GLsizei); ck();
         }
         self.reset_render_state(render_state);
     }
 
-    fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState) {
+    fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawElements(primitive.to_gl_primitive(),
+            gl::DrawElements(render_state.primitive.to_gl_primitive(),
                              index_count as GLsizei,
                              gl::UNSIGNED_INT,
                              ptr::null()); ck();
@@ -545,13 +546,12 @@ impl Device for GLDevice {
     }
 
     fn draw_elements_instanced(&self,
-                               primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
-                               render_state: &RenderState) {
+                               render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawElementsInstanced(primitive.to_gl_primitive(),
+            gl::DrawElementsInstanced(render_state.primitive.to_gl_primitive(),
                                       index_count as GLsizei,
                                       gl::UNSIGNED_INT,
                                       ptr::null(),
@@ -584,66 +584,102 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn timer_query_is_available(&self, query: &Self::TimerQuery) -> bool {
+    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration> {
         unsafe {
             let mut result = 0;
             gl::GetQueryObjectiv(query.gl_query, gl::QUERY_RESULT_AVAILABLE, &mut result); ck();
-            result != gl::FALSE as GLint
-        }
-    }
-
-    #[inline]
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration {
-        unsafe {
+            if result == gl::FALSE as GLint {
+                return None;
+            }
             let mut result = 0;
             gl::GetQueryObjectui64v(query.gl_query, gl::QUERY_RESULT, &mut result); ck();
-            Duration::from_nanos(result)
+            Some(Duration::from_nanos(result))
         }
     }
 
     #[inline]
+    fn bind_buffer(&self, vertex_array: &GLVertexArray, buffer: &GLBuffer, target: BufferTarget) {
+        self.bind_vertex_array(vertex_array);
+        unsafe {
+            gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();
+        }
+        self.unbind_vertex_array();
+    }
+
+    #[inline]
+    fn create_shader(
+        &self,
+        resources: &dyn ResourceLoader,
+        name: &str,
+        kind: ShaderKind,
+    ) -> Self::Shader {
+        let suffix = match kind {
+            ShaderKind::Vertex => 'v',
+            ShaderKind::Fragment => 'f',
+        };
+        let path = format!("shaders/gl3/{}.{}s.glsl", name, suffix);
+        self.create_shader_from_source(name, &resources.slurp(&path).unwrap(), kind)
+    }
+}
+
+impl GLDevice {
+    fn bind_render_target(&self, attachment: &RenderTarget<GLDevice>) {
+        match *attachment {
+            RenderTarget::Default => self.bind_default_framebuffer(),
+            RenderTarget::Framebuffer(framebuffer) => self.bind_framebuffer(framebuffer),
+        }
+    }
+
     fn bind_vertex_array(&self, vertex_array: &GLVertexArray) {
         unsafe {
             gl::BindVertexArray(vertex_array.gl_vertex_array); ck();
         }
     }
 
-    #[inline]
-    fn bind_buffer(&self, buffer: &GLBuffer, target: BufferTarget) {
+    fn unbind_vertex_array(&self) {
         unsafe {
-            gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();
+            gl::BindVertexArray(0); ck();
         }
     }
 
-    #[inline]
-    fn bind_default_framebuffer(&self, viewport: RectI) {
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
-            gl::Viewport(viewport.origin().x(),
-                         viewport.origin().y(),
-                         viewport.size().x(),
-                         viewport.size().y()); ck();
-        }
-    }
-
-    #[inline]
-    fn bind_framebuffer(&self, framebuffer: &GLFramebuffer) {
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.gl_framebuffer); ck();
-            gl::Viewport(0, 0, framebuffer.texture.size.x(), framebuffer.texture.size.y()); ck();
-        }
-    }
-
-    #[inline]
     fn bind_texture(&self, texture: &GLTexture, unit: u32) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
             gl::BindTexture(gl::TEXTURE_2D, texture.gl_texture); ck();
         }
     }
-}
 
-impl GLDevice {
+    fn unbind_texture(&self, unit: u32) {
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
+            gl::BindTexture(gl::TEXTURE_2D, 0); ck();
+        }
+    }
+
+    fn use_program(&self, program: &GLProgram) {
+        unsafe {
+            gl::UseProgram(program.gl_program); ck();
+        }
+    }
+
+    fn unuse_program(&self) {
+        unsafe {
+            gl::UseProgram(0); ck();
+        }
+    }
+
+    fn bind_default_framebuffer(&self) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
+        }
+    }
+
+    fn bind_framebuffer(&self, framebuffer: &GLFramebuffer) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.gl_framebuffer); ck();
+        }
+    }
+
     fn preprocess(&self, output: &mut Vec<u8>, source: &[u8], version: &str) {
         let mut index = 0;
         while index < source.len() {
@@ -662,6 +698,39 @@ impl GLDevice {
             } else {
                 output.push(source[index]);
                 index += 1;
+            }
+        }
+    }
+
+    fn clear(&self, ops: &ClearOps) {
+        unsafe {
+            let mut flags = 0;
+            if let Some(color) = ops.color {
+                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
+                gl::ClearColor(color.r(), color.g(), color.b(), color.a()); ck();
+                flags |= gl::COLOR_BUFFER_BIT;
+            }
+            if let Some(depth) = ops.depth {
+                gl::DepthMask(gl::TRUE); ck();
+                gl::ClearDepthf(depth as _); ck(); // FIXME(pcwalton): GLES
+                flags |= gl::DEPTH_BUFFER_BIT;
+            }
+            if let Some(stencil) = ops.stencil {
+                gl::StencilMask(!0); ck();
+                gl::ClearStencil(stencil as GLint); ck();
+                flags |= gl::STENCIL_BUFFER_BIT;
+            }
+            if flags != 0 {
+                gl::Clear(flags); ck();
+            }
+        }
+    }
+
+    fn render_target_format(&self, render_target: &RenderTarget<GLDevice>) -> TextureFormat {
+        match *render_target {
+            RenderTarget::Default => TextureFormat::RGBA8,
+            RenderTarget::Framebuffer(ref framebuffer) => {
+                self.framebuffer_texture(framebuffer).format
             }
         }
     }
@@ -749,7 +818,7 @@ impl Drop for GLBuffer {
 
 #[derive(Debug)]
 pub struct GLUniform {
-    pub location: GLint,
+    location: GLint,
 }
 
 pub struct GLProgram {
@@ -783,6 +852,7 @@ impl Drop for GLShader {
 pub struct GLTexture {
     gl_texture: GLuint,
     pub size: Vector2I,
+    pub format: TextureFormat,
 }
 
 pub struct GLTimerQuery {
@@ -859,7 +929,36 @@ impl StencilFuncExt for StencilFunc {
         match self {
             StencilFunc::Always => gl::ALWAYS,
             StencilFunc::Equal => gl::EQUAL,
-            StencilFunc::NotEqual => gl::NOTEQUAL,
+        }
+    }
+}
+
+trait TextureFormatExt {
+    fn gl_internal_format(self) -> GLint;
+    fn gl_format(self) -> GLuint;
+    fn gl_type(self) -> GLuint;
+}
+
+impl TextureFormatExt for TextureFormat {
+    fn gl_internal_format(self) -> GLint {
+        match self {
+            TextureFormat::R8 => gl::R8 as GLint,
+            TextureFormat::R16F => gl::R16F as GLint,
+            TextureFormat::RGBA8 => gl::RGBA as GLint,
+        }
+    }
+
+    fn gl_format(self) -> GLuint {
+        match self {
+            TextureFormat::R8 | TextureFormat::R16F => gl::RED,
+            TextureFormat::RGBA8 => gl::RGBA,
+        }
+    }
+
+    fn gl_type(self) -> GLuint {
+        match self {
+            TextureFormat::R8 | TextureFormat::RGBA8 => gl::UNSIGNED_BYTE,
+            TextureFormat::R16F => gl::HALF_FLOAT,
         }
     }
 }
@@ -925,4 +1024,15 @@ fn ck() {
 #[cfg(not(debug_assertions))]
 fn ck() {}
 
-// Shader preprocessing
+// Utilities
+
+// Flips a buffer of image data upside-down.
+fn flip_y<T>(pixels: &mut [T], size: Vector2I, channels: usize) {
+    let stride = size.x() as usize * channels;
+    for y in 0..(size.y() as usize / 2) {
+        let (index_a, index_b) = (y * stride, (size.y() as usize - y - 1) * stride);
+        for offset in 0..stride {
+            pixels.swap(index_a + offset, index_b + offset);
+        }
+    }
+}

@@ -11,24 +11,28 @@
 //! A simple API for Pathfinder that mirrors a subset of HTML canvas.
 
 use font_kit::family_name::FamilyName;
+use font_kit::handle::Handle;
 use font_kit::hinting::HintingOptions;
+use font_kit::loaders::default::Font;
 use font_kit::properties::Properties;
-use font_kit::source::SystemSource;
-use pathfinder_geometry::basic::line_segment::LineSegment2F;
-use pathfinder_geometry::basic::vector::Vector2F;
-use pathfinder_geometry::basic::rect::RectF;
-use pathfinder_geometry::basic::transform2d::Transform2DF;
-use pathfinder_geometry::color::ColorU;
-use pathfinder_geometry::dash::OutlineDash;
-use pathfinder_geometry::outline::{ArcDirection, Contour, Outline};
-use pathfinder_geometry::stroke::{LineCap, LineJoin as StrokeLineJoin};
-use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
+use font_kit::source::{Source, SystemSource};
+use font_kit::sources::mem::MemSource;
+use pathfinder_content::color::ColorU;
+use pathfinder_content::dash::OutlineDash;
+use pathfinder_content::outline::{ArcDirection, Contour, Outline};
+use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
+use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2DF;
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, Layout, TextStyle};
 use std::default::Default;
 use std::f32::consts::PI;
+use std::iter;
 use std::mem;
 use std::sync::Arc;
 
@@ -169,6 +173,40 @@ impl CanvasRenderingContext2D {
     }
 
     // Text styles
+
+    #[inline]
+    pub fn set_font_collection(&mut self, font_collection: Arc<FontCollection>) {
+        self.current_state.font_collection = font_collection;
+    }
+
+    #[inline]
+    pub fn set_font_families<I>(&mut self, font_families: I) where I: Iterator<Item = FontFamily> {
+        let mut font_collection = FontCollection::new();
+        for font_family in font_families {
+            font_collection.add_family(font_family);
+        }
+        self.current_state.font_collection = Arc::new(font_collection);
+    }
+
+    /// A convenience method to set a single font family.
+    #[inline]
+    pub fn set_font_family(&mut self, font_family: FontFamily) {
+        self.set_font_families(iter::once(font_family))
+    }
+
+    /// A convenience method to set a single font family consisting of a single font.
+    #[inline]
+    pub fn set_font(&mut self, font: Font) {
+        self.set_font_family(FontFamily::new_from_font(font))
+    }
+
+    /// A convenience method to set a single font family consisting of a font
+    /// described by a PostScript name.
+    #[inline]
+    pub fn set_font_by_postscript_name(&mut self, postscript_name: &str) {
+        let font = self.font_context.font_source.select_by_postscript_name(postscript_name);
+        self.set_font(font.expect("Didn't find the font!").load().unwrap());
+    }
 
     #[inline]
     pub fn set_font_size(&mut self, new_font_size: f32) {
@@ -488,7 +526,7 @@ pub enum TextAlign {
     Center,
 }
 
-// We duplicate `pathfinder_geometry::stroke::LineJoin` here because the HTML canvas API treats the
+// We duplicate `pathfinder_content::stroke::LineJoin` here because the HTML canvas API treats the
 // miter limit as part of the canvas state, while the native Pathfinder API treats the miter limit
 // as part of the line join. Pathfinder's choice is more logical, because the miter limit is
 // specific to miter joins. In this API, however, for compatibility we go with the HTML canvas
@@ -509,28 +547,36 @@ pub struct TextMetrics {
 #[derive(Clone)]
 pub struct CanvasFontContext {
     #[allow(dead_code)]
-    font_source: Arc<SystemSource>,
+    font_source: Arc<dyn Source>,
     #[allow(dead_code)]
     default_font_collection: Arc<FontCollection>,
 }
 
 impl CanvasFontContext {
-    pub fn new() -> CanvasFontContext {
-        let font_source = Arc::new(SystemSource::new());
-
+    pub fn new(font_source: Arc<dyn Source>) -> CanvasFontContext {
         let mut default_font_collection = FontCollection::new();
-        let default_font =
-            font_source.select_best_match(&[FamilyName::SansSerif], &Properties::new())
-                       .expect("Failed to select the default font!")
-                       .load()
-                       .expect("Failed to load the default font!");
-        default_font_collection.add_family(FontFamily::new_from_font(default_font));
-        let default_font_collection = Arc::new(default_font_collection);
+        if let Ok(default_font) = font_source.select_best_match(&[FamilyName::SansSerif],
+                                                                &Properties::new()) {
+            if let Ok(default_font) = default_font.load() {
+                default_font_collection.add_family(FontFamily::new_from_font(default_font));
+            }
+        }
 
         CanvasFontContext {
             font_source,
-            default_font_collection,
+            default_font_collection: Arc::new(default_font_collection),
         }
+    }
+
+    /// A convenience method to create a font context with the system source.
+    /// This allows usage of fonts installed on the system.
+    pub fn from_system_source() -> CanvasFontContext {
+        CanvasFontContext::new(Arc::new(SystemSource::new()))
+    }
+
+    /// A convenience method to create a font context with a set of in-memory fonts.
+    pub fn from_fonts<I>(fonts: I) -> CanvasFontContext where I: Iterator<Item = Handle> {
+        CanvasFontContext::new(Arc::new(MemSource::from_fonts(fonts).unwrap()))
     }
 }
 

@@ -6,6 +6,8 @@ target
 /site/dist
 node_modules
 /examples/c_canvas_minimal/build
+/shaders/build
+/c/build
 
 # Editors
 *.swp

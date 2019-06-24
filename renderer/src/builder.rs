@@ -12,14 +12,14 @@
 
 use crate::concurrent::executor::Executor;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
-use crate::options::{PreparedRenderOptions, RenderCommandListener};
+use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler};
 use crate::z_buffer::ZBuffer;
-use pathfinder_geometry::basic::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::{RectF, RectI};
+use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -28,7 +28,7 @@ use std::u16;
 
 pub(crate) struct SceneBuilder<'a> {
     scene: &'a Scene,
-    built_options: &'a PreparedRenderOptions,
+    built_options: &'a PreparedBuildOptions,
 
     pub(crate) next_alpha_tile_index: AtomicUsize,
     pub(crate) z_buffer: ZBuffer,
@@ -38,7 +38,7 @@ pub(crate) struct SceneBuilder<'a> {
 impl<'a> SceneBuilder<'a> {
     pub(crate) fn new(
         scene: &'a Scene,
-        built_options: &'a PreparedRenderOptions,
+        built_options: &'a PreparedBuildOptions,
         listener: Box<dyn RenderCommandListener>,
     ) -> SceneBuilder<'a> {
         let effective_view_box = scene.effective_view_box(built_options);
@@ -76,7 +76,7 @@ impl<'a> SceneBuilder<'a> {
         &self,
         path_index: usize,
         view_box: RectF,
-        built_options: &PreparedRenderOptions,
+        built_options: &PreparedBuildOptions,
         scene: &Scene,
     ) -> Vec<AlphaTileBatchPrimitive> {
         let path_object = &scene.paths[path_index];

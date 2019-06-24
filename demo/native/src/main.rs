@@ -13,17 +13,34 @@
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_gl::GLVersion;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::keyboard::Keycode as SDLKeycode;
-use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
+use sdl2::video::Window as SDLWindow;
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
 use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use foreign_types::ForeignTypeRef;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use sdl2::hint;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use sdl2::render::Canvas;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use sdl2_sys::SDL_RenderGetMetalLayer;
+
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+use pathfinder_gl::{GLDevice, GLVersion};
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+use sdl2::video::{GLContext, GLProfile};
 
 #[cfg(not(windows))]
 use jemallocator;
@@ -55,6 +72,7 @@ fn main() {
 
         let scene_count = app.prepare_frame(events);
         app.draw_scene();
+        app.begin_compositing();
         for scene_index in 0..scene_count {
             app.composite_scene(scene_index);
         }
@@ -69,22 +87,36 @@ thread_local! {
 }
 
 struct WindowImpl {
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     window: SDLWindow,
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    gl_context: GLContext,
+
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    canvas: Canvas<SDLWindow>,
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    metal_layer: *mut CAMetalLayer,
+
     event_pump: EventPump,
     #[allow(dead_code)]
-    gl_context: GLContext,
     resource_loader: FilesystemResourceLoader,
     selected_file: Option<PathBuf>,
     open_svg_message_type: u32,
 }
 
 impl Window for WindowImpl {
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn gl_version(&self) -> GLVersion {
         GLVersion::GL3
     }
 
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn metal_layer(&self) -> &CoreAnimationLayerRef {
+        unsafe { CoreAnimationLayerRef::from_ptr(self.metal_layer) }
+    }
+
     fn viewport(&self, view: View) -> RectI {
-        let (width, height) = self.window.drawable_size();
+        let (width, height) = self.window().drawable_size();
         let mut width = width as i32;
         let height = height as i32;
         let mut x_offset = 0;
@@ -95,12 +127,22 @@ impl Window for WindowImpl {
         RectI::new(Vector2I::new(x_offset, 0), Vector2I::new(width, height))
     }
 
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn make_current(&mut self, _view: View) {
-        self.window.gl_make_current(&self.gl_context).unwrap();
+        self.window().gl_make_current(&self.gl_context).unwrap();
     }
 
-    fn present(&mut self) {
-        self.window.gl_swap_window();
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn make_current(&mut self, _: View) {}
+
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn present(&mut self, _: &mut GLDevice) {
+        self.window().gl_swap_window();
+    }
+
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn present(&mut self, device: &mut MetalDevice) {
+        device.present_drawable();
     }
 
     fn resource_loader(&self) -> &dyn ResourceLoader {
@@ -141,6 +183,7 @@ impl Window for WindowImpl {
 }
 
 impl WindowImpl {
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn new() -> WindowImpl {
         SDL_VIDEO.with(|sdl_video| {
             SDL_EVENT.with(|sdl_event| {
@@ -185,9 +228,55 @@ impl WindowImpl {
         })
     }
 
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn new() -> WindowImpl {
+        assert!(hint::set("SDL_RENDER_DRIVER", "metal"));
+
+        SDL_VIDEO.with(|sdl_video| {
+            SDL_EVENT.with(|sdl_event| {
+                let window = sdl_video
+                    .window(
+                        "Pathfinder Demo",
+                        DEFAULT_WINDOW_WIDTH,
+                        DEFAULT_WINDOW_HEIGHT,
+                    )
+                    .opengl()
+                    .resizable()
+                    .allow_highdpi()
+                    .build()
+                    .unwrap();
+
+                let canvas = window.into_canvas().present_vsync().build().unwrap();
+                let metal_layer = unsafe {
+                    SDL_RenderGetMetalLayer(canvas.raw()) as *mut CAMetalLayer
+                };
+
+                let event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
+
+                let resource_loader = FilesystemResourceLoader::locate();
+
+                let open_svg_message_type = unsafe { sdl_event.register_event().unwrap() };
+
+                WindowImpl {
+                    event_pump,
+                    canvas,
+                    metal_layer,
+                    resource_loader,
+                    open_svg_message_type,
+                    selected_file: None,
+                }
+            })
+        })
+    }
+
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn window(&self) -> &SDLWindow { &self.window }
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn window(&self) -> &SDLWindow { self.canvas.window() }
+
     fn size(&self) -> WindowSize {
-        let (logical_width, logical_height) = self.window.size();
-        let (drawable_width, _) = self.window.drawable_size();
+        let (logical_width, logical_height) = self.window().size();
+        let (drawable_width, _) = self.window().drawable_size();
         WindowSize {
             logical_size: Vector2I::new(logical_width as i32, logical_height as i32),
             backing_scale_factor: drawable_width as f32 / logical_width as f32,

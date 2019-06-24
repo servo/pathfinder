@@ -22,9 +22,9 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
-use crate::options::{RenderCommandListener, RenderOptions};
+use crate::options::{BuildOptions, RenderCommandListener};
 use crate::scene::Scene;
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::rect::RectF;
 use pathfinder_gpu::Device;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -59,15 +59,15 @@ impl SceneProxy {
 
     #[inline]
     pub fn build_with_listener(&self,
-                               options: RenderOptions,
+                               options: BuildOptions,
                                listener: Box<dyn RenderCommandListener>) {
         self.sender.send(MainToWorkerMsg::Build(options, listener)).unwrap();
     }
 
     #[inline]
-    pub fn build_with_stream(&self, options: RenderOptions) -> RenderCommandStream {
+    pub fn build_with_stream(&self, options: BuildOptions) -> RenderCommandStream {
         let (sender, receiver) = mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
-        let listener = Box::new(move |command| sender.send(command).unwrap());
+        let listener = Box::new(move |command| drop(sender.send(command)));
         self.build_with_listener(options, listener);
         RenderCommandStream::new(receiver)
     }
@@ -81,11 +81,11 @@ impl SceneProxy {
     ///         renderer.render_command(&command)
     ///     }
     #[inline]
-    pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, options: RenderOptions)
+    pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, build_options: BuildOptions)
                                where D: Device {
         renderer.begin_scene();
-        for command in self.build_with_stream(options) {
-            renderer.render_command(&command)
+        for command in self.build_with_stream(build_options) {
+            renderer.render_command(&command);
         }
         renderer.end_scene();
     }
@@ -118,7 +118,7 @@ fn scene_thread<E>(mut scene: Scene,
 enum MainToWorkerMsg {
     ReplaceScene(Scene),
     SetViewBox(RectF),
-    Build(RenderOptions, Box<dyn RenderCommandListener>),
+    Build(BuildOptions, Box<dyn RenderCommandListener>),
     GetSVG(Sender<Vec<u8>>),
 }
 

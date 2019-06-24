@@ -29,11 +29,11 @@ use pathfinder_demo::BackgroundColor;
 use pathfinder_demo::Mode;
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::SVGPath;
-use pathfinder_geometry::basic::vector::Vector2F;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::transform2d::Transform2DF;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_content::color::ColorF;
 use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::ClearParams;
@@ -113,6 +113,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo_run(app: *mut c_void) {
             }
             let scene_count = app.demo.prepare_frame(events);
             app.demo.draw_scene();
+            app.demo.begin_compositing();
             for scene_index in 0..scene_count {
                 app.demo.composite_scene(scene_index);
             }

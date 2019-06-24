@@ -10,24 +10,38 @@
 
 //! A minimal cross-platform windowing layer.
 
-use gl::types::GLuint;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
-use pathfinder_gl::GLVersion;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 
-pub trait Window {
-    fn gl_version(&self) -> GLVersion;
-    fn gl_default_framebuffer(&self) -> GLuint {
-        0
-    }
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::CoreAnimationLayerRef;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice;
 
-    fn viewport(&self, view: View) -> RectI;
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+use gl::types::GLuint;
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+use pathfinder_gl::{GLDevice, GLVersion};
+
+pub trait Window {
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn gl_version(&self) -> GLVersion;
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn gl_default_framebuffer(&self) -> GLuint { 0 }
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn present(&mut self, device: &mut GLDevice);
+
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn metal_layer(&self) -> &CoreAnimationLayerRef;
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn present(&mut self, device: &mut MetalDevice);
+
     fn make_current(&mut self, view: View);
-    fn present(&mut self);
+    fn viewport(&self, view: View) -> RectI;
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
     fn push_user_event(message_type: u32, message_data: u32);

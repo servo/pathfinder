@@ -15,8 +15,8 @@ use crate::paint;
 use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectF;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -91,6 +91,7 @@ impl SolidTileBatchPrimitive {
             object_index: object_index,
             origin_u: origin_uv.x() as u16,
             origin_v: origin_uv.y() as u16,
+            pad: 0,
         }
     }
 }

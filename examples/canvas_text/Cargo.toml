@@ -5,12 +5,16 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
+font-kit = "0.2"
 gl = "0.6"
 sdl2 = "0.32"
 sdl2-sys = "0.32"
 
 [dependencies.pathfinder_canvas]
 path = "../../canvas"
+
+[dependencies.pathfinder_content]
+path = "../../content"
 
 [dependencies.pathfinder_geometry]
 path = "../../geometry"

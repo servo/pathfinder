@@ -12,16 +12,16 @@
 
 use crate::resources::ResourceLoader;
 use image::ImageFormat;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::transform3d::Transform3DF;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_content::color::ColorF;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_simd::default::F32x4;
 use std::time::Duration;
 
 pub mod resources;
 
-pub trait Device {
+pub trait Device: Sized {
     type Buffer;
     type Framebuffer;
     type Program;
@@ -34,6 +34,8 @@ pub trait Device {
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
+    fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
+                     -> Self::Shader;
     fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
                                  -> Self::Shader;
     fn create_vertex_array(&self) -> Self::VertexArray;
@@ -44,11 +46,16 @@ pub trait Device {
         vertex_shader: Self::Shader,
         fragment_shader: Self::Shader,
     ) -> Self::Program;
-    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
+    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<Self::VertexAttr>;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
-    fn use_program(&self, program: &Self::Program);
-    fn configure_vertex_attr(&self, attr: &Self::VertexAttr, descriptor: &VertexAttrDescriptor);
-    fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData);
+    fn bind_buffer(&self,
+                   vertex_array: &Self::VertexArray,
+                   buffer: &Self::Buffer,
+                   target: BufferTarget);
+    fn configure_vertex_attr(&self,
+                             vertex_array: &Self::VertexArray,
+                             attr: &Self::VertexAttr,
+                             descriptor: &VertexAttrDescriptor);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
     fn create_buffer(&self) -> Self::Buffer;
     fn allocate_buffer<T>(
@@ -61,27 +68,19 @@ pub trait Device {
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
-    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
-    fn clear(&self, params: &ClearParams);
-    fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
-    fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
+    fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
+    fn begin_commands(&self);
+    fn end_commands(&self);
+    fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
+    fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements_instanced(&self,
-                               primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
-                               render_state: &RenderState);
+                               render_state: &RenderState<Self>);
     fn create_timer_query(&self) -> Self::TimerQuery;
     fn begin_timer_query(&self, query: &Self::TimerQuery);
     fn end_timer_query(&self, query: &Self::TimerQuery);
-    fn timer_query_is_available(&self, query: &Self::TimerQuery) -> bool;
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration;
-
-    // TODO(pcwalton): Go bindless...
-    fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
-    fn bind_buffer(&self, buffer: &Self::Buffer, target: BufferTarget);
-    fn bind_default_framebuffer(&self, viewport: RectI);
-    fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
-    fn bind_texture(&self, texture: &Self::Texture, unit: u32);
+    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration>;
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
@@ -90,20 +89,6 @@ pub trait Device {
             .to_luma();
         let size = Vector2I::new(image.width() as i32, image.height() as i32);
         self.create_texture_from_data(size, &image)
-    }
-
-    fn create_shader(
-        &self,
-        resources: &dyn ResourceLoader,
-        name: &str,
-        kind: ShaderKind,
-    ) -> Self::Shader {
-        let suffix = match kind {
-            ShaderKind::Vertex => 'v',
-            ShaderKind::Fragment => 'f',
-        };
-        let source = resources.slurp(&format!("shaders/gl3/{}.{}s.glsl", name, suffix)).unwrap();
-        self.create_shader_from_source(name, &source, kind)
     }
 
     fn create_program_from_shader_names(
@@ -124,7 +109,7 @@ pub trait Device {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TextureFormat {
     R8,
     R16F,
@@ -167,7 +152,6 @@ pub enum ShaderKind {
 #[derive(Clone, Copy)]
 pub enum UniformData {
     Int(i32),
-    Mat2(F32x4),
     Mat4([F32x4; 4]),
     Vec2(F32x4),
     Vec4(F32x4),
@@ -180,23 +164,41 @@ pub enum Primitive {
     Lines,
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct ClearParams {
+#[derive(Clone)]
+pub struct RenderState<'a, D> where D: Device {
+    pub target: &'a RenderTarget<'a, D>,
+    pub program: &'a D::Program,
+    pub vertex_array: &'a D::VertexArray,
+    pub primitive: Primitive,
+    pub uniforms: &'a [(&'a D::Uniform, UniformData)],
+    pub textures: &'a [&'a D::Texture],
+    pub viewport: RectI,
+    pub options: RenderOptions,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderOptions {
+    pub blend: BlendState,
+    pub depth: Option<DepthState>,
+    pub stencil: Option<StencilState>,
+    pub clear_ops: ClearOps,
+    pub color_mask: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ClearOps {
     pub color: Option<ColorF>,
-    pub rect: Option<RectI>,
     pub depth: Option<f32>,
     pub stencil: Option<u8>,
 }
 
-#[derive(Clone, Debug)]
-pub struct RenderState {
-    pub blend: BlendState,
-    pub depth: Option<DepthState>,
-    pub stencil: Option<StencilState>,
-    pub color_mask: bool,
+#[derive(Clone, Copy, Debug)]
+pub enum RenderTarget<'a, D> where D: Device {
+    Default,
+    Framebuffer(&'a D::Framebuffer),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BlendState {
     Off,
     RGBOneAlphaOne,
@@ -228,16 +230,16 @@ pub struct StencilState {
 pub enum StencilFunc {
     Always,
     Equal,
-    NotEqual,
 }
 
-impl Default for RenderState {
+impl Default for RenderOptions {
     #[inline]
-    fn default() -> RenderState {
-        RenderState {
+    fn default() -> RenderOptions {
+        RenderOptions {
             blend: BlendState::default(),
             depth: None,
             stencil: None,
+            clear_ops: ClearOps::default(),
             color_mask: true,
         }
     }
@@ -276,6 +278,12 @@ impl Default for StencilFunc {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum TextureData {
+    U8(Vec<u8>),
+    U16(Vec<u16>),
+}
+
 impl UniformData {
     #[inline]
     pub fn from_transform_3d(transform: &Transform3DF) -> UniformData {
@@ -291,6 +299,7 @@ pub struct VertexAttrDescriptor {
     pub stride: usize,
     pub offset: usize,
     pub divisor: u32,
+    pub buffer_index: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -298,4 +307,21 @@ pub enum VertexAttrClass {
     Float,
     FloatNorm,
     Int,
+}
+
+impl TextureFormat {
+    #[inline]
+    pub fn channels(self) -> usize {
+        match self {
+            TextureFormat::R8 | TextureFormat::R16F => 1,
+            TextureFormat::RGBA8 => 4,
+        }
+    }
+}
+
+impl ClearOps {
+    #[inline]
+    pub fn has_ops(&self) -> bool {
+        self.color.is_some() || self.depth.is_some() || self.stencil.is_some()
+    }
 }

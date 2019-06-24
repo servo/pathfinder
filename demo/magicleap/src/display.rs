@@ -10,10 +10,10 @@
 
 use std::error::Error;
 use std::io;
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_geometry::basic::transform3d::Perspective;
-use pathfinder_geometry::basic::transform3d::Transform3DF32;
+use pathfinder_geometry::point::Point2DI32;
+use pathfinder_geometry::rect::RectI32;
+use pathfinder_geometry::transform3d::Perspective;
+use pathfinder_geometry::transform3d::Transform3DF32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 

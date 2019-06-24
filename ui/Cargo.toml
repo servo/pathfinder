@@ -13,6 +13,9 @@ serde_json = "1.0"
 version = "0.1"
 features = ["serde"]
 
+[dependencies.pathfinder_content]
+path = "../content"
+
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 

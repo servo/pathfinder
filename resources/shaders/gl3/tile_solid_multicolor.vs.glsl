@@ -1,4 +1,6 @@
 #version {{version}}
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
+
 
 
 
@@ -29,19 +31,18 @@ uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
 uniform vec2 uViewBoxOrigin;
 
-in vec2 aTessCoord;
-in vec2 aTileOrigin;
+in uvec2 aTessCoord;
+in ivec2 aTileOrigin;
 
 out vec4 vColor;
 
 vec4 getColor();
 
 void computeVaryings(){
-    vec2 pixelPosition =(aTileOrigin + aTessCoord)* uTileSize + uViewBoxOrigin;
+    vec2 pixelPosition = vec2(aTileOrigin + ivec2(aTessCoord))* uTileSize + uViewBoxOrigin;
     vec2 position =(pixelPosition / uFramebufferSize * 2.0 - 1.0)* vec2(1.0, - 1.0);
 
     vColor = getColor();
-
     gl_Position = vec4(position, 0.0, 1.0);
 }
 

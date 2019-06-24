@@ -12,9 +12,9 @@
 
 use crate::options::BoundingQuad;
 use crate::tile_map::DenseTileMap;
-use pathfinder_geometry::basic::line_segment::{LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectF;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
 
@@ -75,6 +75,7 @@ pub struct SolidTileBatchPrimitive {
     pub origin_u: u16,
     pub origin_v: u16,
     pub object_index: u16,
+    pub pad: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

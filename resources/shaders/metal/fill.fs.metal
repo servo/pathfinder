@@ -1,7 +1,14 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+struct spvDescriptorSetBuffer0
+{
+    texture2d<float> uAreaLUT [[id(0)]];
+    sampler uAreaLUTSmplr [[id(1)]];
+};
 
 struct main0_out
 {
@@ -14,7 +21,7 @@ struct main0_in
     float2 vTo [[user(locn1)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> uAreaLUT [[texture(0)]], sampler uAreaLUTSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
     float2 from = in.vFrom;
@@ -29,7 +36,7 @@ fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> uAreaLUT [[t
     float y = mix(left.y, right.y, t);
     float d = (right.y - left.y) / (right.x - left.x);
     float dX = window.x - window.y;
-    out.oFragColor = float4(uAreaLUT.sample(uAreaLUTSmplr, (float2(y + 8.0, abs(d * dX)) / float2(16.0))).x * dX);
+    out.oFragColor = float4(spvDescriptorSet0.uAreaLUT.sample(spvDescriptorSet0.uAreaLUTSmplr, (float2(y + 8.0, abs(d * dX)) / float2(16.0))).x * dX);
     return out;
 }
 

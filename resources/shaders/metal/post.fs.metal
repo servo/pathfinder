@@ -1,9 +1,23 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
 
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+struct spvDescriptorSetBuffer0
+{
+    texture2d<float> uGammaLUT [[id(0)]];
+    sampler uGammaLUTSmplr [[id(1)]];
+    constant float4* uKernel [[id(2)]];
+    texture2d<float> uSource [[id(3)]];
+    sampler uSourceSmplr [[id(4)]];
+    constant float2* uSourceSize [[id(5)]];
+    constant int* uGammaCorrectionEnabled [[id(6)]];
+    constant float4* uBGColor [[id(7)]];
+    constant float4* uFGColor [[id(8)]];
+};
 
 struct main0_out
 {
@@ -78,42 +92,42 @@ float3 gammaCorrect(thread const float3& bgColor, thread const float3& fgColor, 
     return float3(gammaCorrectChannel(param, param_1, uGammaLUT, uGammaLUTSmplr), gammaCorrectChannel(param_2, param_3, uGammaLUT, uGammaLUTSmplr), gammaCorrectChannel(param_4, param_5, uGammaLUT, uGammaLUTSmplr));
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], int uGammaCorrectionEnabled [[buffer(2)]], float4 uKernel [[buffer(0)]], float2 uSourceSize [[buffer(1)]], float4 uBGColor [[buffer(3)]], float4 uFGColor [[buffer(4)]], texture2d<float> uGammaLUT [[texture(0)]], texture2d<float> uSource [[texture(0)]], sampler uGammaLUTSmplr [[sampler(0)]], sampler uSourceSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
     float3 alpha;
-    if (uKernel.w == 0.0)
+    if ((*spvDescriptorSet0.uKernel).w == 0.0)
     {
-        alpha = uSource.sample(uSourceSmplr, in.vTexCoord).xxx;
+        alpha = spvDescriptorSet0.uSource.sample(spvDescriptorSet0.uSourceSmplr, in.vTexCoord).xxx;
     }
     else
     {
-        float param_3 = 1.0 / uSourceSize.x;
+        float param_3 = 1.0 / (*spvDescriptorSet0.uSourceSize).x;
         float4 param;
         float param_1;
         float4 param_2;
-        sample9Tap(param, param_1, param_2, param_3, uKernel, uSource, uSourceSmplr, in.vTexCoord);
+        sample9Tap(param, param_1, param_2, param_3, (*spvDescriptorSet0.uKernel), spvDescriptorSet0.uSource, spvDescriptorSet0.uSourceSmplr, in.vTexCoord);
         float4 alphaLeft = param;
         float alphaCenter = param_1;
         float4 alphaRight = param_2;
         float4 param_4 = alphaLeft;
         float3 param_5 = float3(alphaCenter, alphaRight.xy);
-        float r = convolve7Tap(param_4, param_5, uKernel);
+        float r = convolve7Tap(param_4, param_5, (*spvDescriptorSet0.uKernel));
         float4 param_6 = float4(alphaLeft.yzw, alphaCenter);
         float3 param_7 = alphaRight.xyz;
-        float g = convolve7Tap(param_6, param_7, uKernel);
+        float g = convolve7Tap(param_6, param_7, (*spvDescriptorSet0.uKernel));
         float4 param_8 = float4(alphaLeft.zw, alphaCenter, alphaRight.x);
         float3 param_9 = alphaRight.yzw;
-        float b = convolve7Tap(param_8, param_9, uKernel);
+        float b = convolve7Tap(param_8, param_9, (*spvDescriptorSet0.uKernel));
         alpha = float3(r, g, b);
     }
-    if (uGammaCorrectionEnabled != 0)
+    if ((*spvDescriptorSet0.uGammaCorrectionEnabled) != 0)
     {
-        float3 param_10 = uBGColor.xyz;
+        float3 param_10 = (*spvDescriptorSet0.uBGColor).xyz;
         float3 param_11 = alpha;
-        alpha = gammaCorrect(param_10, param_11, uGammaLUT, uGammaLUTSmplr);
+        alpha = gammaCorrect(param_10, param_11, spvDescriptorSet0.uGammaLUT, spvDescriptorSet0.uGammaLUTSmplr);
     }
-    out.oFragColor = float4(mix(uBGColor.xyz, uFGColor.xyz, alpha), 1.0);
+    out.oFragColor = float4(mix((*spvDescriptorSet0.uBGColor).xyz, (*spvDescriptorSet0.uFGColor).xyz, alpha), 1.0);
     return out;
 }
 

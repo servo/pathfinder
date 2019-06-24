@@ -8,24 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Utilities for Bézier curves.
-//!
-//! These may be merged into upstream Lyon eventually.
+//! Basic geometry and linear algebra primitives, optimized with SIMD.
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate log;
-
-pub mod basic;
-pub mod clip;
-pub mod color;
-pub mod dash;
-pub mod orientation;
-pub mod outline;
-pub mod segment;
-pub mod stroke;
+pub mod line_segment;
+pub mod rect;
+pub mod transform2d;
+pub mod transform3d;
+pub mod unit_vector;
 pub mod util;
-
-mod dilation;
-mod unit_vector;
+pub mod vector;

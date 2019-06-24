@@ -1,3 +1,4 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #include <metal_stdlib>
 #include <simd/simd.h>
 
@@ -11,14 +12,16 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aPosition [[attribute(0)]];
+    int2 aPosition [[attribute(0)]];
 };
 
-vertex main0_out main0(main0_in in [[stage_in]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
+vertex main0_out main0(main0_in in [[stage_in]])
 {
     main0_out out = {};
-    out.vTexCoord = in.aPosition;
-    out.gl_Position = float4((in.aPosition * 2.0) - float2(1.0), 0.0, 1.0);
+    float2 position = float2(in.aPosition);
+    out.vTexCoord = position;
+    position.y = 1.0 - position.y;
+    out.gl_Position = float4((float2(position) * 2.0) - float2(1.0), 0.0, 1.0);
     return out;
 }
 

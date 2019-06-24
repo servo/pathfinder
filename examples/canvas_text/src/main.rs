@@ -8,19 +8,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use font_kit::handle::Handle;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, TextAlign};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_content::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::{ClearParams, Device};
+use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
-use pathfinder_renderer::options::RenderOptions;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::options::BuildOptions;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
+use std::iter;
+use std::sync::Arc;
 
 fn main() {
     // Set up SDL2.
@@ -45,17 +48,22 @@ fn main() {
     window.gl_make_current(&gl_context).unwrap();
 
     // Create a Pathfinder renderer.
+    let resource_loader = FilesystemResourceLoader::locate();
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
-                                     &FilesystemResourceLoader::locate(),
-                                     DestFramebuffer::full_window(window_size));
+                                     &resource_loader,
+                                     DestFramebuffer::full_window(window_size),
+                                     RendererOptions { background_color: Some(ColorF::white()) });
 
-    // Clear to white.
-    renderer.device.clear(&ClearParams { color: Some(ColorF::white()), ..ClearParams::default() });
+    // Load a font.
+    let font_data = Arc::new(resource_loader.slurp("fonts/overpass-regular.otf").unwrap());
+    let font = Handle::from_memory(font_data, 0);
+    let font_context = CanvasFontContext::from_fonts(iter::once(font));
 
-    // Make a canvas. We're going to draw some text.
-    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
+    // Make a canvas.
+    let mut canvas = CanvasRenderingContext2D::new(font_context, window_size.to_f32());
 
     // Draw the text.
+    canvas.set_font_by_postscript_name("Overpass-Regular");
     canvas.set_font_size(32.0);
     canvas.fill_text("Hello Pathfinder!", Vector2F::new(32.0, 48.0));
     canvas.set_text_align(TextAlign::Right);
@@ -63,7 +71,7 @@ fn main() {
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
-    scene.build_and_render(&mut renderer, RenderOptions::default());
+    scene.build_and_render(&mut renderer, BuildOptions::default());
     window.gl_swap_window();
 
     // Wait for a keypress.

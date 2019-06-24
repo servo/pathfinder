@@ -5,7 +5,7 @@ RUST_TARGET_DIR?=../../target
 RUST_SRC_DIR?=../../c
 RUSTFLAGS?=-C target-cpu=native
 
-CFLAGS?=-Wall -g -I../../c/include
+CFLAGS?=-Wall -g -I../../c/build/include
 LIBS?=-lpathfinder_c
 MKDIR?=mkdir -p
 RM?=rm
@@ -15,7 +15,7 @@ UNAME=$(shell uname -s)
 ifeq ($(UNAME),Darwin)
 	# FIXME(pcwalton): Don't link against HarfBuzz!!
 	LIBS+=-framework OpenGL -framework CoreFoundation -framework CoreGraphics -framework CoreText
-	LIBS+=-lharfbuzz
+	LIBS+=-framework Metal -lharfbuzz
 else
 	LIBS+=-lGL
 endif

@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
 
 #[derive(Debug)]
 pub struct DenseTileMap<T> {

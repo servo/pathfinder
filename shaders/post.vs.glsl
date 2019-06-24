@@ -12,11 +12,17 @@
 
 precision highp float;
 
-in vec2 aPosition;
+in ivec2 aPosition;
 
 out vec2 vTexCoord;
 
 void main() {
-    vTexCoord = aPosition;
-    gl_Position = vec4(aPosition * 2.0 - 1.0, 0.0, 1.0);
+    vec2 position = vec2(aPosition);
+    vTexCoord = position;
+
+#ifdef PF_ORIGIN_UPPER_LEFT
+    // FIXME(pcwalton): This is wrong.
+    position.y = 1.0 - position.y;
+#endif
+    gl_Position = vec4(vec2(position) * 2.0 - 1.0, 0.0, 1.0);
 }

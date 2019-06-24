@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
+[features]
+pf-gl = []
+
 [dependencies]
 clap = "2.32"
 gl = "0.6"
 rayon = "1.0"
-usvg = "0.4"
+usvg = "0.7"
 
 [dependencies.image]
 version = "0.21"
@@ -18,6 +21,9 @@ features = ["png_codec"]
 [dependencies.log]
 version = "0.4"
 features = ["release_max_level_warn"]
+
+[dependencies.pathfinder_content]
+path = "../../content"
 
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
@@ -39,3 +45,9 @@ path = "../../svg"
 
 [dependencies.pathfinder_ui]
 path = "../../ui"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.14"
+
+[target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
+path = "../../metal"

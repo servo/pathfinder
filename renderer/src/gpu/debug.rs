@@ -16,8 +16,8 @@
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
 use crate::gpu::renderer::{RenderStats, RenderTime};
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UIPresenter, WINDOW_COLOR};

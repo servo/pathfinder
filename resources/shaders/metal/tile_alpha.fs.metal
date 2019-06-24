@@ -1,7 +1,14 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+struct spvDescriptorSetBuffer0
+{
+    texture2d<float> uStencilTexture [[id(0)]];
+    sampler uStencilTextureSmplr [[id(1)]];
+};
 
 struct main0_out
 {
@@ -15,10 +22,10 @@ struct main0_in
     float4 vColor [[user(locn2)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> uStencilTexture [[texture(0)]], sampler uStencilTextureSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float coverage = abs(uStencilTexture.sample(uStencilTextureSmplr, in.vTexCoord).x + in.vBackdrop);
+    float coverage = abs(spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vTexCoord).x + in.vBackdrop);
     out.oFragColor = float4(in.vColor.xyz, in.vColor.w * coverage);
     return out;
 }

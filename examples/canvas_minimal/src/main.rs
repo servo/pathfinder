@@ -9,16 +9,16 @@
 // except according to those terms.
 
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::RectF;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::rect::RectF;
+use pathfinder_content::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::{ClearParams, Device};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
-use pathfinder_renderer::options::RenderOptions;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::options::BuildOptions;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -48,13 +48,12 @@ fn main() {
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
                                      &FilesystemResourceLoader::locate(),
-                                     DestFramebuffer::full_window(window_size));
-
-    // Clear to white.
-    renderer.device.clear(&ClearParams { color: Some(ColorF::white()), ..ClearParams::default() });
+                                     DestFramebuffer::full_window(window_size),
+                                     RendererOptions { background_color: Some(ColorF::white()) });
 
     // Make a canvas. We're going to draw a house.
-    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
+    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::from_system_source(),
+                                                   window_size.to_f32());
 
     // Set line width.
     canvas.set_line_width(10.0);
@@ -75,7 +74,7 @@ fn main() {
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
-    scene.build_and_render(&mut renderer, RenderOptions::default());
+    scene.build_and_render(&mut renderer, BuildOptions::default());
     window.gl_swap_window();
 
     // Wait for a keypress.
