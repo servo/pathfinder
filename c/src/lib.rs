@@ -13,8 +13,8 @@
 use font_kit::handle::Handle;
 use foreign_types::ForeignTypeRef;
 use gl;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
-use pathfinder_canvas::{Path2D, TextMetrics};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
+use pathfinder_canvas::{TextAlign, TextMetrics};
 use pathfinder_content::color::{ColorF, ColorU};
 use pathfinder_content::outline::ArcDirection;
 use pathfinder_content::stroke::LineCap;
@@ -43,13 +43,17 @@ use pathfinder_metal::MetalDevice;
 
 // `canvas`
 
-pub const PF_LINE_CAP_BUTT:   u8 = 0;
-pub const PF_LINE_CAP_SQUARE: u8 = 1;
-pub const PF_LINE_CAP_ROUND:  u8 = 2;
+pub const PF_LINE_CAP_BUTT:     u8 = 0;
+pub const PF_LINE_CAP_SQUARE:   u8 = 1;
+pub const PF_LINE_CAP_ROUND:    u8 = 2;
 
-pub const PF_LINE_JOIN_MITER: u8 = 0;
-pub const PF_LINE_JOIN_BEVEL: u8 = 1;
-pub const PF_LINE_JOIN_ROUND: u8 = 2;
+pub const PF_LINE_JOIN_MITER:   u8 = 0;
+pub const PF_LINE_JOIN_BEVEL:   u8 = 1;
+pub const PF_LINE_JOIN_ROUND:   u8 = 2;
+
+pub const PF_TEXT_ALIGN_LEFT:   u8 = 0;
+pub const PF_TEXT_ALIGN_CENTER: u8 = 1;
+pub const PF_TEXT_ALIGN_RIGHT:  u8 = 2;
 
 // `content`
 
@@ -73,6 +77,7 @@ pub type PFFillStyleRef = *mut FillStyle;
 pub type PFLineCap = u8;
 pub type PFLineJoin = u8;
 pub type PFArcDirection = u8;
+pub type PFTextAlign = u8;
 #[repr(C)]
 pub struct PFTextMetrics {
     pub width: f32,
@@ -288,6 +293,15 @@ pub unsafe extern "C" fn PFCanvasSetFontByPostScriptName(canvas: PFCanvasRef,
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetFontSize(canvas: PFCanvasRef, new_font_size: f32) {
     (*canvas).set_font_size(new_font_size)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetTextAlign(canvas: PFCanvasRef, new_text_align: PFTextAlign) {
+    (*canvas).set_text_align(match new_text_align {
+        PF_TEXT_ALIGN_CENTER => TextAlign::Center,
+        PF_TEXT_ALIGN_RIGHT  => TextAlign::Right,
+        _                    => TextAlign::Left,
+    });
 }
 
 #[no_mangle]
