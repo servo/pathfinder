@@ -198,8 +198,28 @@ impl Scene {
         writeln!(writer, "</svg>")?;
         Ok(())
     }
+    
+    pub fn paths<'a>(&'a self) -> PathIter {
+        PathIter {
+            scene: self,
+            pos: 0
+        }
+    }
 }
-
+pub struct PathIter<'a> {
+    scene: &'a Scene,
+    pos: usize
+}
+impl<'a> Iterator for PathIter<'a> {
+    type Item = (&'a Paint, &'a Outline);
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.scene.paths.get(self.pos).map(|path_object| {
+            (self.scene.paints.get(path_object.paint.0 as usize).unwrap(), &path_object.outline)
+        });
+        self.pos += 1;
+        item
+    }
+}
 #[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,

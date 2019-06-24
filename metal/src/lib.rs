@@ -868,6 +868,11 @@ impl MetalDevice {
 
         render_command_encoder.use_resource(&data_buffer, MTLResourceUsage::Read);
 
+        // Metal expects the data buffer to remain live. (Issue #199.)
+        // FIXME(pcwalton): When do we deallocate this? What are the expected
+        // lifetime semantics?
+        mem::forget(data_buffer);
+
         if let Some(vertex_argument_buffer) = vertex_argument_buffer {
             let range = NSRange::new(0, vertex_argument_buffer.length());
             vertex_argument_buffer.did_modify_range(range);
