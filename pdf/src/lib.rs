@@ -1,5 +1,6 @@
 use pathfinder_renderer::{scene::Scene};
-use pathfinder_geometry::{outline::Outline, color::ColorF, segment::{Segment, SegmentKind}, basic::{vector::Vector2F, rect::RectF}};
+use pathfinder_geometry::{vector::Vector2F, rect::RectF};
+use pathfinder_content::{outline::Outline, segment::{Segment, SegmentKind}, color::ColorF};
 use std::io::Write;
 
 mod pdf;

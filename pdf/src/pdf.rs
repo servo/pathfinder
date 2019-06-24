@@ -1,7 +1,7 @@
 //! This is a heavily modified version of the pdfpdf crate by Benjamin Kimock <kimockb@gmail.com> (aka. saethlin)
 
-use pathfinder_geometry::basic::{vector::Vector2F, rect::RectF};
-use pathfinder_geometry::color::ColorU;
+use pathfinder_geometry::{vector::Vector2F, rect::RectF};
+use pathfinder_content::color::ColorU;
 use std::io::{self, Write, Cursor, Seek};
 use deflate::Compression;
 
@@ -118,13 +118,13 @@ impl Pdf {
             origin.y(),
             size.x(),
             size.y()
-        );
+        ).unwrap();
     }
 
     /// Set the current line width
     #[inline]
     pub fn set_line_width(&mut self, width: f32) {
-        writeln!(self.page_buffer, "{} w", width);
+        writeln!(self.page_buffer, "{} w", width).unwrap();
     }
 
     /// Set the color for all subsequent drawing operations
@@ -135,7 +135,7 @@ impl Pdf {
             norm(color.r),
             norm(color.g),
             norm(color.b)
-        );
+        ).unwrap();
     }
     
     /// Set the color for all subsequent drawing operations
@@ -146,7 +146,7 @@ impl Pdf {
             norm(color.r),
             norm(color.g),
             norm(color.b)
-        );
+        ).unwrap();
     }
 
     /// Move to a new page in the PDF document
@@ -164,26 +164,26 @@ impl Pdf {
     }
     
     pub fn move_to(&mut self, p: Vector2F)  {
-        writeln!(self.page_buffer, "{} {} m", p.x(), p.y());
+        writeln!(self.page_buffer, "{} {} m", p.x(), p.y()).unwrap();
     }
     
     pub fn line_to(&mut self, p: Vector2F) {
-        writeln!(self.page_buffer, "{} {} l", p.x(), p.y());
+        writeln!(self.page_buffer, "{} {} l", p.x(), p.y()).unwrap();
     }
     
     pub fn cubic_to(&mut self, c1: Vector2F, c2: Vector2F, p: Vector2F) {
-        writeln!(self.page_buffer, "{} {} {} {} {} {} c", c1.x(), c1.y(), c2.x(), c2.y(), p.x(), p.y());
+        writeln!(self.page_buffer, "{} {} {} {} {} {} c", c1.x(), c1.y(), c2.x(), c2.y(), p.x(), p.y()).unwrap();
     }
     pub fn fill(&mut self) {
-        writeln!(self.page_buffer, "f");
+        writeln!(self.page_buffer, "f").unwrap();
     }
     
     pub fn stroke(&mut self) {
-        writeln!(self.page_buffer, "s");
+        writeln!(self.page_buffer, "s").unwrap();
     }
     
     pub fn close(&mut self) {
-        writeln!(self.page_buffer, "h");
+        writeln!(self.page_buffer, "h").unwrap();
     }
     /// Dump a page out to disk
     fn end_page(&mut self) {
@@ -219,7 +219,7 @@ impl Pdf {
             .to_vec();
 
         for (idx, obj) in self.objects.iter().enumerate().filter(|&(_, o)| o.is_xobject) {
-            write!(page_object, "/XObject {} 0 R ", idx+1);
+            write!(page_object, "/XObject {} 0 R ", idx+1).unwrap();
         }
 
         write!(page_object,
@@ -228,7 +228,7 @@ impl Pdf {
                 /Contents {} 0 R\n\
                 >>\n",
             size.x(), size.y(), stream_object_id
-        );
+        ).unwrap();
         self.add_object(page_object, true, false);
     }
 
@@ -246,7 +246,7 @@ impl Pdf {
             obj.offset = Some(out.pos());
             write!(out, "{} 0 obj\n", idx+1)?;
             out.write_all(&obj.contents)?;
-            out.write_all(b"endobj\n");
+            out.write_all(b"endobj\n")?;
         }
 
         // Write out the page tree object
@@ -259,7 +259,7 @@ impl Pdf {
         )?;
         out.write_all(b"/Kids [")?;
         for (idx, obj) in self.objects.iter().enumerate().filter(|&(_, obj)| obj.is_page) {
-            write!(out, "{} 0 R ", idx + 1);
+            write!(out, "{} 0 R ", idx + 1)?;
         }
         out.write_all(b"] >>\nendobj\n")?;
 
@@ -280,7 +280,7 @@ impl Pdf {
         // Write the document trailer
         out.write_all(b"trailer\n")?;
         write!(out, "<< /Size {}\n", self.objects.len())?;
-        out.write_all(b"/Root 1 0 R >>\n");
+        out.write_all(b"/Root 1 0 R >>\n")?;
 
         // Write the offset to the xref table
         write!(out, "startxref\n{}\n", startxref)?;

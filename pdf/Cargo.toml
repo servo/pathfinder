@@ -7,4 +7,5 @@ edition = "2018"
 [dependencies]
 pathfinder_renderer = { path = "../renderer" }
 pathfinder_geometry = { path = "../geometry" }
+pathfinder_content = { path = "../content" }
 deflate = "*"
