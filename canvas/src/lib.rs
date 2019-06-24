@@ -101,7 +101,17 @@ impl CanvasRenderingContext2D {
     pub fn measure_text(&self, string: &str) -> TextMetrics {
         TextMetrics { width: self.layout_text(string).width() }
     }
-
+    
+    pub fn fill_layout(&mut self, layout: &Layout, transform: Transform2DF) {
+        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        drop(self.scene.push_layout(&layout,
+                                    &TextStyle { size: self.current_state.font_size },
+                                    &transform.post_mul(&self.current_state.transform),
+                                    TextRenderMode::Fill,
+                                    HintingOptions::None,
+                                    paint_id));
+    }
+    
     fn fill_or_stroke_text(&mut self,
                            string: &str,
                            mut position: Vector2F,
@@ -114,7 +124,7 @@ impl CanvasRenderingContext2D {
             TextAlign::Right => position.set_x(position.x() - layout.width()),
             TextAlign::Center => position.set_x(position.x() - layout.width() * 0.5),
         }
-
+        
         let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
                                                                                .transform);
 
@@ -127,7 +137,7 @@ impl CanvasRenderingContext2D {
                                     paint_id));
     }
 
-    fn layout_text(&self, string: &str) -> Layout {
+    pub fn layout_text(&self, string: &str) -> Layout {
         skribo::layout(&TextStyle { size: self.current_state.font_size },
                        &self.current_state.font_collection,
                        string)
