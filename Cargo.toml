@@ -19,7 +19,7 @@ members = [
     "gl",
     "gpu",
     "lottie",
-    "pdf",
+    "export",
     "metal",
     "renderer",
     "simd",
