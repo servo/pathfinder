@@ -11,8 +11,8 @@
 use crate::camera::Mode;
 use crate::window::Window;
 use crate::{BackgroundColor, Options};
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::gpu::debug::DebugUIPresenter;

@@ -2,6 +2,7 @@
 members = [
     "c",
     "canvas",
+    "content",
     "demo/android/rust",
     "demo/common",
     "demo/magicleap",
@@ -12,6 +13,7 @@ members = [
     "examples/canvas_moire",
     "examples/canvas_text",
     "examples/lottie_basic",
+    "examples/swf_basic",
     "geometry",
     "gl",
     "gpu",
@@ -20,6 +22,7 @@ members = [
     "renderer",
     "simd",
     "svg",
+    "swf",
     "text",
     "ui",
     "utils/area-lut",

@@ -1,0 +1,24 @@
+[package]
+name = "pathfinder_swf"
+version = "0.1.0"
+authors = ["Jon Hardie <jon@hardiesoft.com>"]
+edition = "2018"
+
+[dependencies]
+swf-parser = "0.7.0"
+swf-tree = "0.7.0"
+
+[dependencies.pathfinder_content]
+path = "../content"
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_renderer]
+path = "../renderer"
+
+[dependencies.pathfinder_gl]
+path = "../gl"
+
+[dependencies.pathfinder_gpu]
+path = "../gpu"

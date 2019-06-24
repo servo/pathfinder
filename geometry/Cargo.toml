@@ -5,11 +5,6 @@ edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
-arrayvec = "0.4"
-bitflags = "1.0"
-serde = "1.0"
-serde_derive = "1.0"
-smallvec = "0.6"
 
 [dependencies.log]
 version = "0.4"

@@ -10,14 +10,16 @@
 
 //! C bindings to Pathfinder.
 
+use font_kit::handle::Handle;
+use foreign_types::ForeignTypeRef;
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_canvas::{Path2D, TextMetrics};
-use pathfinder_geometry::basic::rect::{RectF, RectI};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::color::{ColorF, ColorU};
-use pathfinder_geometry::outline::ArcDirection;
-use pathfinder_geometry::stroke::LineCap;
+use pathfinder_content::color::{ColorF, ColorU};
+use pathfinder_content::outline::ArcDirection;
+use pathfinder_content::stroke::LineCap;
+use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
@@ -32,6 +34,11 @@ use std::os::raw::{c_char, c_void};
 use std::slice;
 use std::str;
 
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice;
+
 // Constants
 
 // `canvas`
@@ -44,7 +51,7 @@ pub const PF_LINE_JOIN_MITER: u8 = 0;
 pub const PF_LINE_JOIN_BEVEL: u8 = 1;
 pub const PF_LINE_JOIN_ROUND: u8 = 2;
 
-// `geometry`
+// `content`
 
 pub const PF_ARC_DIRECTION_CW:  u8 = 0;
 pub const PF_ARC_DIRECTION_CCW: u8 = 1;
@@ -54,6 +61,9 @@ pub const PF_ARC_DIRECTION_CCW: u8 = 1;
 pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
 
 // Types
+
+// External: `font-kit`
+pub type FKHandleRef = *mut Handle;
 
 // `canvas`
 pub type PFCanvasRef = *mut CanvasRenderingContext2D;
@@ -66,6 +76,22 @@ pub type PFArcDirection = u8;
 #[repr(C)]
 pub struct PFTextMetrics {
     pub width: f32,
+}
+
+// `content`
+#[repr(C)]
+pub struct PFColorF {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
+#[repr(C)]
+pub struct PFColorU {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
 }
 
 // `geometry`
@@ -89,20 +115,6 @@ pub struct PFRectI {
     pub origin: PFVector2I,
     pub lower_right: PFVector2I,
 }
-#[repr(C)]
-pub struct PFColorF {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub a: f32,
-}
-#[repr(C)]
-pub struct PFColorU {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
 
 // `gl`
 pub type PFGLDeviceRef = *mut GLDevice;
@@ -112,9 +124,17 @@ pub type PFGLFunctionLoader = extern "C" fn(name: *const c_char, userdata: *mut 
 // `gpu`
 pub type PFGLDestFramebufferRef = *mut DestFramebuffer<GLDevice>;
 pub type PFGLRendererRef = *mut Renderer<GLDevice>;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+pub type PFMetalDestFramebufferRef = *mut DestFramebuffer<MetalDevice>;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+pub type PFMetalRendererRef = *mut Renderer<MetalDevice>;
 // FIXME(pcwalton): Double-boxing is unfortunate. Remove this when `std::raw::TraitObject` is
 // stable?
 pub type PFResourceLoaderRef = *mut Box<dyn ResourceLoader>;
+
+// `metal`
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+pub type PFMetalDeviceRef = *mut MetalDevice;
 
 // `renderer`
 pub type PFSceneRef = *mut Scene;
@@ -150,6 +170,16 @@ pub unsafe extern "C" fn PFCanvasDestroy(canvas: PFCanvasRef) {
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFontContextCreateWithSystemSource() -> PFCanvasFontContextRef {
     Box::into_raw(Box::new(CanvasFontContext::from_system_source()))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasFontContextCreateWithFonts(fonts: *const FKHandleRef,
+                                                            font_count: usize)
+                                                            -> PFCanvasFontContextRef {
+    let fonts = slice::from_raw_parts(fonts, font_count);
+    Box::into_raw(Box::new(CanvasFontContext::from_fonts(fonts.into_iter().map(|font| {
+        (**font).clone()
+    }))))
 }
 
 #[no_mangle]
@@ -246,6 +276,18 @@ pub unsafe extern "C" fn PFCanvasSetLineDash(canvas: PFCanvasRef,
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offset: f32) {
     (*canvas).set_line_dash_offset(new_offset)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetFontByPostScriptName(canvas: PFCanvasRef,
+                                                         postscript_name: *const c_char,
+                                                         postscript_name_len: usize) {
+    (*canvas).set_font_by_postscript_name(to_rust_string(&postscript_name, postscript_name_len))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetFontSize(canvas: PFCanvasRef, new_font_size: f32) {
+    (*canvas).set_font_size(new_font_size)
 }
 
 #[no_mangle]
@@ -428,11 +470,74 @@ pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFG
     &mut (*renderer).device
 }
 
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDestFramebufferCreateFullWindow(window_size: *const PFVector2I)
+                                                                -> PFMetalDestFramebufferRef {
+    Box::into_raw(Box::new(DestFramebuffer::full_window((*window_size).to_rust())))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
+                                                       PFMetalDestFramebufferRef) {
+    drop(Box::from_raw(dest_framebuffer))
+}
+
+/// Takes ownership of `device` and `dest_framebuffer`, but not `resources`.
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
+                                               resources: PFResourceLoaderRef,
+                                               dest_framebuffer: PFMetalDestFramebufferRef,
+                                               options: *const PFRendererOptions)
+                                               -> PFMetalRendererRef {
+    Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
+                                         &**resources,
+                                         *Box::from_raw(dest_framebuffer),
+                                         (*options).to_rust())))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
+    drop(Box::from_raw(renderer))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef) -> PFMetalDeviceRef {
+    &mut (*renderer).device
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyRef,
                                                       renderer: PFGLRendererRef,
                                                       build_options: *const PFBuildOptions) {
     (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFSceneProxyRef,
+                                                         renderer: PFMetalRendererRef,
+                                                         build_options: *const PFBuildOptions) {
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
+}
+
+// `metal`
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
+                                             -> PFMetalDeviceRef {
+    Box::into_raw(Box::new(MetalDevice::new(CoreAnimationLayerRef::from_ptr(layer))))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceDestroy(device: PFMetalDeviceRef) {
+    drop(Box::from_raw(device))
 }
 
 // `renderer`
@@ -472,7 +577,7 @@ impl TextMetricsExt for TextMetrics {
     }
 }
 
-// Helpers for `geometry`
+// Helpers for `content`
 
 impl PFColorF {
     #[inline]
@@ -487,6 +592,8 @@ impl PFColorU {
         ColorU { r: self.r, g: self.g, b: self.b, a: self.a }
     }
 }
+
+// Helpers for `geometry`
 
 impl PFRectF {
     #[inline]

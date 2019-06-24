@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/stroke.rs
+// pathfinder/content/src/stroke.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,12 +10,12 @@
 
 //! Utilities for converting path strokes to fills.
 
-use crate::basic::line_segment::LineSegment2F;
-use crate::basic::vector::Vector2F;
-use crate::basic::rect::RectF;
-use crate::basic::transform2d::Transform2DF;
 use crate::outline::{ArcDirection, Contour, Outline, PushSegmentFlags};
 use crate::segment::Segment;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::vector::Vector2F;
 use std::f32;
 
 const TOLERANCE: f32 = 0.01;

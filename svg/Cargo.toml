@@ -8,6 +8,9 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 bitflags = "1.0"
 usvg = "0.7"
 
+[dependencies.pathfinder_content]
+path = "../content"
+
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 

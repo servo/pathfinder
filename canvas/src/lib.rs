@@ -17,15 +17,15 @@ use font_kit::loaders::default::Font;
 use font_kit::properties::Properties;
 use font_kit::source::{Source, SystemSource};
 use font_kit::sources::mem::MemSource;
-use pathfinder_geometry::basic::line_segment::LineSegment2F;
-use pathfinder_geometry::basic::vector::Vector2F;
-use pathfinder_geometry::basic::rect::RectF;
-use pathfinder_geometry::basic::transform2d::Transform2DF;
-use pathfinder_geometry::color::ColorU;
-use pathfinder_geometry::dash::OutlineDash;
-use pathfinder_geometry::outline::{ArcDirection, Contour, Outline};
-use pathfinder_geometry::stroke::{LineCap, LineJoin as StrokeLineJoin};
-use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
+use pathfinder_content::color::ColorU;
+use pathfinder_content::dash::OutlineDash;
+use pathfinder_content::outline::{ArcDirection, Contour, Outline};
+use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
+use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2DF;
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
@@ -536,7 +536,7 @@ pub enum TextAlign {
     Center,
 }
 
-// We duplicate `pathfinder_geometry::stroke::LineJoin` here because the HTML canvas API treats the
+// We duplicate `pathfinder_content::stroke::LineJoin` here because the HTML canvas API treats the
 // miter limit as part of the canvas state, while the native Pathfinder API treats the miter limit
 // as part of the line join. Pathfinder's choice is more logical, because the miter limit is
 // specific to miter joins. In this API, however, for compatibility we go with the HTML canvas

@@ -18,8 +18,10 @@ struct main0_in
 vertex main0_out main0(main0_in in [[stage_in]])
 {
     main0_out out = {};
-    out.vTexCoord = float2(in.aPosition);
-    out.gl_Position = float4((float2(in.aPosition) * 2.0) - float2(1.0), 0.0, 1.0);
+    float2 position = float2(in.aPosition);
+    out.vTexCoord = position;
+    position.y = 1.0 - position.y;
+    out.gl_Position = float4((float2(position) * 2.0) - float2(1.0), 0.0, 1.0);
     return out;
 }
 

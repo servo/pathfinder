@@ -14,10 +14,10 @@ use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_geometry::basic::vector::{Vector2I, Vector4F};
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::transform3d::Transform3DF;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::vector::{Vector2I, Vector4F};
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_content::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
@@ -654,7 +654,7 @@ where
             }
         }
 
-        self.device.draw_arrays(4, &RenderState {
+        self.device.draw_elements(6, &RenderState {
             target: &self.dest_render_target(),
             program: &self.postprocess_program.program,
             vertex_array: &self.postprocess_vertex_array.vertex_array,
@@ -1451,7 +1451,7 @@ where
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
+            attr_type: VertexAttrType::I16,
             stride: 4,
             offset: 0,
             divisor: 0,

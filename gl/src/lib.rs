@@ -14,8 +14,8 @@
 extern crate log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};

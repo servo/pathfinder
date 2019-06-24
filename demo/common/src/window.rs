@@ -10,9 +10,9 @@
 
 //! A minimal cross-platform windowing layer.
 
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;

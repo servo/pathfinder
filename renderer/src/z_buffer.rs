@@ -15,8 +15,8 @@ use crate::paint;
 use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectF;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 

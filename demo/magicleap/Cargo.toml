@@ -20,6 +20,9 @@ crate-type = ["cdylib"]
 [features]
 mocked = ["glutin"]
 
+[dependencies.pathfinder_content]
+path = "../../content"
+
 [dependencies.pathfinder_demo]
 path = "../common"
 

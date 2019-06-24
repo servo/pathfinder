@@ -17,9 +17,9 @@
 extern crate serde_derive;
 
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::color::ColorU;
+use pathfinder_content::color::ColorU;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
 use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, VertexAttrClass};

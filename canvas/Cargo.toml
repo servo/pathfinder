@@ -10,6 +10,9 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 font-kit = "0.2"
 
+[dependencies.pathfinder_content]
+path = "../content"
+
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 

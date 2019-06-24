@@ -10,8 +10,8 @@
 
 //! Line segment types, optimized with SIMD.
 
-use crate::basic::vector::Vector2F;
-use crate::basic::transform2d::Matrix2x2F;
+use crate::vector::Vector2F;
+use crate::transform2d::Matrix2x2F;
 use crate::util;
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Sub};

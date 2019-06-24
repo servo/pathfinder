@@ -12,11 +12,11 @@ use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
 use crate::paint::{self, PaintId};
 use crate::sorted_vector::SortedVector;
-use pathfinder_geometry::basic::line_segment::LineSegment2F;
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::{RectF, RectI};
-use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
-use pathfinder_geometry::segment::Segment;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_content::outline::{Contour, Outline, PointIndex};
+use pathfinder_content::segment::Segment;
 use std::cmp::Ordering;
 use std::mem;
 

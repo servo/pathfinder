@@ -9,11 +9,11 @@ using namespace metal;
 struct spvDescriptorSetBuffer0
 {
     constant float2* uTileSize [[id(0)]];
-    texture2d<float> uPaintTexture [[id(1)]];
-    constant float2* uViewBoxOrigin [[id(2)]];
-    sampler uPaintTextureSmplr [[id(3)]];
-    constant float2* uFramebufferSize [[id(4)]];
-    constant float2* uStencilTextureSize [[id(5)]];
+    constant float2* uViewBoxOrigin [[id(1)]];
+    constant float2* uFramebufferSize [[id(2)]];
+    constant float2* uStencilTextureSize [[id(3)]];
+    texture2d<float> uPaintTexture [[id(4)]];
+    sampler uPaintTextureSmplr [[id(5)]];
 };
 
 struct main0_out

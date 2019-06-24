@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/outline.rs
+// pathfinder/content/src/outline.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,16 +10,16 @@
 
 //! A compressed in-memory representation of paths.
 
-use crate::basic::line_segment::LineSegment2F;
-use crate::basic::vector::Vector2F;
-use crate::basic::rect::RectF;
-use crate::basic::transform2d::Transform2DF;
-use crate::basic::transform3d::Perspective;
 use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
-use crate::unit_vector::UnitVector;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform3d::Perspective;
+use pathfinder_geometry::unit_vector::UnitVector;
+use pathfinder_geometry::vector::Vector2F;
 use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
