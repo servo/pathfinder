@@ -188,12 +188,13 @@ pub type PFRenderTransformRef = *mut RenderTransform;
 
 // `canvas`
 
-/// Consumes the font context.
+/// This function internally adds a reference to the font context. Therefore, if you created the
+/// font context, you must release it yourself to avoid a leak.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreate(font_context: PFCanvasFontContextRef,
                                         size: *const PFVector2F)
                                         -> PFCanvasRef {
-    Box::into_raw(Box::new(CanvasRenderingContext2D::new(*Box::from_raw(font_context),
+    Box::into_raw(Box::new(CanvasRenderingContext2D::new((*font_context).clone(),
                                                          (*size).to_rust())))
 }
 
@@ -218,17 +219,18 @@ pub unsafe extern "C" fn PFCanvasFontContextCreateWithFonts(fonts: *const FKHand
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFCanvasFontContextDestroy(font_context: PFCanvasFontContextRef) {
-    drop(Box::from_raw(font_context))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn PFCanvasFontContextClone(font_context: PFCanvasFontContextRef)
-                                                  -> PFCanvasFontContextRef {
+pub unsafe extern "C" fn PFCanvasFontContextAddRef(font_context: PFCanvasFontContextRef)
+                                                   -> PFCanvasFontContextRef {
     Box::into_raw(Box::new((*font_context).clone()))
 }
 
-/// Consumes the canvas.
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasFontContextRelease(font_context: PFCanvasFontContextRef) {
+    drop(Box::from_raw(font_context))
+}
+
+/// This function takes ownership of the supplied canvas and will automatically destroy it when
+/// the scene is destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreateScene(canvas: PFCanvasRef) -> PFSceneRef {
     Box::into_raw(Box::new(Box::from_raw(canvas).into_scene()))
@@ -345,13 +347,15 @@ pub unsafe extern "C" fn PFCanvasSetStrokeStyle(canvas: PFCanvasRef,
     (*canvas).set_stroke_style(*stroke_style)
 }
 
-/// Consumes the path.
+/// This function automatically destroys the path. If you wish to use the path again, clone it
+/// first.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFillPath(canvas: PFCanvasRef, path: PFPathRef) {
     (*canvas).fill_path(*Box::from_raw(path))
 }
 
-/// Consumes the path.
+/// This function automatically destroys the path. If you wish to use the path again, clone it
+/// first.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasStrokePath(canvas: PFCanvasRef, path: PFPathRef) {
     (*canvas).stroke_path(*Box::from_raw(path))
@@ -492,7 +496,9 @@ pub unsafe extern "C" fn PFGLDestFramebufferDestroy(dest_framebuffer: PFGLDestFr
     drop(Box::from_raw(dest_framebuffer))
 }
 
-/// Takes ownership of `device` and `dest_framebuffer`, but not `resources`.
+/// This function takes ownership of and automatically takes responsibility for destroying `device`
+/// and `dest_framebuffer`. However, it does not take ownership of `resources`; therefore, if you
+/// created the resource loader, you must destroy it yourself to avoid a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererCreate(device: PFGLDeviceRef,
                                             resources: PFResourceLoaderRef,
@@ -529,7 +535,9 @@ pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
     drop(Box::from_raw(dest_framebuffer))
 }
 
-/// Takes ownership of `device` and `dest_framebuffer`, but not `resources`.
+/// This function takes ownership of and automatically takes responsibility for destroying `device`
+/// and `dest_framebuffer`. However, it does not take ownership of `resources`; therefore, if you
+/// created the resource loader, you must destroy it yourself to avoid a memory leak.
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
@@ -549,27 +557,33 @@ pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
     drop(Box::from_raw(renderer))
 }
 
+/// Returns a reference to the Metal device in the renderer.
+///
+/// This reference remains valid as long as the device is alive.
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
-pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef) -> PFMetalDeviceRef {
+pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef)
+                                                  -> PFMetalDeviceRef {
     &mut (*renderer).device
 }
 
-// Consumes `build_options`.
+/// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
+/// created the renderer and/or options, you must destroy them yourself to avoid a leak.
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyRef,
                                                       renderer: PFGLRendererRef,
                                                       build_options: PFBuildOptionsRef) {
-    (*scene_proxy).build_and_render(&mut *renderer, *Box::from_raw(build_options))
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).clone())
 }
 
-// Consumes `build_options`.
+/// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
+/// created the renderer and/or options, you must destroy them yourself to avoid a leak.
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFSceneProxyRef,
                                                          renderer: PFMetalRendererRef,
                                                          build_options: PFBuildOptionsRef) {
-    (*scene_proxy).build_and_render(&mut *renderer, *Box::from_raw(build_options))
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).clone())
 }
 
 // `metal`
