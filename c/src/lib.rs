@@ -19,6 +19,8 @@ use pathfinder_content::color::{ColorF, ColorU};
 use pathfinder_content::outline::ArcDirection;
 use pathfinder_content::stroke::LineCap;
 use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2DF};
+use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
@@ -26,7 +28,7 @@ use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
-use pathfinder_renderer::options::BuildOptions;
+use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
@@ -59,6 +61,11 @@ pub const PF_TEXT_ALIGN_RIGHT:  u8 = 2;
 
 pub const PF_ARC_DIRECTION_CW:  u8 = 0;
 pub const PF_ARC_DIRECTION_CCW: u8 = 1;
+
+// `gl`
+
+pub const PF_GL_VERSION_GL3:    u8 = 0;
+pub const PF_GL_VERSION_GLES3:  u8 = 1;
 
 // `renderer`
 
@@ -120,10 +127,35 @@ pub struct PFRectI {
     pub origin: PFVector2I,
     pub lower_right: PFVector2I,
 }
+/// Row-major order.
+#[repr(C)]
+pub struct PFMatrix2x2F {
+    pub m00: f32, pub m01: f32,
+    pub m10: f32, pub m11: f32,
+}
+/// Row-major order.
+#[repr(C)]
+pub struct PFTransform2DF {
+    pub matrix: PFMatrix2x2F,
+    pub vector: PFVector2F,
+}
+/// Row-major order.
+#[repr(C)]
+pub struct PFTransform3DF {
+    pub m00: f32, pub m01: f32, pub m02: f32, pub m03: f32,
+    pub m10: f32, pub m11: f32, pub m12: f32, pub m13: f32,
+    pub m20: f32, pub m21: f32, pub m22: f32, pub m23: f32,
+    pub m30: f32, pub m31: f32, pub m32: f32, pub m33: f32,
+}
+#[repr(C)]
+pub struct PFPerspective {
+    pub transform: PFTransform3DF,
+    pub window_size: PFVector2I,
+}
 
 // `gl`
 pub type PFGLDeviceRef = *mut GLDevice;
-pub type PFGLVersion = GLVersion;
+pub type PFGLVersion = u8;
 pub type PFGLFunctionLoader = extern "C" fn(name: *const c_char, userdata: *mut c_void)
                                             -> *const c_void;
 // `gpu`
@@ -135,7 +167,8 @@ pub type PFMetalDestFramebufferRef = *mut DestFramebuffer<MetalDevice>;
 pub type PFMetalRendererRef = *mut Renderer<MetalDevice>;
 // FIXME(pcwalton): Double-boxing is unfortunate. Remove this when `std::raw::TraitObject` is
 // stable?
-pub type PFResourceLoaderRef = *mut Box<dyn ResourceLoader>;
+pub type PFResourceLoaderRef = *mut ResourceLoaderWrapper;
+pub struct ResourceLoaderWrapper(Box<dyn ResourceLoader>);
 
 // `metal`
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
@@ -150,20 +183,18 @@ pub struct PFRendererOptions {
     pub flags: PFRendererOptionsFlags,
 }
 pub type PFRendererOptionsFlags = u8;
-// TODO(pcwalton)
-#[repr(C)]
-pub struct PFBuildOptions {
-    pub placeholder: u32,
-}
+pub type PFBuildOptionsRef = *mut BuildOptions;
+pub type PFRenderTransformRef = *mut RenderTransform;
 
 // `canvas`
 
-/// Consumes the font context.
+/// This function internally adds a reference to the font context. Therefore, if you created the
+/// font context, you must release it yourself to avoid a leak.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreate(font_context: PFCanvasFontContextRef,
                                         size: *const PFVector2F)
                                         -> PFCanvasRef {
-    Box::into_raw(Box::new(CanvasRenderingContext2D::new(*Box::from_raw(font_context),
+    Box::into_raw(Box::new(CanvasRenderingContext2D::new((*font_context).clone(),
                                                          (*size).to_rust())))
 }
 
@@ -188,17 +219,18 @@ pub unsafe extern "C" fn PFCanvasFontContextCreateWithFonts(fonts: *const FKHand
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFCanvasFontContextDestroy(font_context: PFCanvasFontContextRef) {
-    drop(Box::from_raw(font_context))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn PFCanvasFontContextClone(font_context: PFCanvasFontContextRef)
-                                                  -> PFCanvasFontContextRef {
+pub unsafe extern "C" fn PFCanvasFontContextAddRef(font_context: PFCanvasFontContextRef)
+                                                   -> PFCanvasFontContextRef {
     Box::into_raw(Box::new((*font_context).clone()))
 }
 
-/// Consumes the canvas.
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasFontContextRelease(font_context: PFCanvasFontContextRef) {
+    drop(Box::from_raw(font_context))
+}
+
+/// This function takes ownership of the supplied canvas and will automatically destroy it when
+/// the scene is destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreateScene(canvas: PFCanvasRef) -> PFSceneRef {
     Box::into_raw(Box::new(Box::from_raw(canvas).into_scene()))
@@ -315,13 +347,15 @@ pub unsafe extern "C" fn PFCanvasSetStrokeStyle(canvas: PFCanvasRef,
     (*canvas).set_stroke_style(*stroke_style)
 }
 
-/// Consumes the path.
+/// This function automatically destroys the path. If you wish to use the path again, clone it
+/// first.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFillPath(canvas: PFCanvasRef, path: PFPathRef) {
     (*canvas).fill_path(*Box::from_raw(path))
 }
 
-/// Consumes the path.
+/// This function automatically destroys the path. If you wish to use the path again, clone it
+/// first.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasStrokePath(canvas: PFCanvasRef, path: PFPathRef) {
     (*canvas).stroke_path(*Box::from_raw(path))
@@ -421,7 +455,7 @@ pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
 #[no_mangle]
 pub unsafe extern "C" fn PFFilesystemResourceLoaderLocate() -> PFResourceLoaderRef {
     let loader = Box::new(FilesystemResourceLoader::locate());
-    Box::into_raw(Box::new(loader as Box<dyn ResourceLoader>))
+    Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
 }
 
 #[no_mangle]
@@ -435,6 +469,7 @@ pub unsafe extern "C" fn PFGLLoadWith(loader: PFGLFunctionLoader, userdata: *mut
 #[no_mangle]
 pub unsafe extern "C" fn PFGLDeviceCreate(version: PFGLVersion, default_framebuffer: u32)
                                           -> PFGLDeviceRef {
+    let version = match version { PF_GL_VERSION_GLES3 => GLVersion::GLES3, _ => GLVersion::GL3 };
     Box::into_raw(Box::new(GLDevice::new(version, default_framebuffer)))
 }
 
@@ -461,7 +496,9 @@ pub unsafe extern "C" fn PFGLDestFramebufferDestroy(dest_framebuffer: PFGLDestFr
     drop(Box::from_raw(dest_framebuffer))
 }
 
-/// Takes ownership of `device` and `dest_framebuffer`, but not `resources`.
+/// This function takes ownership of and automatically takes responsibility for destroying `device`
+/// and `dest_framebuffer`. However, it does not take ownership of `resources`; therefore, if you
+/// created the resource loader, you must destroy it yourself to avoid a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererCreate(device: PFGLDeviceRef,
                                             resources: PFResourceLoaderRef,
@@ -469,7 +506,7 @@ pub unsafe extern "C" fn PFGLRendererCreate(device: PFGLDeviceRef,
                                             options: *const PFRendererOptions)
                                             -> PFGLRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
-                                         &**resources,
+                                         &*((*resources).0),
                                          *Box::from_raw(dest_framebuffer),
                                          (*options).to_rust())))
 }
@@ -498,7 +535,9 @@ pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
     drop(Box::from_raw(dest_framebuffer))
 }
 
-/// Takes ownership of `device` and `dest_framebuffer`, but not `resources`.
+/// This function takes ownership of and automatically takes responsibility for destroying `device`
+/// and `dest_framebuffer`. However, it does not take ownership of `resources`; therefore, if you
+/// created the resource loader, you must destroy it yourself to avoid a memory leak.
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
@@ -507,7 +546,7 @@ pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
                                                options: *const PFRendererOptions)
                                                -> PFMetalRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
-                                         &**resources,
+                                         &*((*resources).0),
                                          *Box::from_raw(dest_framebuffer),
                                          (*options).to_rust())))
 }
@@ -518,25 +557,33 @@ pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
     drop(Box::from_raw(renderer))
 }
 
+/// Returns a reference to the Metal device in the renderer.
+///
+/// This reference remains valid as long as the device is alive.
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
-pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef) -> PFMetalDeviceRef {
+pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef)
+                                                  -> PFMetalDeviceRef {
     &mut (*renderer).device
 }
 
+/// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
+/// created the renderer and/or options, you must destroy them yourself to avoid a leak.
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyRef,
                                                       renderer: PFGLRendererRef,
-                                                      build_options: *const PFBuildOptions) {
-    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
+                                                      build_options: PFBuildOptionsRef) {
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).clone())
 }
 
+/// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
+/// created the renderer and/or options, you must destroy them yourself to avoid a leak.
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFSceneProxyRef,
                                                          renderer: PFMetalRendererRef,
-                                                         build_options: *const PFBuildOptions) {
-    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
+                                                         build_options: PFBuildOptionsRef) {
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).clone())
 }
 
 // `metal`
@@ -554,7 +601,59 @@ pub unsafe extern "C" fn PFMetalDeviceDestroy(device: PFMetalDeviceRef) {
     drop(Box::from_raw(device))
 }
 
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDevicePresentDrawable(device: PFMetalDeviceRef) {
+    (*device).present_drawable()
+}
+
 // `renderer`
+
+#[no_mangle]
+pub unsafe extern "C" fn PFRenderTransformCreate2D(transform: *const PFTransform2DF)
+                                                   -> PFRenderTransformRef {
+    Box::into_raw(Box::new(RenderTransform::Transform2D((*transform).to_rust())))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFRenderTransformCreatePerspective(perspective: *const PFPerspective)
+                                                            -> PFRenderTransformRef {
+    Box::into_raw(Box::new(RenderTransform::Perspective((*perspective).to_rust())))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFRenderTransformDestroy(transform: PFRenderTransformRef) {
+    drop(Box::from_raw(transform))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFBuildOptionsCreate() -> PFBuildOptionsRef {
+    Box::into_raw(Box::new(BuildOptions::default()))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFBuildOptionsDestroy(options: PFBuildOptionsRef) {
+    drop(Box::from_raw(options))
+}
+
+/// Consumes the transform.
+#[no_mangle]
+pub unsafe extern "C" fn PFBuildOptionsSetTransform(options: PFBuildOptionsRef,
+                                                    transform: PFRenderTransformRef) {
+    (*options).transform = *Box::from_raw(transform)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFBuildOptionsSetDilation(options: PFBuildOptionsRef,
+                                                   dilation: *const PFVector2F) {
+    (*options).dilation = (*dilation).to_rust()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFBuildOptionsSetSubpixelAAEnabled(options: PFBuildOptionsRef,
+                                                            subpixel_aa_enabled: bool) {
+    (*options).subpixel_aa_enabled = subpixel_aa_enabled
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneDestroy(scene: PFSceneRef) {
@@ -637,6 +736,40 @@ impl PFVector2I {
     }
 }
 
+impl PFMatrix2x2F {
+    #[inline]
+    pub fn to_rust(&self) -> Matrix2x2F {
+        Matrix2x2F::row_major(self.m00, self.m01, self.m10, self.m11)
+    }
+}
+
+impl PFTransform2DF {
+    #[inline]
+    pub fn to_rust(&self) -> Transform2DF {
+        Transform2DF { matrix: self.matrix.to_rust(), vector: self.vector.to_rust() }
+    }
+}
+
+impl PFTransform3DF {
+    #[inline]
+    pub fn to_rust(&self) -> Transform3DF {
+        Transform3DF::row_major(self.m00, self.m01, self.m02, self.m03,
+                                self.m10, self.m11, self.m12, self.m13,
+                                self.m20, self.m21, self.m22, self.m23,
+                                self.m30, self.m31, self.m32, self.m33)
+    }
+}
+
+impl PFPerspective {
+    #[inline]
+    pub fn to_rust(&self) -> Perspective {
+        Perspective {
+            transform: self.transform.to_rust(),
+            window_size: self.window_size.to_rust(),
+        }
+    }
+}
+
 // Helpers for `renderer`
 
 impl PFRendererOptions {
@@ -649,11 +782,5 @@ impl PFRendererOptions {
                 None
             },
         }
-    }
-}
-
-impl PFBuildOptions {
-    pub fn to_rust(&self) -> BuildOptions {
-        BuildOptions::default()
     }
 }
