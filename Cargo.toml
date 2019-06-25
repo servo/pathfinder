@@ -18,7 +18,7 @@ members = [
     "gl",
     "gpu",
     "lottie",
-    "pdf",
+    "export",
     "metal",
     "renderer",
     "simd",
@@ -29,5 +29,5 @@ members = [
     "utils/area-lut",
     "utils/gamma-lut",
     "utils/svg-to-skia",
-    "utils/svg2pdf",
+    "utils/convert",
 ]

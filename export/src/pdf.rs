@@ -1,8 +1,8 @@
 //! This is a heavily modified version of the pdfpdf crate by Benjamin Kimock <kimockb@gmail.com> (aka. saethlin)
 
-use pathfinder_geometry::{vector::Vector2F, rect::RectF};
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_content::color::ColorU;
-use std::io::{self, Write, Cursor, Seek};
+use std::io::{self, Write};
 use deflate::Compression;
 
 struct Counter<T> {
@@ -18,9 +18,6 @@ impl<T> Counter<T> {
     }
     pub fn pos(&self) -> u64 {
         self.count
-    }
-    pub fn into_inner(self) -> T {
-        self.inner
     }
 }
 impl<W: Write> Write for Counter<W> {
@@ -101,43 +98,6 @@ impl Pdf {
         self.objects.len()
     }
 
-    /// Sets the compression level for this document
-    /// Calls to this method do not affect data produced by operations before the last .add_page
-    #[inline]
-    pub fn set_compression(&mut self, compression: Option<Compression>) {
-        self.compression = compression;
-    }
-
-    /// Set the PDF clipping box for the current page
-    #[inline]
-    pub fn set_clipping_box(&mut self, rect: RectF) {
-        let origin = rect.origin();
-        let size = rect.size();
-        writeln!(self.page_buffer, "{} {} {} {} re W n",
-            origin.x(),
-            origin.y(),
-            size.x(),
-            size.y()
-        ).unwrap();
-    }
-
-    /// Set the current line width
-    #[inline]
-    pub fn set_line_width(&mut self, width: f32) {
-        writeln!(self.page_buffer, "{} w", width).unwrap();
-    }
-
-    /// Set the color for all subsequent drawing operations
-    #[inline]
-    pub fn set_stroke_color(&mut self, color: ColorU) {
-        let norm = |color| f32::from(color) / 255.0;
-        writeln!(self.page_buffer, "{} {} {} RG",
-            norm(color.r),
-            norm(color.g),
-            norm(color.b)
-        ).unwrap();
-    }
-    
     /// Set the color for all subsequent drawing operations
     #[inline]
     pub fn set_fill_color(&mut self, color: ColorU) {
@@ -178,10 +138,6 @@ impl Pdf {
         writeln!(self.page_buffer, "f").unwrap();
     }
     
-    pub fn stroke(&mut self) {
-        writeln!(self.page_buffer, "s").unwrap();
-    }
-    
     pub fn close(&mut self) {
         writeln!(self.page_buffer, "h").unwrap();
     }
@@ -218,7 +174,7 @@ impl Pdf {
             /Resources <<\n"
             .to_vec();
 
-        for (idx, obj) in self.objects.iter().enumerate().filter(|&(_, o)| o.is_xobject) {
+        for (idx, _obj) in self.objects.iter().enumerate().filter(|&(_, o)| o.is_xobject) {
             write!(page_object, "/XObject {} 0 R ", idx+1).unwrap();
         }
 
@@ -258,7 +214,7 @@ impl Pdf {
             self.objects.iter().filter(|o| o.is_page).count()
         )?;
         out.write_all(b"/Kids [")?;
-        for (idx, obj) in self.objects.iter().enumerate().filter(|&(_, obj)| obj.is_page) {
+        for (idx, _obj) in self.objects.iter().enumerate().filter(|&(_, obj)| obj.is_page) {
             write!(out, "{} 0 R ", idx + 1)?;
         }
         out.write_all(b"] >>\nendobj\n")?;
