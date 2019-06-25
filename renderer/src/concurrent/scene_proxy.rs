@@ -89,6 +89,13 @@ impl SceneProxy {
         }
         renderer.end_scene();
     }
+
+    #[inline]
+    pub fn copy_scene(&self) -> Scene {
+        let (sender, receiver) = mpsc::channel();
+        self.sender.send(MainToWorkerMsg::CopyScene(sender)).unwrap();
+        receiver.recv().unwrap()
+    }
 }
 
 fn scene_thread<E>(mut scene: Scene,
@@ -98,6 +105,7 @@ fn scene_thread<E>(mut scene: Scene,
     while let Ok(msg) = main_to_worker_receiver.recv() {
         match msg {
             MainToWorkerMsg::ReplaceScene(new_scene) => scene = new_scene,
+            MainToWorkerMsg::CopyScene(sender) => sender.send(scene.clone()).unwrap(),
             MainToWorkerMsg::SetViewBox(new_view_box) => scene.set_view_box(new_view_box),
             MainToWorkerMsg::Build(options, listener) => scene.build(options, listener, &executor)
         }
@@ -106,8 +114,9 @@ fn scene_thread<E>(mut scene: Scene,
 
 enum MainToWorkerMsg {
     ReplaceScene(Scene),
+    CopyScene(Sender<Scene>),
     SetViewBox(RectF),
-    Build(BuildOptions, Box<dyn RenderCommandListener>)
+    Build(BuildOptions, Box<dyn RenderCommandListener>),
 }
 
 pub struct RenderCommandStream {

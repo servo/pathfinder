@@ -22,6 +22,7 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
+use pathfinder_export::{Export, FileFormat};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2DF;
@@ -38,7 +39,7 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -550,7 +551,8 @@ impl<W> DemoApp<W> where W: Window {
             }
             Some(ScreenshotInfo { kind: ScreenshotType::SVG, path }) => {
                 // FIXME(pcwalton): This won't work on Android.
-                File::create(path).unwrap().write_all(&mut self.scene_proxy.as_svg()).unwrap();
+                let mut writer = BufWriter::new(File::create(path).unwrap());
+                self.scene_proxy.copy_scene().export(&mut writer, FileFormat::SVG).unwrap();
             }
         }
     }

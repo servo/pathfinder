@@ -21,6 +21,7 @@ pub enum FileFormat {
 pub trait Export {
     fn export<W: Write>(&self, writer: &mut W, format: FileFormat) -> io::Result<()>;
 }
+
 impl Export for Scene {
     fn export<W: Write>(&self, writer: &mut W, format: FileFormat) -> io::Result<()> {
         match format {
