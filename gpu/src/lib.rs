@@ -16,7 +16,7 @@ use pathfinder_content::color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform3DF;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_simd::default::F32x4;
+use pathfinder_simd::default::{F32x2, F32x4};
 use std::time::Duration;
 
 pub mod resources;
@@ -153,7 +153,7 @@ pub enum ShaderKind {
 pub enum UniformData {
     Int(i32),
     Mat4([F32x4; 4]),
-    Vec2(F32x4),
+    Vec2(F32x2),
     Vec4(F32x4),
     TextureUnit(u32),
 }

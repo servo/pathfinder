@@ -345,7 +345,7 @@ impl Perspective {
     }
 
     #[inline]
-    pub fn transform_point_2d(&self, point: &Vector2F) -> Vector2F {
+    pub fn transform_point_2d(&self, point: Vector2F) -> Vector2F {
         let point = self
             .transform
             .transform_point(point.to_3d())
@@ -358,10 +358,10 @@ impl Perspective {
     // TODO(pcwalton): SIMD?
     #[inline]
     pub fn transform_rect(&self, rect: RectF) -> RectF {
-        let upper_left = self.transform_point_2d(&rect.origin());
-        let upper_right = self.transform_point_2d(&rect.upper_right());
-        let lower_left = self.transform_point_2d(&rect.lower_left());
-        let lower_right = self.transform_point_2d(&rect.lower_right());
+        let upper_left = self.transform_point_2d(rect.origin());
+        let upper_right = self.transform_point_2d(rect.upper_right());
+        let lower_left = self.transform_point_2d(rect.lower_left());
+        let lower_right = self.transform_point_2d(rect.lower_right());
         let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF::from_points(min_point, max_point)

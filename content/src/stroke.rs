@@ -104,7 +104,7 @@ impl<'a> OutlineStrokeToFill<'a> {
             stroker.output.add_join(self.style.line_width * 0.5,
                                     self.style.line_join,
                                     stroker.input.position_of(0),
-                                    &final_segment);
+                                    final_segment);
         }
 
         stroker.output.closed = true;
@@ -235,7 +235,7 @@ impl Offset for Segment {
                 self.ctrl.from()
             };
 
-            contour.add_join(distance, join, join_point, &LineSegment2F::new(p4, p3));
+            contour.add_join(distance, join, join_point, LineSegment2F::new(p4, p3));
         }
 
         // Push segment.
@@ -245,7 +245,7 @@ impl Offset for Segment {
 
     fn offset_once(&self, distance: f32) -> Segment {
         if self.is_line() {
-            return Segment::line(&self.baseline.offset(distance));
+            return Segment::line(self.baseline.offset(distance));
         }
 
         if self.is_quadratic() {
@@ -253,12 +253,12 @@ impl Offset for Segment {
             let mut segment_1 = LineSegment2F::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
-            let ctrl = match segment_0.intersection_t(&segment_1) {
+            let ctrl = match segment_0.intersection_t(segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
             let baseline = LineSegment2F::new(segment_0.from(), segment_1.to());
-            return Segment::quadratic(&baseline, ctrl);
+            return Segment::quadratic(baseline, ctrl);
         }
 
         debug_assert!(self.is_cubic());
@@ -268,13 +268,13 @@ impl Offset for Segment {
             let mut segment_1 = LineSegment2F::new(self.ctrl.to(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
-            let ctrl = match segment_0.intersection_t(&segment_1) {
+            let ctrl = match segment_0.intersection_t(segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
             let baseline = LineSegment2F::new(segment_0.from(), segment_1.to());
             let ctrl = LineSegment2F::new(segment_0.from(), ctrl);
-            return Segment::cubic(&baseline, &ctrl);
+            return Segment::cubic(baseline, ctrl);
         }
 
         if self.ctrl.to() == self.baseline.to() {
@@ -282,13 +282,13 @@ impl Offset for Segment {
             let mut segment_1 = LineSegment2F::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
-            let ctrl = match segment_0.intersection_t(&segment_1) {
+            let ctrl = match segment_0.intersection_t(segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
             let baseline = LineSegment2F::new(segment_0.from(), segment_1.to());
             let ctrl = LineSegment2F::new(ctrl, segment_1.to());
-            return Segment::cubic(&baseline, &ctrl);
+            return Segment::cubic(baseline, ctrl);
         }
 
         let mut segment_0 = LineSegment2F::new(self.baseline.from(), self.ctrl.from());
@@ -298,8 +298,8 @@ impl Offset for Segment {
         segment_1 = segment_1.offset(distance);
         segment_2 = segment_2.offset(distance);
         let (ctrl_0, ctrl_1) = match (
-            segment_0.intersection_t(&segment_1),
-            segment_1.intersection_t(&segment_2),
+            segment_0.intersection_t(segment_1),
+            segment_1.intersection_t(segment_2),
         ) {
             (Some(t0), Some(t1)) => (segment_0.sample(t0), segment_1.sample(t1)),
             _ => (
@@ -309,7 +309,7 @@ impl Offset for Segment {
         };
         let baseline = LineSegment2F::new(segment_0.from(), segment_2.to());
         let ctrl = LineSegment2F::new(ctrl_0, ctrl_1);
-        Segment::cubic(&baseline, &ctrl)
+        Segment::cubic(baseline, ctrl)
     }
 
     fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool {
@@ -357,14 +357,14 @@ impl Contour {
                 distance: f32,
                 join: LineJoin,
                 join_point: Vector2F,
-                next_tangent: &LineSegment2F) {
+                next_tangent: LineSegment2F) {
         let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
         let prev_tangent = LineSegment2F::new(p0, p1);
 
         match join {
             LineJoin::Bevel => {}
             LineJoin::Miter(miter_limit) => {
-                if let Some(prev_tangent_t) = prev_tangent.intersection_t(&next_tangent) {
+                if let Some(prev_tangent_t) = prev_tangent.intersection_t(next_tangent) {
                     let miter_endpoint = prev_tangent.sample(prev_tangent_t);
                     let threshold = miter_limit * distance;
                     if (miter_endpoint - join_point).square_length() <= threshold * threshold {

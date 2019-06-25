@@ -11,7 +11,7 @@
 //! A utility module that allows unit vectors to be treated like angles.
 
 use crate::vector::Vector2F;
-use pathfinder_simd::default::F32x4;
+use pathfinder_simd::default::F32x2;
 
 #[derive(Clone, Copy, Debug)]
 pub struct UnitVector(pub Vector2F);
@@ -25,14 +25,14 @@ impl UnitVector {
     /// Angle addition formula.
     #[inline]
     pub fn rotate_by(&self, other: UnitVector) -> UnitVector {
-        let products = (self.0).0.xyyx() * (other.0).0.xyxy();
+        let products = (self.0).0.to_f32x4().xyyx() * (other.0).0.to_f32x4().xyxy();
         UnitVector(Vector2F::new(products[0] - products[1], products[2] + products[3]))
     }
 
     /// Angle subtraction formula.
     #[inline]
     pub fn rev_rotate_by(&self, other: UnitVector) -> UnitVector {
-        let products = (self.0).0.xyyx() * (other.0).0.xyxy();
+        let products = (self.0).0.to_f32x4().xyyx() * (other.0).0.to_f32x4().xyxy();
         UnitVector(Vector2F::new(products[0] + products[1], products[2] - products[3]))
     }
 
@@ -40,7 +40,7 @@ impl UnitVector {
     #[inline]
     pub fn halve_angle(&self) -> UnitVector {
         let x = self.0.x();
-        let term = F32x4::new(x, -x, 0.0, 0.0);
-        UnitVector(Vector2F((F32x4::splat(0.5) * (F32x4::splat(1.0) + term)).sqrt()))
+        let term = F32x2::new(x, -x);
+        UnitVector(Vector2F((F32x2::splat(0.5) * (F32x2::splat(1.0) + term)).sqrt()))
     }
 }

@@ -318,7 +318,7 @@ where
             }
             UsvgPathSegment::LineTo { x, y } => {
                 let to = Vector2F::new(x as f32, y as f32);
-                let mut segment = Segment::line(&LineSegment2F::new(self.last_subpath_point, to));
+                let mut segment = Segment::line(LineSegment2F::new(self.last_subpath_point, to));
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }
@@ -338,8 +338,8 @@ where
                 let ctrl1 = Vector2F::new(x2 as f32, y2 as f32);
                 let to = Vector2F::new(x as f32, y as f32);
                 let mut segment = Segment::cubic(
-                    &LineSegment2F::new(self.last_subpath_point, to),
-                    &LineSegment2F::new(ctrl0, ctrl1),
+                    LineSegment2F::new(self.last_subpath_point, to),
+                    LineSegment2F::new(ctrl0, ctrl1),
                 );
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
@@ -349,7 +349,7 @@ where
                 Some(segment)
             }
             UsvgPathSegment::ClosePath => {
-                let mut segment = Segment::line(&LineSegment2F::new(
+                let mut segment = Segment::line(LineSegment2F::new(
                     self.last_subpath_point,
                     self.first_subpath_point,
                 ));

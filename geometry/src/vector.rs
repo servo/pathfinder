@@ -10,36 +10,36 @@
 
 //! A SIMD-optimized point type.
 
-use pathfinder_simd::default::{F32x4, I32x4};
+use pathfinder_simd::default::{F32x2, F32x4, I32x2};
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Vector2F(pub F32x4);
+pub struct Vector2F(pub F32x2);
 
 impl Vector2F {
     #[inline]
     pub fn new(x: f32, y: f32) -> Vector2F {
-        Vector2F(F32x4::new(x, y, 0.0, 0.0))
+        Vector2F(F32x2::new(x, y))
     }
 
     #[inline]
     pub fn splat(value: f32) -> Vector2F {
-        Vector2F(F32x4::splat(value))
+        Vector2F(F32x2::splat(value))
     }
 
     #[inline]
     pub fn to_3d(self) -> Vector4F {
-        Vector4F(self.0.concat_xy_xy(F32x4::new(0.0, 1.0, 0.0, 0.0)))
+        Vector4F(self.0.to_f32x4().concat_xy_zw(F32x4::new(0.0, 0.0, 0.0, 1.0)))
     }
 
     #[inline]
-    pub fn x(&self) -> f32 {
+    pub fn x(self) -> f32 {
         self.0[0]
     }
 
     #[inline]
-    pub fn y(&self) -> f32 {
+    pub fn y(self) -> f32 {
         self.0[1]
     }
 
@@ -54,97 +54,96 @@ impl Vector2F {
     }
 
     #[inline]
-    pub fn min(&self, other: Vector2F) -> Vector2F {
+    pub fn min(self, other: Vector2F) -> Vector2F {
         Vector2F(self.0.min(other.0))
     }
 
     #[inline]
-    pub fn max(&self, other: Vector2F) -> Vector2F {
+    pub fn max(self, other: Vector2F) -> Vector2F {
         Vector2F(self.0.max(other.0))
     }
 
     #[inline]
-    pub fn clamp(&self, min_val: Vector2F, max_val: Vector2F) -> Vector2F {
+    pub fn clamp(self, min_val: Vector2F, max_val: Vector2F) -> Vector2F {
         self.max(min_val).min(max_val)
     }
 
     #[inline]
-    pub fn det(&self, other: Vector2F) -> f32 {
+    pub fn det(self, other: Vector2F) -> f32 {
         self.x() * other.y() - self.y() * other.x()
     }
 
     #[inline]
-    pub fn dot(&self, other: Vector2F) -> f32 {
+    pub fn dot(self, other: Vector2F) -> f32 {
         let xy = self.0 * other.0;
         xy.x() + xy.y()
     }
 
     #[inline]
-    pub fn scale(&self, x: f32) -> Vector2F {
-        Vector2F(self.0 * F32x4::splat(x))
+    pub fn scale(self, x: f32) -> Vector2F {
+        Vector2F(self.0 * F32x2::splat(x))
     }
 
     #[inline]
-    pub fn scale_xy(&self, factors: Vector2F) -> Vector2F {
+    pub fn scale_xy(self, factors: Vector2F) -> Vector2F {
         Vector2F(self.0 * factors.0)
     }
 
     #[inline]
-    pub fn floor(&self) -> Vector2F {
+    pub fn floor(self) -> Vector2F {
         Vector2F(self.0.floor())
     }
 
     #[inline]
-    pub fn ceil(&self) -> Vector2F {
+    pub fn ceil(self) -> Vector2F {
         Vector2F(self.0.ceil())
     }
 
     /// Treats this point as a vector and calculates its squared length.
     #[inline]
-    pub fn square_length(&self) -> f32 {
+    pub fn square_length(self) -> f32 {
         let squared = self.0 * self.0;
         squared[0] + squared[1]
     }
 
     /// Treats this point as a vector and calculates its length.
     #[inline]
-    pub fn length(&self) -> f32 {
+    pub fn length(self) -> f32 {
         f32::sqrt(self.square_length())
     }
 
     /// Treats this point as a vector and normalizes it.
     #[inline]
-    pub fn normalize(&self) -> Vector2F {
+    pub fn normalize(self) -> Vector2F {
         self.scale(1.0 / self.length())
     }
 
     /// Swaps y and x.
     #[inline]
-    pub fn yx(&self) -> Vector2F {
-        Vector2F(self.0.yxwz())
+    pub fn yx(self) -> Vector2F {
+        Vector2F(self.0.yx())
     }
 
     #[inline]
-    pub fn is_zero(&self) -> bool {
-        *self == Vector2F::default()
+    pub fn is_zero(self) -> bool {
+        self == Vector2F::default()
     }
 
     #[inline]
-    pub fn lerp(&self, other: Vector2F, t: f32) -> Vector2F {
-        *self + (other - *self).scale(t)
+    pub fn lerp(self, other: Vector2F, t: f32) -> Vector2F {
+        self + (other - self).scale(t)
     }
 
     #[inline]
-    pub fn to_i32(&self) -> Vector2I {
-        Vector2I(self.0.to_i32x4())
+    pub fn to_i32(self) -> Vector2I {
+        Vector2I(self.0.to_i32x2())
     }
 }
 
 impl PartialEq for Vector2F {
     #[inline]
     fn eq(&self, other: &Vector2F) -> bool {
-        let results = self.0.packed_eq(other.0);
-        results[0] != 0 && results[1] != 0
+        self.0.packed_eq(other.0).is_all_ones()
     }
 }
 
@@ -182,26 +181,26 @@ impl Neg for Vector2F {
 
 /// 2D points with 32-bit signed integer coordinates.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Vector2I(pub I32x4);
+pub struct Vector2I(pub I32x2);
 
 impl Vector2I {
     #[inline]
     pub fn new(x: i32, y: i32) -> Vector2I {
-        Vector2I(I32x4::new(x, y, 0, 0))
+        Vector2I(I32x2::new(x, y))
     }
 
     #[inline]
     pub fn splat(value: i32) -> Vector2I {
-        Vector2I(I32x4::splat(value))
+        Vector2I(I32x2::splat(value))
     }
 
     #[inline]
-    pub fn x(&self) -> i32 {
+    pub fn x(self) -> i32 {
         self.0[0]
     }
 
     #[inline]
-    pub fn y(&self) -> i32 {
+    pub fn y(self) -> i32 {
         self.0[1]
     }
 
@@ -216,18 +215,18 @@ impl Vector2I {
     }
 
     #[inline]
-    pub fn scale(&self, factor: i32) -> Vector2I {
-        Vector2I(self.0 * I32x4::splat(factor))
+    pub fn scale(self, factor: i32) -> Vector2I {
+        Vector2I(self.0 * I32x2::splat(factor))
     }
 
     #[inline]
-    pub fn scale_xy(&self, factors: Vector2I) -> Vector2I {
+    pub fn scale_xy(self, factors: Vector2I) -> Vector2I {
         Vector2I(self.0 * factors.0)
     }
 
     #[inline]
-    pub fn to_f32(&self) -> Vector2F {
-        Vector2F(self.0.to_f32x4())
+    pub fn to_f32(self) -> Vector2F {
+        Vector2F(self.0.to_f32x2())
     }
 }
 
@@ -257,8 +256,7 @@ impl Sub<Vector2I> for Vector2I {
 impl PartialEq for Vector2I {
     #[inline]
     fn eq(&self, other: &Vector2I) -> bool {
-        let results = self.0.packed_eq(other.0);
-        results[0] != 0 && results[1] != 0
+        self.0.packed_eq(other.0).is_all_ones()
     }
 }
 
@@ -279,7 +277,7 @@ impl Vector4F {
 
     #[inline]
     pub fn to_2d(self) -> Vector2F {
-        Vector2F(self.0)
+        Vector2F(self.0.xy())
     }
 
     #[inline]
@@ -303,7 +301,7 @@ impl Vector4F {
     }
 
     #[inline]
-    pub fn scale(&self, x: f32) -> Vector4F {
+    pub fn scale(self, x: f32) -> Vector4F {
         let mut factors = F32x4::splat(x);
         factors[3] = 1.0;
         Vector4F(self.0 * factors)
@@ -335,7 +333,7 @@ impl Vector4F {
     }
 
     #[inline]
-    pub fn approx_eq(&self, other: &Vector4F, epsilon: f32) -> bool {
+    pub fn approx_eq(self, other: Vector4F, epsilon: f32) -> bool {
         self.0.approx_eq(other.0, epsilon)
     }
 

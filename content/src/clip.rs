@@ -24,15 +24,15 @@ struct Edge(LineSegment2F);
 
 impl TEdge for Edge {
     #[inline]
-    fn point_is_inside(&self, point: &Vector2F) -> bool {
-        let area = (self.0.to() - self.0.from()).det(*point - self.0.from());
+    fn point_is_inside(&self, point: Vector2F) -> bool {
+        let area = (self.0.to() - self.0.from()).det(point - self.0.from());
         debug!("point_is_inside({:?}, {:?}), area={}", self, point, area);
         area >= 0.0
     }
 
-    fn intersect_line_segment(&self, segment: &LineSegment2F) -> ArrayVec<[f32; 3]> {
+    fn intersect_line_segment(&self, segment: LineSegment2F) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
-        if let Some(t) = segment.intersection_t(&self.0) {
+        if let Some(t) = segment.intersection_t(self.0) {
             if t >= 0.0 && t <= 1.0 {
                 results.push(t);
             }
@@ -51,7 +51,7 @@ enum AxisAlignedEdge {
 
 impl TEdge for AxisAlignedEdge {
     #[inline]
-    fn point_is_inside(&self, point: &Vector2F) -> bool {
+    fn point_is_inside(&self, point: Vector2F) -> bool {
         match *self {
             AxisAlignedEdge::Left(x) => point.x() >= x,
             AxisAlignedEdge::Top(y) => point.y() >= y,
@@ -60,7 +60,7 @@ impl TEdge for AxisAlignedEdge {
         }
     }
 
-    fn intersect_line_segment(&self, segment: &LineSegment2F) -> ArrayVec<[f32; 3]> {
+    fn intersect_line_segment(&self, segment: LineSegment2F) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
         let t = match *self {
             AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x) => segment.solve_t_for_x(x),
@@ -74,26 +74,26 @@ impl TEdge for AxisAlignedEdge {
 }
 
 trait TEdge: Debug {
-    fn point_is_inside(&self, point: &Vector2F) -> bool;
-    fn intersect_line_segment(&self, segment: &LineSegment2F) -> ArrayVec<[f32; 3]>;
+    fn point_is_inside(&self, point: Vector2F) -> bool;
+    fn intersect_line_segment(&self, segment: LineSegment2F) -> ArrayVec<[f32; 3]>;
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
-        let from_inside = self.point_is_inside(&segment.baseline.from());
+        let from_inside = self.point_is_inside(segment.baseline.from());
         debug!(
             "point {:?} inside {:?}: {:?}",
             segment.baseline.from(),
             self,
             from_inside
         );
-        if from_inside != self.point_is_inside(&segment.baseline.to()) {
+        if from_inside != self.point_is_inside(segment.baseline.to()) {
             return EdgeRelativeLocation::Intersecting;
         }
         if !segment.is_line() {
-            if from_inside != self.point_is_inside(&segment.ctrl.from()) {
+            if from_inside != self.point_is_inside(segment.ctrl.from()) {
                 return EdgeRelativeLocation::Intersecting;
             }
             if !segment.is_quadratic() {
-                if from_inside != self.point_is_inside(&segment.ctrl.to()) {
+                if from_inside != self.point_is_inside(segment.ctrl.to()) {
                     return EdgeRelativeLocation::Intersecting;
                 }
             }
@@ -107,7 +107,7 @@ trait TEdge: Debug {
 
     fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]> {
         if segment.is_line() {
-            return self.intersect_line_segment(&segment.baseline);
+            return self.intersect_line_segment(segment.baseline);
         }
 
         let mut segment = *segment;
@@ -173,10 +173,10 @@ trait TEdge: Debug {
     }
 
     fn intersects_cubic_segment_hull(&self, cubic_segment: CubicSegment) -> bool {
-        let inside = self.point_is_inside(&cubic_segment.0.baseline.from());
-        inside != self.point_is_inside(&cubic_segment.0.ctrl.from())
-            || inside != self.point_is_inside(&cubic_segment.0.ctrl.to())
-            || inside != self.point_is_inside(&cubic_segment.0.baseline.to())
+        let inside = self.point_is_inside(cubic_segment.0.baseline.from());
+        inside != self.point_is_inside(cubic_segment.0.ctrl.from())
+            || inside != self.point_is_inside(cubic_segment.0.ctrl.to())
+            || inside != self.point_is_inside(cubic_segment.0.baseline.to())
     }
 }
 
@@ -222,7 +222,7 @@ where
 
         // We have a potential intersection.
         debug!("potential intersection: {:?} edge: {:?}", segment, edge);
-        let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
+        let mut starts_inside = edge.point_is_inside(segment.baseline.from());
         let intersection_ts = edge.intersect_segment(&segment);
         let mut last_t = 0.0;
         debug!("... intersections: {:?}", intersection_ts);

@@ -181,7 +181,7 @@ impl<D> UIPresenter<D> where D: Device {
             primitive,
             uniforms: &[
                 (&self.solid_program.framebuffer_size_uniform,
-                 UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
+                 UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
                 (&self.solid_program.color_uniform, get_color_uniform(color)),
             ],
             textures: &[],
@@ -414,11 +414,11 @@ impl<D> UIPresenter<D> where D: Device {
             textures: &[&texture],
             uniforms: &[
                 (&self.texture_program.framebuffer_size_uniform,
-                 UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
+                 UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
                 (&self.texture_program.color_uniform, get_color_uniform(color)),
                 (&self.texture_program.texture_uniform, UniformData::TextureUnit(0)),
                 (&self.texture_program.texture_size_uniform,
-                 UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()))
+                 UniformData::Vec2(device.texture_size(&texture).0.to_f32x2()))
             ],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {

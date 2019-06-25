@@ -23,7 +23,7 @@ use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Cle
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
 use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureFormat, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
-use pathfinder_simd::default::{F32x4, I32x4};
+use pathfinder_simd::default::{F32x2, F32x4};
 use std::cmp;
 use std::collections::VecDeque;
 use std::mem;
@@ -447,15 +447,10 @@ where
             textures: &[&self.area_lut_texture],
             uniforms: &[
                 (&self.fill_program.framebuffer_size_uniform,
-                 UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
-                                              MASK_FRAMEBUFFER_HEIGHT,
-                                              0,
-                                              0).to_f32x4())),
+                 UniformData::Vec2(F32x2::new(MASK_FRAMEBUFFER_WIDTH as f32,
+                                              MASK_FRAMEBUFFER_HEIGHT as f32))),
                 (&self.fill_program.tile_size_uniform,
-                 UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
-                                              TILE_HEIGHT as i32,
-                                              0,
-                                              0).to_f32x4())),
+                 UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
                 (&self.fill_program.area_lut_uniform, UniformData::TextureUnit(0)),
             ],
             viewport: self.mask_viewport(),
@@ -475,7 +470,7 @@ where
 
     fn tile_transform(&self) -> Transform3DF {
         let draw_viewport = self.draw_viewport().size().to_f32();
-        let scale = F32x4::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y(), 1.0, 1.0);
+        let scale = F32x2::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y());
         let transform = Transform3DF::from_scale(scale.x(), scale.y(), 1.0);
         Transform3DF::from_translation(-1.0, 1.0, 0.0).post_mul(&transform)
     }
@@ -491,16 +486,11 @@ where
             (&alpha_tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
             (&alpha_tile_program.tile_size_uniform,
-             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
-                                          TILE_HEIGHT as i32,
-                                          0,
-                                          0).to_f32x4())),
+             UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
             (&alpha_tile_program.stencil_texture_uniform, UniformData::TextureUnit(0)),
             (&alpha_tile_program.stencil_texture_size_uniform,
-             UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
-                                          MASK_FRAMEBUFFER_HEIGHT,
-                                          0,
-                                          0).to_f32x4())),
+             UniformData::Vec2(F32x2::new(MASK_FRAMEBUFFER_WIDTH as f32,
+                                          MASK_FRAMEBUFFER_HEIGHT as f32))),
         ];
 
         match self.render_mode {
@@ -513,7 +503,7 @@ where
                                UniformData::Vec2(self.device
                                                      .texture_size(paint_texture)
                                                      .0
-                                                     .to_f32x4())));
+                                                     .to_f32x2())));
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 uniforms.push((&self.alpha_monochrome_tile_program.color_uniform,
@@ -555,10 +545,7 @@ where
             (&solid_tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
             (&solid_tile_program.tile_size_uniform,
-             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
-                                          TILE_HEIGHT as i32,
-                                          0,
-                                          0).to_f32x4())),
+             UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
 
         match self.render_mode {
@@ -571,7 +558,7 @@ where
                                UniformData::Vec2(self.device
                                                      .texture_size(paint_texture)
                                                      .0
-                                                     .to_f32x4())));
+                                                     .to_f32x2())));
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 uniforms.push((&self.solid_monochrome_tile_program.color_uniform,
@@ -636,7 +623,7 @@ where
              UniformData::Vec2(main_viewport.size().to_f32().0)),
             (&self.postprocess_program.source_uniform, UniformData::TextureUnit(0)),
             (&self.postprocess_program.source_size_uniform,
-             UniformData::Vec2(source_texture_size.0.to_f32x4())),
+             UniformData::Vec2(source_texture_size.0.to_f32x2())),
             (&self.postprocess_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
             (&self.postprocess_program.fg_color_uniform, UniformData::Vec4(fg_color.0)),
             (&self.postprocess_program.bg_color_uniform, UniformData::Vec4(bg_color.0)),

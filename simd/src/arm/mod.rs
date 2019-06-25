@@ -8,17 +8,198 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::arch::aarch64::{self, float32x4_t, int32x4_t, uint32x4_t, uint64x2_t, uint8x16_t};
-use std::arch::aarch64::{uint8x8_t, uint8x8x2_t};
+use std::arch::aarch64::{self, float32x2_t, float32x4_t, int32x2_t, int32x4_t};
+use std::arch::aarch64::{uint32x2_t, uint32x4_t};
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, Index, IndexMut, Mul, Sub};
+use std::ops::{Add, BitAnd, BitOr, Index, IndexMut, Mul, Shr, Sub};
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
 
-// 32-bit floats
+// Two 32-bit floats
+
+#[derive(Clone, Copy)]
+pub struct F32x2(pub float32x2_t);
+
+impl F32x2 {
+    // Constructors
+
+    #[inline]
+    pub fn new(a: f32, b: f32) -> F32x2 {
+        unsafe { F32x2(mem::transmute([a, b])) }
+    }
+
+    #[inline]
+    pub fn splat(x: f32) -> F32x2 {
+        F32x2::new(x, x)
+    }
+
+    // Basic operations
+
+    #[inline]
+    pub fn approx_recip(self) -> F32x2 {
+        unsafe { F32x2(vrecpe_v2f32(self.0)) }
+    }
+
+    #[inline]
+    pub fn min(self, other: F32x2) -> F32x2 {
+        unsafe { F32x2(simd_fmin(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn max(self, other: F32x2) -> F32x2 {
+        unsafe { F32x2(simd_fmax(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn clamp(self, min: F32x2, max: F32x2) -> F32x2 {
+        self.max(min).min(max)
+    }
+
+    #[inline]
+    pub fn abs(self) -> F32x2 {
+        unsafe { F32x2(fabs_v2f32(self.0)) }
+    }
+
+    #[inline]
+    pub fn floor(self) -> F32x2 {
+        unsafe { F32x2(floor_v2f32(self.0)) }
+    }
+
+    #[inline]
+    pub fn ceil(self) -> F32x2 {
+        unsafe { F32x2(ceil_v2f32(self.0)) }
+    }
+
+    #[inline]
+    pub fn round(self) -> F32x2 {
+        unsafe { F32x2(round_v2f32(self.0)) }
+    }
+
+    #[inline]
+    pub fn sqrt(self) -> F32x2 {
+        unsafe { F32x2(sqrt_v2f32(self.0)) }
+    }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: F32x2) -> U32x2 {
+        unsafe { U32x2(simd_eq(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn packed_gt(self, other: F32x2) -> U32x2 {
+        unsafe { U32x2(simd_gt(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: F32x2) -> U32x2 {
+        unsafe { U32x2(simd_lt(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: F32x2) -> U32x2 {
+        unsafe { U32x2(simd_le(self.0, other.0)) }
+    }
+
+    // Conversions
+
+    #[inline]
+    pub fn to_f32x4(self) -> F32x4 {
+        self.concat_xy_xy(F32x2::default())
+    }
+
+    #[inline]
+    pub fn to_i32x2(self) -> I32x2 {
+        unsafe { I32x2(simd_cast(self.0)) }
+    }
+
+    #[inline]
+    pub fn to_i32x4(self) -> I32x4 {
+        self.to_i32x2().concat_xy_xy(I32x2::default())
+    }
+
+    // Swizzle
+
+    #[inline]
+    pub fn yx(self) -> F32x2 {
+        unsafe { F32x2(simd_shuffle2(self.0, self.0, [1, 0])) }
+    }
+
+    // Concatenations
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: F32x2) -> F32x4 {
+        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 0, 1])) }
+    }
+}
+
+impl Default for F32x2 {
+    #[inline]
+    fn default() -> F32x2 {
+        F32x2::new(0.0, 0.0)
+    }
+}
+
+impl Debug for F32x2 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<{}, {}>", self[0], self[1])
+    }
+}
+
+impl Index<usize> for F32x2 {
+    type Output = f32;
+    #[inline]
+    fn index(&self, index: usize) -> &f32 {
+        unsafe {
+            assert!(index < 2);
+            let ptr = &self.0 as *const float32x2_t as *const f32;
+            mem::transmute::<*const f32, &f32>(ptr.offset(index as isize))
+        }
+    }
+}
+
+impl IndexMut<usize> for F32x2 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut f32 {
+        unsafe {
+            assert!(index < 2);
+            let ptr = &mut self.0 as *mut float32x2_t as *mut f32;
+            mem::transmute::<*mut f32, &mut f32>(ptr.offset(index as isize))
+        }
+    }
+}
+
+
+impl Add<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn add(self, other: F32x2) -> F32x2 {
+        unsafe { F32x2(simd_add(self.0, other.0)) }
+    }
+}
+
+impl Mul<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn mul(self, other: F32x2) -> F32x2 {
+        unsafe { F32x2(simd_mul(self.0, other.0)) }
+    }
+}
+
+impl Sub<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn sub(self, other: F32x2) -> F32x2 {
+        unsafe { F32x2(simd_sub(self.0, other.0)) }
+    }
+}
+
+// Four 32-bit floats
 
 #[derive(Clone, Copy)]
 pub struct F32x4(pub float32x4_t);
@@ -103,32 +284,56 @@ impl F32x4 {
         unsafe { U32x4(simd_lt(self.0, other.0)) }
     }
 
-    // Converts these packed floats to integers.
+    // Swizzle conversions
+
     #[inline]
-    pub fn to_i32x4(self) -> I32x4 {
-        unsafe { I32x4(simd_cast(self.0)) }
+    pub fn xy(self) -> F32x2 {
+        unsafe { F32x2(simd_shuffle2(self.0, self.0, [0, 1])) }
+    }
+
+    #[inline]
+    pub fn yx(self) -> F32x2 {
+        unsafe { F32x2(simd_shuffle2(self.0, self.0, [1, 0])) }
+    }
+
+    #[inline]
+    pub fn xw(self) -> F32x2 {
+        unsafe { F32x2(simd_shuffle2(self.0, self.0, [0, 3])) }
+    }
+
+    #[inline]
+    pub fn zy(self) -> F32x2 {
+        unsafe { F32x2(simd_shuffle2(self.0, self.0, [2, 1])) }
+    }
+
+    #[inline]
+    pub fn zw(self) -> F32x2 {
+        unsafe { F32x2(simd_shuffle2(self.0, self.0, [2, 3])) }
     }
 
     // Concatenations
 
     #[inline]
     pub fn concat_xy_xy(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 4, 5])) }
+        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 0, 1])) }
     }
 
     #[inline]
     pub fn concat_xy_zw(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 6, 7])) }
+        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 2, 3])) }
     }
 
     #[inline]
     pub fn concat_zw_zw(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [2, 3, 6, 7])) }
+        unsafe { F32x4(simd_shuffle4(self.0, other.0, [2, 3, 2, 3])) }
     }
 
+    // Conversions
+
+    // Converts these packed floats to integers.
     #[inline]
-    pub fn concat_wz_yx(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [3, 2, 5, 4])) }
+    pub fn to_i32x4(self) -> I32x4 {
+        unsafe { I32x4(simd_cast(self.0)) }
     }
 }
 
@@ -200,7 +405,105 @@ impl Sub<F32x4> for F32x4 {
     }
 }
 
-// 32-bit signed integers
+// Two 32-bit signed integers
+
+#[derive(Clone, Copy, Debug)]
+pub struct I32x2(pub int32x2_t);
+
+impl I32x2 {
+    #[inline]
+    pub fn new(x: i32, y: i32) -> I32x2 {
+        unsafe { I32x2(mem::transmute([x, y])) }
+    }
+
+    #[inline]
+    pub fn splat(x: i32) -> I32x2 {
+        I32x2::new(x, x)
+    }
+
+    #[inline]
+    pub fn packed_eq(self, other: I32x2) -> U32x2 {
+        unsafe { U32x2(simd_eq(self.0, other.0)) }
+    }
+
+    // Concatenations
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: I32x2) -> I32x4 {
+        unsafe { I32x4(simd_shuffle4(self.0, other.0, [0, 1, 0, 1])) }
+    }
+
+    // Conversions
+
+    /// Converts these packed integers to floats.
+    #[inline]
+    pub fn to_f32x2(self) -> F32x2 {
+        unsafe { F32x2(simd_cast(self.0)) }
+    }
+}
+
+impl Default for I32x2 {
+    #[inline]
+    fn default() -> I32x2 {
+        I32x2::splat(0)
+    }
+}
+
+impl PartialEq for I32x2 {
+    #[inline]
+    fn eq(&self, other: &I32x2) -> bool {
+        self.packed_eq(*other).is_all_ones()
+    }
+}
+
+impl Index<usize> for I32x2 {
+    type Output = i32;
+    #[inline]
+    fn index(&self, index: usize) -> &i32 {
+        unsafe {
+            assert!(index < 2);
+            let ptr = &self.0 as *const int32x2_t as *const i32;
+            mem::transmute::<*const i32, &i32>(ptr.offset(index as isize))
+        }
+    }
+}
+
+impl IndexMut<usize> for I32x2 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut i32 {
+        unsafe {
+            assert!(index < 2);
+            let ptr = &mut self.0 as *mut int32x2_t as *mut i32;
+            mem::transmute::<*mut i32, &mut i32>(ptr.offset(index as isize))
+        }
+    }
+}
+
+impl Add<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn add(self, other: I32x2) -> I32x2 {
+        unsafe { I32x2(simd_add(self.0, other.0)) }
+    }
+}
+
+impl Sub<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn sub(self, other: I32x2) -> I32x2 {
+        unsafe { I32x2(simd_sub(self.0, other.0)) }
+    }
+}
+
+impl Mul<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn mul(self, other: I32x2) -> I32x2 {
+        unsafe { I32x2(simd_mul(self.0, other.0)) }
+    }
+}
+
+// Four 32-bit signed integers
 
 #[derive(Clone, Copy, Debug)]
 pub struct I32x4(pub int32x4_t);
@@ -214,11 +517,6 @@ impl I32x4 {
     #[inline]
     pub fn splat(x: i32) -> I32x4 {
         I32x4::new(x, x, x, x)
-    }
-
-    #[inline]
-    pub fn as_u8x16(self) -> U8x16 {
-        unsafe { U8x16(*mem::transmute::<&int32x4_t, &uint8x16_t>(&self.0)) }
     }
 
     #[inline]
@@ -243,6 +541,33 @@ impl I32x4 {
     #[inline]
     pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
         unsafe { I32x4(simd_shuffle4(self.0, other.0, [0, 1, 4, 5])) }
+    }
+
+    // Swizzle conversions
+
+    #[inline]
+    pub fn xy(self) -> I32x2 {
+        unsafe { I32x2(simd_shuffle2(self.0, self.0, [0, 1])) }
+    }
+
+    #[inline]
+    pub fn yx(self) -> I32x2 {
+        unsafe { I32x2(simd_shuffle2(self.0, self.0, [1, 0])) }
+    }
+
+    #[inline]
+    pub fn xw(self) -> I32x2 {
+        unsafe { I32x2(simd_shuffle2(self.0, self.0, [0, 3])) }
+    }
+
+    #[inline]
+    pub fn zy(self) -> I32x2 {
+        unsafe { I32x2(simd_shuffle2(self.0, self.0, [2, 1])) }
+    }
+
+    #[inline]
+    pub fn zw(self) -> I32x2 {
+        unsafe { I32x2(simd_shuffle2(self.0, self.0, [2, 3])) }
     }
 
     // Conversions
@@ -315,7 +640,60 @@ impl PartialEq for I32x4 {
     }
 }
 
-// 32-bit unsigned integers
+impl BitAnd<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn bitand(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(simd_and(self.0, other.0)) }
+    }
+}
+
+impl BitOr<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn bitor(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(simd_or(self.0, other.0)) }
+    }
+}
+
+impl Shr<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn shr(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(simd_shr(self.0, other.0)) }
+    }
+}
+
+// Two 32-bit unsigned integers
+
+#[derive(Clone, Copy)]
+pub struct U32x2(pub uint32x2_t);
+
+impl U32x2 {
+    #[inline]
+    pub fn is_all_ones(&self) -> bool {
+        unsafe { aarch64::vminv_u32(self.0) == !0 }
+    }
+
+    #[inline]
+    pub fn is_all_zeroes(&self) -> bool {
+        unsafe { aarch64::vmaxv_u32(self.0) == 0 }
+    }
+}
+
+impl Index<usize> for U32x2 {
+    type Output = u32;
+    #[inline]
+    fn index(&self, index: usize) -> &u32 {
+        unsafe {
+            assert!(index < 2);
+            let ptr = &self.0 as *const uint32x2_t as *const u32;
+            mem::transmute::<*const u32, &u32>(ptr.offset(index as isize))
+        }
+    }
+}
+
+// Four 32-bit unsigned integers
 
 #[derive(Clone, Copy)]
 pub struct U32x4(pub uint32x4_t);
@@ -344,50 +722,17 @@ impl Index<usize> for U32x4 {
     }
 }
 
-// 8-bit unsigned integers
-
-#[derive(Clone, Copy)]
-pub struct U8x16(pub uint8x16_t);
-
-impl U8x16 {
-    #[inline]
-    pub fn as_i32x4(self) -> I32x4 {
-        unsafe { I32x4(*mem::transmute::<&uint8x16_t, &int32x4_t>(&self.0)) }
-    }
-
-    #[inline]
-    pub fn shuffle(self, indices: U8x16) -> U8x16 {
-        unsafe {
-            let table = mem::transmute::<uint8x16_t, uint8x8x2_t>(self.0);
-            let low = aarch64::vtbl2_u8(table, indices.extract_low());
-            let high = aarch64::vtbl2_u8(table, indices.extract_high());
-            U8x16(aarch64::vcombine_u8(low, high))
-        }
-    }
-
-    #[inline]
-    fn extract_low(self) -> uint8x8_t {
-        unsafe {
-            let low = simd_extract(mem::transmute::<uint8x16_t, uint64x2_t>(self.0), 0);
-            mem::transmute::<u64, uint8x8_t>(low)
-        }
-    }
-
-    #[inline]
-    fn extract_high(self) -> uint8x8_t {
-        unsafe {
-            let high = simd_extract(mem::transmute::<uint8x16_t, uint64x2_t>(self.0), 1);
-            mem::transmute::<u64, uint8x8_t>(high)
-        }
-    }
-}
-
 // Intrinsics
 
 extern "platform-intrinsic" {
     fn simd_add<T>(x: T, y: T) -> T;
     fn simd_mul<T>(x: T, y: T) -> T;
     fn simd_sub<T>(x: T, y: T) -> T;
+
+    fn simd_shr<T>(x: T, y: T) -> T;
+
+    fn simd_and<T>(x: T, y: T) -> T;
+    fn simd_or<T>(x: T, y: T) -> T;
 
     fn simd_fmin<T>(x: T, y: T) -> T;
     fn simd_fmax<T>(x: T, y: T) -> T;
@@ -397,15 +742,24 @@ extern "platform-intrinsic" {
     fn simd_le<T, U>(x: T, y: T) -> U;
     fn simd_lt<T, U>(x: T, y: T) -> U;
 
+    fn simd_shuffle2<T, U>(x: T, y: T, idx: [u32; 2]) -> U;
     fn simd_shuffle4<T, U>(x: T, y: T, idx: [u32; 4]) -> U;
 
     fn simd_cast<T, U>(x: T) -> U;
-
-    fn simd_insert<T, U>(x: T, index: u32, value: U) -> T;
-    fn simd_extract<T, U>(x: T, index: u32) -> U;
 }
 
 extern "C" {
+    #[link_name = "llvm.fabs.v2f32"]
+    fn fabs_v2f32(a: float32x2_t) -> float32x2_t;
+    #[link_name = "llvm.floor.v2f32"]
+    fn floor_v2f32(a: float32x2_t) -> float32x2_t;
+    #[link_name = "llvm.ceil.v2f32"]
+    fn ceil_v2f32(a: float32x2_t) -> float32x2_t;
+    #[link_name = "llvm.round.v2f32"]
+    fn round_v2f32(a: float32x2_t) -> float32x2_t;
+    #[link_name = "llvm.sqrt.v2f32"]
+    fn sqrt_v2f32(a: float32x2_t) -> float32x2_t;
+
     #[link_name = "llvm.fabs.v4f32"]
     fn fabs_v4f32(a: float32x4_t) -> float32x4_t;
     #[link_name = "llvm.floor.v4f32"]
@@ -416,6 +770,9 @@ extern "C" {
     fn round_v4f32(a: float32x4_t) -> float32x4_t;
     #[link_name = "llvm.sqrt.v4f32"]
     fn sqrt_v4f32(a: float32x4_t) -> float32x4_t;
+
+    #[link_name = "llvm.aarch64.neon.frecpe.v2f32"]
+    fn vrecpe_v2f32(a: float32x2_t) -> float32x2_t;
 
     #[link_name = "llvm.aarch64.neon.frecpe.v4f32"]
     fn vrecpe_v4f32(a: float32x4_t) -> float32x4_t;

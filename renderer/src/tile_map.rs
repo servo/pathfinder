@@ -44,15 +44,11 @@ impl<T> DenseTileMap<T> {
 
     #[inline]
     pub fn coords_to_index(&self, coords: Vector2I) -> Option<usize> {
-        // TODO(pcwalton): SIMD?
-        if coords.x() < self.rect.min_x()
-            || coords.x() >= self.rect.max_x()
-            || coords.y() < self.rect.min_y()
-            || coords.y() >= self.rect.max_y()
-        {
-            return None;
+        if self.rect.contains_point(coords) {
+            Some(self.coords_to_index_unchecked(coords))
+        } else {
+            None
         }
-        Some(self.coords_to_index_unchecked(coords))
     }
 
     #[inline]

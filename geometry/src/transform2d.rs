@@ -42,7 +42,7 @@ impl Matrix2x2F {
 
     #[inline]
     pub fn from_rotation_vector(vector: UnitVector) -> Matrix2x2F {
-        Matrix2x2F((vector.0).0.xyyx() * F32x4::new(1.0, 1.0, -1.0, 1.0))
+        Matrix2x2F((vector.0).0.to_f32x4().xyyx() * F32x4::new(1.0, 1.0, -1.0, 1.0))
     }
 
     #[inline]
@@ -72,8 +72,8 @@ impl Matrix2x2F {
 
     #[inline]
     pub fn transform_point(&self, point: Vector2F) -> Vector2F {
-        let halves = self.0 * point.0.xxyy();
-        Vector2F(halves + halves.zwzw())
+        let halves = self.0 * point.0.to_f32x4().xxyy();
+        Vector2F(halves.xy() + halves.zw())
     }
 
     #[inline]
@@ -182,7 +182,7 @@ impl Transform2DF {
     }
 
     #[inline]
-    pub fn transform_line_segment(&self, line_segment: &LineSegment2F) -> LineSegment2F {
+    pub fn transform_line_segment(&self, line_segment: LineSegment2F) -> LineSegment2F {
         LineSegment2F::new(self.transform_point(line_segment.from()),
                             self.transform_point(line_segment.to()))
     }
@@ -291,6 +291,6 @@ impl Transform2DF {
     /// This decomposition assumes that scale, rotation, and translation are applied in that order.
     #[inline]
     pub fn scale_factor(&self) -> f32 {
-        Vector2F(self.matrix.0.zwxy()).length()
+        Vector2F(self.matrix.0.zw()).length()
     }
 }
