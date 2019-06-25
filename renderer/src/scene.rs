@@ -21,7 +21,6 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2DF;
 use pathfinder_content::color::ColorU;
 use pathfinder_content::outline::Outline;
-use std::io::{self, Write};
 
 #[derive(Clone)]
 pub struct Scene {
@@ -173,101 +172,6 @@ impl Scene {
         let prepared_options = options.prepare(self.bounds);
         SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
-
-    pub fn write_svg<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
-        writeln!(
-            writer,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\">",
-            self.view_box.origin().x(),
-            self.view_box.origin().y(),
-            self.view_box.size().x(),
-            self.view_box.size().y()
-        )?;
-        for path_object in &self.paths {
-            let paint = &self.paints[path_object.paint.0 as usize];
-            write!(writer, "    <path")?;
-            if !path_object.name.is_empty() {
-                write!(writer, " id=\"{}\"", path_object.name)?;
-            }
-            writeln!(
-                writer,
-                " fill=\"{:?}\" d=\"{:?}\" />",
-                paint.color, path_object.outline
-            )?;
-        }
-        writeln!(writer, "</svg>")?;
-        Ok(())
-    }
-    
-    pub fn write_ps<W>(&self, writer: &mut W) -> io::Result<()>
-    where
-        W: Write,
-    {
-        use std::fmt;
-        use pathfinder_content::segment::SegmentKind;
-        
-        struct P(Vector2F);
-        impl fmt::Display for P {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{} {}", self.0.x(), self.0.y())
-            }
-        }
-
-        writeln!(writer, "%!PS-Adobe-3.0 EPSF-3.0")?;
-        writeln!(writer, "%%BoundingBox: {:.0} {:.0}",
-            P(self.view_box.origin()),
-            P(self.view_box.size()),
-        )?;
-        writeln!(writer, "%%HiResBoundingBox: {} {}",
-            P(self.view_box.origin()),
-            P(self.view_box.size()),
-        )?;
-        writeln!(writer, "0 {} translate", self.view_box.size().y())?;
-        writeln!(writer, "1 -1 scale")?;
-        
-        for path_object in &self.paths {
-            writeln!(writer, "newpath")?;
-            let color = self.paints[path_object.paint.0 as usize].color.to_f32();
-            for contour in path_object.outline.contours() {
-                for (segment_index, segment) in contour.iter().enumerate() {
-                    if segment_index == 0 {
-                        writeln!(writer, "{} moveto", P(segment.baseline.from()))?;
-                    }
-
-                    match segment.kind {
-                        SegmentKind::None => {}
-                        SegmentKind::Line => {
-                            writeln!(writer, "{} lineto", P(segment.baseline.to()))?;
-                        }
-                        SegmentKind::Quadratic => {
-                            let current = segment.baseline.from();
-                            let c = segment.ctrl.from();
-                            let p = segment.baseline.to();
-                            let c1 = Vector2F::splat(2. / 3.) * c + Vector2F::splat(1. / 3.) * current;
-                            let c2 = Vector2F::splat(2. / 3.) * c + Vector2F::splat(1. / 3.) * p;
-                            writeln!(writer, "{} {} {} curveto", P(c1), P(c2), P(p))?;
-                        }
-                        SegmentKind::Cubic => {
-                            writeln!(writer, "{} {} {} curveto",
-                                P(segment.ctrl.from()),
-                                P(segment.ctrl.to()),
-                                P(segment.baseline.to())
-                            )?;
-                        }
-                    }
-                }
-
-                if contour.is_closed() {
-                    writeln!(writer, "closepath")?;
-                }
-            }
-            writeln!(writer, "{} {} {} setrgbcolor", color.r(), color.g(), color.b())?;
-            writeln!(writer, "fill")?;
-        }
-        writeln!(writer, "showpage")?;
-        Ok(())
-    }
-
     
     pub fn paths<'a>(&'a self) -> PathIter {
         PathIter {
@@ -281,10 +185,14 @@ pub struct PathIter<'a> {
     pos: usize
 }
 impl<'a> Iterator for PathIter<'a> {
-    type Item = (&'a Paint, &'a Outline);
+    type Item = (&'a Paint, &'a Outline, &'a str);
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.scene.paths.get(self.pos).map(|path_object| {
-            (self.scene.paints.get(path_object.paint.0 as usize).unwrap(), &path_object.outline)
+            (
+                self.scene.paints.get(path_object.paint.0 as usize).unwrap(),
+                &path_object.outline,
+                &*path_object.name
+            )
         });
         self.pos += 1;
         item

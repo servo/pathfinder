@@ -3,7 +3,7 @@ use std::io::{Read, BufWriter};
 use std::error::Error;
 use std::path::PathBuf;
 use pathfinder_svg::BuiltSVG;
-use pathfinder_pdf::make_pdf;
+use pathfinder_export::{Export, FileFormat};
 use usvg::{Tree, Options};
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -17,10 +17,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let scene = &svg.scene;
     let mut writer = BufWriter::new(File::create(&output)?);
-    match output.extension().and_then(|s| s.to_str()) {
-        Some("pdf") => make_pdf(&mut writer, scene),
-        Some("ps") => scene.write_ps(&mut writer)?,
+    let format = match output.extension().and_then(|s| s.to_str()) {
+        Some("pdf") => FileFormat::PDF,
+        Some("ps") => FileFormat::PS,
         _ => return Err("output filename must have .ps or .pdf extension".into())
-    }
+    };
+    scene.export(&mut writer, format).unwrap();
     Ok(())
 }
