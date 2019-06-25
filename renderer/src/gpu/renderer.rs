@@ -473,17 +473,23 @@ where
         self.buffered_fills.clear();
     }
 
+    fn tile_transform(&self) -> Transform3DF {
+        let draw_viewport = self.draw_viewport().size().to_f32();
+        let scale = F32x4::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y(), 1.0, 1.0);
+        let transform = Transform3DF::from_scale(scale.x(), scale.y(), 1.0);
+        Transform3DF::from_translation(-1.0, 1.0, 0.0).post_mul(&transform)
+    }
+
     fn draw_alpha_tiles(&mut self, count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
-        let draw_viewport = self.draw_viewport();
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
         let mut uniforms = vec![
-            (&alpha_tile_program.framebuffer_size_uniform,
-             UniformData::Vec2(draw_viewport.size().to_f32().0)),
+            (&alpha_tile_program.transform_uniform,
+             UniformData::Mat4(self.tile_transform().to_columns())),
             (&alpha_tile_program.tile_size_uniform,
              UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
                                           TILE_HEIGHT as i32,
@@ -495,8 +501,6 @@ where
                                           MASK_FRAMEBUFFER_HEIGHT,
                                           0,
                                           0).to_f32x4())),
-            // FIXME(pcwalton): Fill this in properly!
-            (&alpha_tile_program.view_box_origin_uniform, UniformData::Vec2(F32x4::default())),
         ];
 
         match self.render_mode {
@@ -528,7 +532,7 @@ where
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
-            viewport: draw_viewport,
+            viewport: self.draw_viewport(),
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 stencil: self.stencil_state(),
@@ -546,18 +550,15 @@ where
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
-        let draw_viewport = self.draw_viewport();
         let mut textures = vec![];
         let mut uniforms = vec![
-            (&solid_tile_program.framebuffer_size_uniform,
-             UniformData::Vec2(draw_viewport.size().0.to_f32x4())),
+            (&solid_tile_program.transform_uniform,
+             UniformData::Mat4(self.tile_transform().to_columns())),
             (&solid_tile_program.tile_size_uniform,
              UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
                                           TILE_HEIGHT as i32,
                                           0,
                                           0).to_f32x4())),
-            // FIXME(pcwalton): Fill this in properly!
-            (&solid_tile_program.view_box_origin_uniform, UniformData::Vec2(F32x4::default())),
         ];
 
         match self.render_mode {
@@ -589,7 +590,7 @@ where
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
-            viewport: draw_viewport,
+            viewport: self.draw_viewport(),
             options: RenderOptions {
                 stencil: self.stencil_state(),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
@@ -1217,9 +1218,8 @@ where
     D: Device,
 {
     program: D::Program,
-    framebuffer_size_uniform: D::Uniform,
+    transform_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
-    view_box_origin_uniform: D::Uniform,
 }
 
 impl<D> SolidTileProgram<D>
@@ -1233,15 +1233,9 @@ where
             program_name,
             "tile_solid",
         );
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
-        SolidTileProgram {
-            program,
-            framebuffer_size_uniform,
-            tile_size_uniform,
-            view_box_origin_uniform,
-        }
+        SolidTileProgram { program, transform_uniform, tile_size_uniform }
     }
 }
 
@@ -1299,11 +1293,10 @@ where
     D: Device,
 {
     program: D::Program,
-    framebuffer_size_uniform: D::Uniform,
+    transform_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
     stencil_texture_uniform: D::Uniform,
     stencil_texture_size_uniform: D::Uniform,
-    view_box_origin_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileProgram<D>
@@ -1317,18 +1310,16 @@ where
             program_name,
             "tile_alpha",
         );
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
         let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
-        let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
         AlphaTileProgram {
             program,
-            framebuffer_size_uniform,
+            transform_uniform,
             tile_size_uniform,
             stencil_texture_uniform,
             stencil_texture_size_uniform,
-            view_box_origin_uniform,
         }
     }
 }

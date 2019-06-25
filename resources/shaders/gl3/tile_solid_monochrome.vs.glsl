@@ -27,9 +27,8 @@ precision highp float;
 
 
 
-uniform vec2 uFramebufferSize;
+uniform mat4 uTransform;
 uniform vec2 uTileSize;
-uniform vec2 uViewBoxOrigin;
 
 in uvec2 aTessCoord;
 in ivec2 aTileOrigin;
@@ -39,11 +38,9 @@ out vec4 vColor;
 vec4 getColor();
 
 void computeVaryings(){
-    vec2 pixelPosition = vec2(aTileOrigin + ivec2(aTessCoord))* uTileSize + uViewBoxOrigin;
-    vec2 position =(pixelPosition / uFramebufferSize * 2.0 - 1.0)* vec2(1.0, - 1.0);
-
+    vec2 position = vec2(aTileOrigin + ivec2(aTessCoord))* uTileSize;
     vColor = getColor();
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 
 
