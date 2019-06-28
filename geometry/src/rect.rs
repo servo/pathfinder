@@ -128,8 +128,18 @@ impl RectF {
     }
 
     #[inline]
+    pub fn scale(self, factor: f32) -> RectF {
+        RectF(self.0 * F32x4::splat(factor))
+    }
+
+    #[inline]
     pub fn scale_xy(self, factors: Vector2F) -> RectF {
         RectF(self.0 * factors.0.concat_xy_xy(factors.0))
+    }
+
+    #[inline]
+    pub fn translate(self, offset: Vector2F) -> RectF {
+        RectF(self.0 + offset.0.concat_xy_xy(offset.0))
     }
 
     #[inline]
@@ -219,7 +229,25 @@ impl RectI {
     }
 
     #[inline]
+    pub fn contains_rect(&self, other: RectI) -> bool {
+        // self.origin <= other.origin && other.lower_right <= self.lower_right
+        self.0
+            .concat_xy_zw(other.0)
+            .packed_le(other.0.concat_xy_zw(self.0))
+            .is_all_ones()
+    }
+
+    #[inline]
     pub fn to_f32(&self) -> RectF {
         RectF(self.0.to_f32x4())
+    }
+
+    #[inline]
+    pub fn intersects(&self, other: RectI) -> bool {
+        // self.origin < other.lower_right && other.origin < self.lower_right
+        self.0
+            .concat_xy_xy(other.0)
+            .packed_lt(other.0.concat_zw_zw(self.0))
+            .is_all_ones()
     }
 }

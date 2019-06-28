@@ -19,7 +19,8 @@ extern crate objc;
 
 use block::{Block, ConcreteBlock, RcBlock};
 use byteorder::{NativeEndian, WriteBytesExt};
-use cocoa::foundation::{NSRange, NSUInteger};
+use cocoa::base::nil;
+use cocoa::foundation::{NSAutoreleasePool, NSRange, NSUInteger};
 use core_foundation::base::TCFType;
 use core_foundation::string::{CFString, CFStringRef};
 use foreign_types::{ForeignType, ForeignTypeRef};
@@ -868,11 +869,6 @@ impl MetalDevice {
 
         render_command_encoder.use_resource(&data_buffer, MTLResourceUsage::Read);
 
-        // Metal expects the data buffer to remain live. (Issue #199.)
-        // FIXME(pcwalton): When do we deallocate this? What are the expected
-        // lifetime semantics?
-        mem::forget(data_buffer);
-
         if let Some(vertex_argument_buffer) = vertex_argument_buffer {
             let range = NSRange::new(0, vertex_argument_buffer.length());
             vertex_argument_buffer.did_modify_range(range);
@@ -1086,6 +1082,24 @@ impl DeviceExtra for metal::Device {
         descriptor.set_storage_mode(MTLStorageMode::Private);
         descriptor.set_usage(MTLTextureUsage::Unknown);
         self.new_texture(&descriptor)
+    }
+}
+
+// Autorelease pool conveniences
+
+pub struct AutoreleasePool(*mut Object);
+
+impl Drop for AutoreleasePool {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe { msg_send![self.0, release] }
+    }
+}
+
+impl AutoreleasePool {
+    #[inline]
+    pub fn new() -> AutoreleasePool {
+        unsafe { AutoreleasePool(NSAutoreleasePool::new(nil)) }
     }
 }
 

@@ -29,7 +29,7 @@ use foreign_types::ForeignTypeRef;
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use metal::{CAMetalLayer, CoreAnimationLayerRef};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use pathfinder_metal::MetalDevice;
+use pathfinder_metal::{AutoreleasePool, MetalDevice};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use sdl2::hint;
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
@@ -56,10 +56,14 @@ fn main() {
     color_backtrace::install();
     pretty_env_logger::init();
 
-    let window = WindowImpl::new();
+    let mut window = WindowImpl::new();
+    window.start_processing_event();
+
     let window_size = window.size();
     let options = Options::default();
     let mut app = DemoApp::new(window, window_size, options);
+
+    app.window.end_processing_event();
 
     while !app.should_exit {
         let mut events = vec![];
@@ -70,6 +74,8 @@ fn main() {
             events.push(event);
         }
 
+        app.window.start_processing_event();
+
         let scene_count = app.prepare_frame(events);
         app.draw_scene();
         app.begin_compositing();
@@ -77,6 +83,8 @@ fn main() {
             app.composite_scene(scene_index);
         }
         app.finish_drawing_frame();
+
+        app.window.end_processing_event();
     }
 }
 
@@ -96,6 +104,8 @@ struct WindowImpl {
     canvas: Canvas<SDLWindow>,
     #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     metal_layer: *mut CAMetalLayer,
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    autorelease_pool: Option<AutoreleasePool>,
 
     event_pump: EventPump,
     #[allow(dead_code)]
@@ -261,6 +271,7 @@ impl WindowImpl {
                     event_pump,
                     canvas,
                     metal_layer,
+                    autorelease_pool: None,
                     resource_loader,
                     open_svg_message_type,
                     selected_file: None,
@@ -357,4 +368,14 @@ impl WindowImpl {
             _ => None,
         }
     }
+
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn start_processing_event(&mut self) {}
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn end_processing_event(&mut self) {}
+
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn start_processing_event(&mut self) { self.autorelease_pool = Some(AutoreleasePool::new()); }
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn end_processing_event(&mut self)   { self.autorelease_pool = None;                         }
 }

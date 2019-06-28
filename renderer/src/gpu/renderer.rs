@@ -8,15 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::command::{AlphaTileBatchPrimitive, BlockKey, FillBatchPrimitive, PaintData};
+use crate::command::{RenderCommand, SolidTileBatchPrimitive};
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
-use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_geometry::vector::{Vector2I, Vector4F};
+use hashbrown::HashMap;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_content::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
@@ -34,7 +35,6 @@ use std::u32;
 static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
-// FIXME(pcwalton): Shrink this again!
 const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
 const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
@@ -60,15 +60,14 @@ where
     alpha_multicolor_tile_program: AlphaTileMulticolorProgram<D>,
     solid_monochrome_tile_program: SolidTileMonochromeProgram<D>,
     alpha_monochrome_tile_program: AlphaTileMonochromeProgram<D>,
-    solid_multicolor_tile_vertex_array: SolidTileVertexArray<D>,
-    alpha_multicolor_tile_vertex_array: AlphaTileVertexArray<D>,
-    solid_monochrome_tile_vertex_array: SolidTileVertexArray<D>,
-    alpha_monochrome_tile_vertex_array: AlphaTileVertexArray<D>,
+    solid_multicolor_tile_data: HashMap<BlockKey, SolidTileData<D>>,
+    alpha_multicolor_tile_data: HashMap<BlockKey, AlphaTileData<D>>,
+    solid_monochrome_tile_data: HashMap<BlockKey, SolidTileData<D>>,
+    alpha_monochrome_tile_data: HashMap<BlockKey, AlphaTileData<D>>,
     area_lut_texture: D::Texture,
     quad_vertex_positions_buffer: D::Buffer,
     quad_vertex_indices_buffer: D::Buffer,
     fill_vertex_array: FillVertexArray<D>,
-    mask_framebuffer: D::Framebuffer,
     paint_texture: Option<D::Texture>,
 
     // Postprocessing shader
@@ -87,7 +86,7 @@ where
 
     // Rendering state
     framebuffer_flags: FramebufferFlags,
-    buffered_fills: Vec<FillBatchPrimitive>,
+    buffered_fills: Option<BufferedFills>,
 
     // Debug
     pub stats: RenderStats,
@@ -145,6 +144,7 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
+        /*
         let alpha_multicolor_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_multicolor_tile_program.alpha_tile_program,
@@ -169,6 +169,7 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
+        */
         let postprocess_vertex_array = PostprocessVertexArray::new(
             &device,
             &postprocess_program,
@@ -183,12 +184,6 @@ where
             &quad_vertex_indices_buffer,
         );
 
-        let mask_framebuffer_size =
-            Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
-        let mask_framebuffer_texture =
-            device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
-        let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
-
         let window_size = dest_framebuffer.window_size(&device);
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
@@ -202,15 +197,14 @@ where
             alpha_monochrome_tile_program,
             solid_multicolor_tile_program,
             alpha_multicolor_tile_program,
-            solid_monochrome_tile_vertex_array,
-            alpha_monochrome_tile_vertex_array,
-            solid_multicolor_tile_vertex_array,
-            alpha_multicolor_tile_vertex_array,
+            solid_monochrome_tile_data: HashMap::new(),
+            alpha_monochrome_tile_data: HashMap::new(),
+            solid_multicolor_tile_data: HashMap::new(),
+            alpha_multicolor_tile_data: HashMap::new(),
             area_lut_texture,
             quad_vertex_positions_buffer,
             quad_vertex_indices_buffer,
             fill_vertex_array,
-            mask_framebuffer,
             paint_texture: None,
 
             postprocess_source_framebuffer: None,
@@ -231,7 +225,7 @@ where
             debug_ui_presenter,
 
             framebuffer_flags: FramebufferFlags::empty(),
-            buffered_fills: vec![],
+            buffered_fills: None,
 
             render_mode: RenderMode::default(),
             use_depth: false,
@@ -254,22 +248,23 @@ where
                 self.stats.path_count = path_count;
             }
             RenderCommand::AddPaintData(ref paint_data) => self.upload_paint_data(paint_data),
-            RenderCommand::AddFills(ref fills) => self.add_fills(fills),
-            RenderCommand::FlushFills => {
-                self.draw_buffered_fills();
-                self.begin_composite_timer_query();
+            RenderCommand::AddBlockFills { block, ref fills } => self.add_fills(block, fills),
+            RenderCommand::FlushBlockFills => self.draw_buffered_fills(),
+            RenderCommand::BeginComposite => self.begin_composite_timer_query(),
+            RenderCommand::AddBlockTiles {
+                block,
+                alpha: ref alpha_tiles,
+                solid: ref solid_tiles,
+            } => {
+                self.upload_solid_tiles(block, solid_tiles);
+                self.upload_alpha_tiles(block, alpha_tiles);
+
+                self.stats.solid_tile_count += solid_tiles.len();
+                self.stats.alpha_tile_count += alpha_tiles.len();
             }
-            RenderCommand::SolidTile(ref solid_tiles) => {
-                let count = solid_tiles.len();
-                self.stats.solid_tile_count += count;
-                self.upload_solid_tiles(solid_tiles);
-                self.draw_solid_tiles(count as u32);
-            }
-            RenderCommand::AlphaTile(ref alpha_tiles) => {
-                let count = alpha_tiles.len();
-                self.stats.alpha_tile_count += count;
-                self.upload_alpha_tiles(alpha_tiles);
-                self.draw_alpha_tiles(count as u32);
+            RenderCommand::CompositeBlock { block, ref transform } => {
+                self.draw_solid_tiles(block, transform);
+                self.draw_alpha_tiles(block, transform);
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -304,17 +299,23 @@ where
 
         // Get stage-1 time.
         let stage_1_time = {
-            let stage_1_timer_query = timers.stage_1.as_ref().unwrap();
-            match self.device.get_timer_query(stage_1_timer_query) {
-                None => return None,
-                Some(query) => query,
+            match timers.stage_1 {
+                None => Duration::default(),
+                Some(ref stage_1_timer_query) => {
+                    match self.device.get_timer_query(stage_1_timer_query) {
+                        None => return None,
+                        Some(query) => query,
+                    }
+                }
             }
         };
 
         // Recycle all timer queries.
         let timers = self.pending_timers.pop_front().unwrap();
         self.free_timer_queries.extend(timers.stage_0.into_iter());
-        self.free_timer_queries.push(timers.stage_1.unwrap());
+        if let Some(timer_query) = timers.stage_1 {
+            self.free_timer_queries.push(timer_query);
+        }
 
         Some(RenderTime { stage_0: total_stage_0_time, stage_1: stage_1_time })
     }
@@ -382,49 +383,132 @@ where
                                       &paint_data.texels);
     }
 
-    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
+    fn upload_solid_tiles(&mut self, block: BlockKey, solid_tiles: &[SolidTileBatchPrimitive]) {
+        let solid_tile_program = match self.render_mode {
+            RenderMode::Monochrome { .. } => {
+                &self.solid_monochrome_tile_program.solid_tile_program
+            }
+            RenderMode::Multicolor => &self.solid_multicolor_tile_program.solid_tile_program,
+        };
+
+        let tile_data = SolidTileData::new(&mut self.device,
+                                           solid_tile_program,
+                                           &self.quad_vertex_positions_buffer,
+                                           &self.quad_vertex_indices_buffer,
+                                           solid_tiles.len() as u32);
+
         self.device.allocate_buffer(
-            &self.solid_tile_vertex_array().vertex_buffer,
+            &tile_data.solid_vertex_array.vertex_buffer,
             BufferData::Memory(&solid_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+
+        match self.render_mode {
+            RenderMode::Monochrome { .. } => {
+                //debug_assert!(!self.solid_monochrome_tile_data.contains_key(&block));
+                self.solid_monochrome_tile_data.insert(block, tile_data);
+            }
+            RenderMode::Multicolor => {
+                //debug_assert!(!self.solid_multicolor_tile_data.contains_key(&block));
+                self.solid_multicolor_tile_data.insert(block, tile_data);
+            }
+        }
     }
 
-    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
+    fn upload_alpha_tiles(&mut self, block: BlockKey, alpha_tiles: &[AlphaTileBatchPrimitive]) {
+        let tile_data = match self.render_mode {
+            RenderMode::Monochrome { .. } => {
+                self.alpha_monochrome_tile_data.get_mut(&block).unwrap()
+            }
+            RenderMode::Multicolor => self.alpha_multicolor_tile_data.get_mut(&block).unwrap(),
+        };
+
         self.device.allocate_buffer(
-            &self.alpha_tile_vertex_array().vertex_buffer,
+            &tile_data.alpha_vertex_array.vertex_buffer,
             BufferData::Memory(&alpha_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+
+        tile_data.alpha_instance_count = alpha_tiles.len() as u32;
     }
 
-    fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
+    fn add_fills(&mut self, block: BlockKey, mut fills: &[FillBatchPrimitive]) {
         if fills.is_empty() {
             return;
         }
 
         self.stats.fill_count += fills.len();
 
+        if let Some(ref mut buffered_fills) = self.buffered_fills {
+            if buffered_fills.block_key != block {
+                self.draw_buffered_fills();
+            }
+        }
+
         while !fills.is_empty() {
-            let count = cmp::min(fills.len(), MAX_FILLS_PER_BATCH - self.buffered_fills.len());
-            self.buffered_fills.extend_from_slice(&fills[0..count]);
-            fills = &fills[count..];
-            if self.buffered_fills.len() == MAX_FILLS_PER_BATCH {
+            if self.buffered_fills.is_none() {
+                self.buffered_fills = Some(BufferedFills { block_key: block, fills: vec![] });
+            }
+
+            {
+                let buffered_fills = self.buffered_fills.as_mut().unwrap();
+                debug_assert_eq!(buffered_fills.block_key, block);
+
+                let count = cmp::min(fills.len(),
+                                     MAX_FILLS_PER_BATCH - buffered_fills.fills.len());
+                buffered_fills.fills.extend_from_slice(&fills[0..count]);
+                fills = &fills[count..];
+            }
+
+            if self.buffered_fills.as_ref().unwrap().fills.len() == MAX_FILLS_PER_BATCH {
                 self.draw_buffered_fills();
             }
         }
     }
 
     fn draw_buffered_fills(&mut self) {
-        if self.buffered_fills.is_empty() {
+        let buffered_fills = match self.buffered_fills.take() {
+            None => return,
+            Some(buffered_fills) => buffered_fills,
+        };
+        if buffered_fills.fills.is_empty() {
             return;
         }
 
+        let timer_query = self.allocate_timer_query();
+
+        // Fetch the appropriate tile data.
+        let block_key = buffered_fills.block_key;
+        let tile_data = match self.render_mode {
+            RenderMode::Monochrome { .. } => {
+                if !self.alpha_monochrome_tile_data.contains_key(&block_key) {
+                    self.alpha_monochrome_tile_data
+                        .insert(block_key, AlphaTileData::new(&self.device,
+                                                              &self.alpha_monochrome_tile_program
+                                                                   .alpha_tile_program,
+                                                              &self.quad_vertex_positions_buffer,
+                                                              &self.quad_vertex_indices_buffer));
+                }
+                &self.alpha_monochrome_tile_data[&block_key]
+            }
+            RenderMode::Multicolor => {
+                if !self.alpha_multicolor_tile_data.contains_key(&block_key) {
+                    self.alpha_multicolor_tile_data
+                        .insert(block_key, AlphaTileData::new(&self.device,
+                                                              &self.alpha_multicolor_tile_program
+                                                                   .alpha_tile_program,
+                                                              &self.quad_vertex_positions_buffer,
+                                                              &self.quad_vertex_indices_buffer));
+                }
+                &self.alpha_multicolor_tile_data[&block_key]
+            }
+        };
+
         self.device.allocate_buffer(
             &self.fill_vertex_array.vertex_buffer,
-            BufferData::Memory(&self.buffered_fills),
+            BufferData::Memory(&buffered_fills.fills),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
@@ -435,12 +519,11 @@ where
             clear_color = Some(ColorF::default());
         };
 
-        let timer_query = self.allocate_timer_query();
         self.device.begin_timer_query(&timer_query);
 
-        debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
-        self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
-            target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+        debug_assert!(buffered_fills.fills.len() <= u32::MAX as usize);
+        self.device.draw_elements_instanced(6, buffered_fills.fills.len() as u32, &RenderState {
+            target: &RenderTarget::Framebuffer(&tile_data.mask_framebuffer),
             program: &self.fill_program.program,
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
@@ -453,7 +536,7 @@ where
                  UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
                 (&self.fill_program.area_lut_uniform, UniformData::TextureUnit(0)),
             ],
-            viewport: self.mask_viewport(),
+            viewport: self.mask_viewport(block_key),
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOne,
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
@@ -465,25 +548,29 @@ where
         self.current_timers.stage_0.push(timer_query);
 
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
-        self.buffered_fills.clear();
     }
 
-    fn tile_transform(&self) -> Transform4F {
-        let draw_viewport = self.draw_viewport().size().to_f32();
-        let scale = Vector4F::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y(), 1.0, 1.0);
-        Transform4F::from_scale(scale).translate(Vector4F::new(-1.0, 1.0, 0.0, 1.0))
-    }
-
-    fn draw_alpha_tiles(&mut self, count: u32) {
+    fn draw_alpha_tiles(&mut self, block: BlockKey, transform: &Transform4F) {
         let clear_color = self.clear_color_for_draw_operation();
 
-        let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
+        let alpha_tile_data = match self.render_mode {
+            RenderMode::Monochrome { .. } => self.alpha_monochrome_tile_data.get(&block),
+            RenderMode::Multicolor => self.alpha_multicolor_tile_data.get(&block),
+        };
 
-        let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
+        let alpha_tile_data = match alpha_tile_data {
+            None => return,
+            Some(alpha_tile_data) => alpha_tile_data,
+        };
+
+        let mut textures = vec![
+            self.device.framebuffer_texture(&alpha_tile_data.mask_framebuffer),
+        ];
+
         let mut uniforms = vec![
             (&alpha_tile_program.transform_uniform,
-             UniformData::Mat4(self.tile_transform().to_columns())),
+             UniformData::Mat4(transform.to_columns())),
             (&alpha_tile_program.tile_size_uniform,
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
             (&alpha_tile_program.stencil_texture_uniform, UniformData::TextureUnit(0)),
@@ -514,10 +601,10 @@ where
             }
         }
 
-        self.device.draw_elements_instanced(6, count, &RenderState {
+        self.device.draw_elements_instanced(6, alpha_tile_data.alpha_instance_count, &RenderState {
             target: &self.draw_render_target(),
             program: &alpha_tile_program.program,
-            vertex_array: &alpha_tile_vertex_array.vertex_array,
+            vertex_array: &alpha_tile_data.alpha_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
@@ -533,16 +620,24 @@ where
         self.preserve_draw_framebuffer();
     }
 
-    fn draw_solid_tiles(&mut self, count: u32) {
+    fn draw_solid_tiles(&mut self, block: BlockKey, transform: &Transform4F) {
         let clear_color = self.clear_color_for_draw_operation();
 
-        let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
+        let solid_tile_data = match self.render_mode {
+            RenderMode::Monochrome { .. } => self.solid_monochrome_tile_data.get(&block),
+            RenderMode::Multicolor => self.solid_multicolor_tile_data.get(&block),
+        };
+
+        let solid_tile_data = match solid_tile_data {
+            None => return,
+            Some(solid_tile_data) => solid_tile_data,
+        };
 
         let mut textures = vec![];
         let mut uniforms = vec![
             (&solid_tile_program.transform_uniform,
-             UniformData::Mat4(self.tile_transform().to_columns())),
+             UniformData::Mat4(transform.to_columns())),
             (&solid_tile_program.tile_size_uniform,
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
@@ -569,10 +664,10 @@ where
             }
         }
 
-        self.device.draw_elements_instanced(6, count, &RenderState {
+        self.device.draw_elements_instanced(6, solid_tile_data.solid_instance_count, &RenderState {
             target: &self.draw_render_target(),
             program: &solid_tile_program.program,
-            vertex_array: &solid_tile_vertex_array.vertex_array,
+            vertex_array: &solid_tile_data.solid_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
@@ -660,18 +755,23 @@ where
 
     fn solid_tile_program(&self) -> &SolidTileProgram<D> {
         match self.render_mode {
-            RenderMode::Monochrome { .. } => &self.solid_monochrome_tile_program.solid_tile_program,
+            RenderMode::Monochrome { .. } => {
+                &self.solid_monochrome_tile_program.solid_tile_program
+            }
             RenderMode::Multicolor => &self.solid_multicolor_tile_program.solid_tile_program,
         }
     }
 
     fn alpha_tile_program(&self) -> &AlphaTileProgram<D> {
         match self.render_mode {
-            RenderMode::Monochrome { .. } => &self.alpha_monochrome_tile_program.alpha_tile_program,
+            RenderMode::Monochrome { .. } => {
+                &self.alpha_monochrome_tile_program.alpha_tile_program
+            }
             RenderMode::Multicolor => &self.alpha_multicolor_tile_program.alpha_tile_program,
         }
     }
 
+    /*
     fn solid_tile_vertex_array(&self) -> &SolidTileVertexArray<D> {
         match self.render_mode {
             RenderMode::Monochrome { .. } => &self.solid_monochrome_tile_vertex_array,
@@ -685,6 +785,7 @@ where
             RenderMode::Multicolor => &self.alpha_multicolor_tile_vertex_array,
         }
     }
+    */
 
     fn draw_stencil(&mut self, quad_positions: &[Vector4F]) {
         self.device.allocate_buffer(
@@ -799,18 +900,7 @@ where
                 self.postprocess_source_framebuffer =
                     Some(self.device.create_framebuffer(texture));
             }
-        };
-
-        /*
-        self.device.clear(&RenderTarget::Framebuffer(self.postprocess_source_framebuffer
-                                                         .as_ref()
-                                                         .unwrap()),
-                          RectI::new(Vector2I::default(), source_framebuffer_size),
-                          &ClearParams {
-                            color: Some(ColorF::transparent_black()),
-                            ..ClearParams::default()
-                          });
-        */
+        }
     }
 
     fn postprocessing_needed(&self) -> bool {
@@ -889,8 +979,13 @@ where
         }
     }
 
-    fn mask_viewport(&self) -> RectI {
-        let texture = self.device.framebuffer_texture(&self.mask_framebuffer);
+    fn mask_viewport(&self, block: BlockKey) -> RectI {
+        let tile_data = match self.render_mode {
+            RenderMode::Monochrome { .. } => &self.alpha_monochrome_tile_data[&block],
+            RenderMode::Multicolor => &self.alpha_multicolor_tile_data[&block],
+        };
+
+        let texture = self.device.framebuffer_texture(&tile_data.mask_framebuffer);
         RectI::new(Vector2I::default(), self.device.texture_size(texture))
     }
 
@@ -1078,7 +1173,7 @@ where
         device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
+            attr_type: VertexAttrType::U16,
             stride: MASK_TILE_INSTANCE_SIZE,
             offset: 6,
             divisor: 1,
@@ -1555,6 +1650,57 @@ where
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         ReprojectionVertexArray { vertex_array }
+    }
+}
+
+struct BufferedFills {
+    block_key: BlockKey,
+    fills: Vec<FillBatchPrimitive>,
+}
+
+struct SolidTileData<D> where D: Device {
+    solid_vertex_array: SolidTileVertexArray<D>,
+    solid_instance_count: u32,
+}
+
+impl<D> SolidTileData<D> where D: Device {
+    fn new(device: &D,
+           solid_tile_program: &SolidTileProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer,
+           quad_vertex_indices_buffer: &D::Buffer,
+           solid_instance_count: u32)
+           -> SolidTileData<D> {
+        let solid_vertex_array = SolidTileVertexArray::new(device,
+                                                           solid_tile_program,
+                                                           quad_vertex_positions_buffer,
+                                                           quad_vertex_indices_buffer);
+        SolidTileData { solid_vertex_array, solid_instance_count }
+    }
+}
+
+struct AlphaTileData<D> where D: Device {
+    mask_framebuffer: D::Framebuffer,
+    alpha_vertex_array: AlphaTileVertexArray<D>,
+    alpha_instance_count: u32,
+}
+
+impl<D> AlphaTileData<D> where D: Device {
+    fn new(device: &D,
+           alpha_tile_program: &AlphaTileProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer,
+           quad_vertex_indices_buffer: &D::Buffer)
+           -> AlphaTileData<D> {
+        let mask_framebuffer_size = Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+        let mask_framebuffer_texture =
+            device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
+        let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
+
+        let alpha_vertex_array = AlphaTileVertexArray::new(device,
+                                                           alpha_tile_program,
+                                                           quad_vertex_positions_buffer,
+                                                           quad_vertex_indices_buffer);
+
+        AlphaTileData { mask_framebuffer, alpha_vertex_array, alpha_instance_count: 0 }
     }
 }
 

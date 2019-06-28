@@ -26,14 +26,14 @@ use pathfinder_content::color::ColorU;
 use pathfinder_export::{Export, FileFormat};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
-use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
+use pathfinder_renderer::concurrent::manager_proxy::{RenderCommandStream, SceneManagerProxy};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::{RenderStats, RenderTime, Renderer};
-use pathfinder_renderer::options::{BuildOptions, RenderTransform};
+use pathfinder_renderer::manager::{CachePolicy, SceneManager};
 use pathfinder_renderer::post::STEM_DARKENING_FACTORS;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
@@ -102,7 +102,7 @@ pub struct DemoApp<W> where W: Window {
     window_size: WindowSize,
 
     scene_metadata: SceneMetadata,
-    render_transform: Option<RenderTransform>,
+    frame_transform: Option<FrameTransform>,
     render_command_stream: Option<RenderCommandStream>,
 
     camera: Camera,
@@ -120,7 +120,7 @@ pub struct DemoApp<W> where W: Window {
     ui_model: DemoUIModel,
     ui_presenter: DemoUIPresenter<DeviceImpl>,
 
-    scene_proxy: SceneProxy,
+    scene_manager_proxy: SceneManagerProxy,
     renderer: Renderer<DeviceImpl>,
 
     scene_framebuffer: Option<<DeviceImpl as Device>::Framebuffer>,
@@ -169,7 +169,8 @@ impl<W> DemoApp<W> where W: Window {
                                                                   viewport.size());
         let camera = Camera::new(options.mode, scene_metadata.view_box, viewport.size());
 
-        let scene_proxy = SceneProxy::from_scene(built_svg.scene, executor);
+        let scene_manager = SceneManager::from_scene(built_svg.scene);
+        let scene_manager_proxy = SceneManagerProxy::from_scene_manager(scene_manager, executor);
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
         let ground_vertex_array = GroundVertexArray::new(&renderer.device,
@@ -197,7 +198,7 @@ impl<W> DemoApp<W> where W: Window {
             window_size,
 
             scene_metadata,
-            render_transform: None,
+            frame_transform: None,
             render_command_stream: None,
 
             camera,
@@ -215,7 +216,7 @@ impl<W> DemoApp<W> where W: Window {
             ui_presenter,
             ui_model,
 
-            scene_proxy,
+            scene_manager_proxy,
             renderer,
 
             scene_framebuffer: None,
@@ -238,7 +239,7 @@ impl<W> DemoApp<W> where W: Window {
         // Save the frame.
         //
         // FIXME(pcwalton): This is super ugly.
-        let transform = self.render_transform.clone().unwrap();
+        let transform = self.frame_transform.clone().unwrap();
         self.current_frame = Some(Frame::new(transform, ui_events));
 
         // Prepare to render the frame.
@@ -246,7 +247,9 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        self.render_transform = match self.camera {
+        self.scene_manager_proxy.set_cache_policy(CachePolicy::Mipmap);
+
+        self.frame_transform = match self.camera {
             Camera::ThreeD {
                 ref scene_transform,
                 ref mut modelview_transform,
@@ -259,24 +262,32 @@ impl<W> DemoApp<W> where W: Window {
                 let perspective = scene_transform.perspective *
                     scene_transform.modelview_to_eye *
                     modelview_transform.to_transform();
-                Some(RenderTransform::Perspective(perspective))
+                Some(FrameTransform::Perspective(perspective))
             }
-            Camera::TwoD(transform) => Some(RenderTransform::Transform2D(transform)),
+            Camera::TwoD(transform) => Some(FrameTransform::Transform2D(transform)),
         };
 
-        let build_options = BuildOptions {
-            transform: self.render_transform.clone().unwrap(),
-            dilation: if self.ui_model.stem_darkening_effect_enabled {
-                let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
-                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                Vector2F::new(x, y).scale(font_size)
-            } else {
-                Vector2F::default()
-            },
-            subpixel_aa_enabled: self.ui_model.subpixel_aa_effect_enabled,
-        };
+        match self.frame_transform {
+            Some(FrameTransform::Perspective(ref perspective)) => {
+                self.scene_manager_proxy.set_perspective_transform(perspective)
+            }
+            Some(FrameTransform::Transform2D(ref transform)) => {
+                self.scene_manager_proxy.set_2d_transform(transform)
+            }
+            None => unreachable!(),
+        }
 
-        self.render_command_stream = Some(self.scene_proxy.build_with_stream(build_options));
+        if self.ui_model.stem_darkening_effect_enabled {
+            let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
+            let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
+            self.scene_manager_proxy.set_dilation(Vector2F::new(x, y).scale(font_size));
+        } else {
+            self.scene_manager_proxy.set_dilation(Vector2F::default());
+        }
+
+        self.scene_manager_proxy.set_subpixel_aa_enabled(self.ui_model.subpixel_aa_effect_enabled);
+
+        self.render_command_stream = Some(self.scene_manager_proxy.build_with_stream());
     }
 
     fn handle_events(&mut self, events: Vec<Event>) -> Vec<UIEvent> {
@@ -292,8 +303,8 @@ impl<W> DemoApp<W> where W: Window {
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
                     let viewport = self.window.viewport(self.ui_model.mode.view(0));
-                    self.scene_proxy.set_view_box(RectF::new(Vector2F::default(),
-                                                               viewport.size().to_f32()));
+                    self.scene_manager_proxy.set_view_box(RectF::new(Vector2F::default(),
+                                                                     viewport.size().to_f32()));
                     self.renderer
                         .set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
@@ -455,7 +466,8 @@ impl<W> DemoApp<W> where W: Window {
                                               self.scene_metadata.view_box,
                                               viewport_size);
 
-                    self.scene_proxy.replace_scene(built_svg.scene);
+                    let new_scene_manager = SceneManager::from_scene(built_svg.scene);
+                    self.scene_manager_proxy.replace_scene_manager(new_scene_manager);
 
                     self.dirty = true;
                 }
@@ -559,7 +571,11 @@ impl<W> DemoApp<W> where W: Window {
             Some(ScreenshotInfo { kind: ScreenshotType::SVG, path }) => {
                 // FIXME(pcwalton): This won't work on Android.
                 let mut writer = BufWriter::new(File::create(path).unwrap());
-                self.scene_proxy.copy_scene().export(&mut writer, FileFormat::SVG).unwrap();
+                self.scene_manager_proxy
+                    .copy_scene_manager()
+                    .scene
+                    .export(&mut writer, FileFormat::SVG)
+                    .unwrap();
             }
         }
     }
@@ -806,14 +822,14 @@ fn emit_message<W>(
 }
 
 struct Frame {
-    transform: RenderTransform,
+    transform: FrameTransform,
     ui_events: Vec<UIEvent>,
     scene_rendering_times: Vec<RenderTime>,
     scene_stats: Vec<RenderStats>,
 }
 
 impl Frame {
-    fn new(transform: RenderTransform, ui_events: Vec<UIEvent>) -> Frame {
+    fn new(transform: FrameTransform, ui_events: Vec<UIEvent>) -> Frame {
         Frame {
             transform,
             ui_events,
@@ -821,6 +837,12 @@ impl Frame {
             scene_stats: vec![],
         }
     }
+}
+
+#[derive(Clone)]
+enum FrameTransform {
+    Transform2D(Transform2F),
+    Perspective(Perspective),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

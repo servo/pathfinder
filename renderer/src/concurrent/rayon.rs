@@ -18,6 +18,13 @@ pub struct RayonExecutor;
 impl Executor for RayonExecutor {
     fn flatten_into_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
                                  where T: Send, F: Fn(usize) -> Vec<T> + Send + Sync {
-        (0..length).into_par_iter().flat_map(builder).collect()
+        (0..length).into_par_iter().fold(|| vec![], |mut vec0, index| {
+            let item0 = builder(index);
+            vec0.extend(item0.into_iter());
+            vec0
+        }).reduce(|| vec![], |mut old_a, new_a| {
+            old_a.extend(new_a.into_iter());
+            old_a
+        })
     }
 }

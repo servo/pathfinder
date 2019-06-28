@@ -10,41 +10,55 @@
 
 //! Packs data onto the GPU.
 
+use crate::command::{AlphaTileBatchPrimitive, BlockKey, FillBatchPrimitive};
+use crate::command::{RenderCommand, TileObjectPrimitive};
 use crate::concurrent::executor::Executor;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
-use crate::options::{PreparedBuildOptions, RenderCommandListener};
+use crate::manager::{BuildOptions, CachePolicy, PreparedRenderTransform, RenderCommandListener};
 use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler};
 use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::i32;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::u16;
 
 pub(crate) struct SceneBuilder<'a> {
     scene: &'a Scene,
-    built_options: &'a PreparedBuildOptions,
+
+    block_key: BlockKey,
+    transform: PreparedRenderTransform,
+    cache_policy: CachePolicy,
+    options: BuildOptions,
 
     pub(crate) next_alpha_tile_index: AtomicUsize,
     pub(crate) z_buffer: ZBuffer,
-    pub(crate) listener: Box<dyn RenderCommandListener>,
+    pub(crate) listener: &'a dyn RenderCommandListener,
 }
 
 impl<'a> SceneBuilder<'a> {
     pub(crate) fn new(
         scene: &'a Scene,
-        built_options: &'a PreparedBuildOptions,
-        listener: Box<dyn RenderCommandListener>,
+        block_key: BlockKey,
+        transform: PreparedRenderTransform,
+        cache_policy: CachePolicy,
+        options: &BuildOptions,
+        listener: &'a dyn RenderCommandListener,
     ) -> SceneBuilder<'a> {
-        let effective_view_box = scene.effective_view_box(built_options);
+        let effective_view_box = scene.effective_view_box(cache_policy, options);
+
         SceneBuilder {
             scene,
-            built_options,
+
+            block_key,
+            transform,
+            cache_policy,
+            options: *options,
 
             next_alpha_tile_index: AtomicUsize::new(0),
             z_buffer: ZBuffer::new(effective_view_box),
@@ -52,35 +66,34 @@ impl<'a> SceneBuilder<'a> {
         }
     }
 
-    pub fn build<E>(&mut self, executor: &E) where E: Executor {
+    pub(crate) fn build<E>(&mut self, executor: &E) -> Duration where E: Executor {
         let start_time = Instant::now();
 
-        let bounding_quad = self.built_options.bounding_quad();
         let path_count = self.scene.paths.len();
-        self.listener.send(RenderCommand::Start { bounding_quad, path_count });
-
-        self.listener.send(RenderCommand::AddPaintData(self.scene.build_paint_data()));
-
-        let effective_view_box = self.scene.effective_view_box(self.built_options);
+        let effective_view_box = self.scene.effective_view_box(self.cache_policy, &self.options);
         let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
-            self.build_path(path_index, effective_view_box, &self.built_options, &self.scene)
+            self.build_path(path_index, effective_view_box, &self.scene)
         });
 
         self.finish_building(alpha_tiles);
 
         let build_time = Instant::now() - start_time;
-        self.listener.send(RenderCommand::Finish { build_time });
+        build_time
     }
 
     fn build_path(
         &self,
         path_index: usize,
         view_box: RectF,
-        built_options: &PreparedBuildOptions,
         scene: &Scene,
-    ) -> Vec<AlphaTileBatchPrimitive> {
+    ) -> (Vec<AlphaTileBatchPrimitive>) {
         let path_object = &scene.paths[path_index];
-        let outline = scene.apply_render_options(path_object.outline(), built_options);
+        let outline = scene.apply_render_options(path_object.outline(),
+                                                 &self.transform,
+                                                 self.block_key,
+                                                 self.cache_policy,
+                                                 &self.options);
+
         let paint_id = path_object.paint();
         let object_is_opaque = scene.paints[paint_id.0 as usize].is_opaque();
 
@@ -93,13 +106,21 @@ impl<'a> SceneBuilder<'a> {
 
         tiler.generate_tiles();
 
-        self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
+        if !tiler.built_object.fills.is_empty() {
+            self.listener.send(RenderCommand::AddBlockFills {
+                block: self.block_key, 
+                fills: tiler.built_object.fills,
+            });
+        }
+
         tiler.built_object.alpha_tiles
     }
 
     fn cull_alpha_tiles(&self, alpha_tiles: &mut Vec<AlphaTileBatchPrimitive>) {
         for alpha_tile in alpha_tiles {
-            let alpha_tile_coords = alpha_tile.tile_coords();
+            let alpha_tile_coords = Vector2I::new(
+                (alpha_tile.tile_x_lo as i32) | ((alpha_tile.tile_hi as i32 & 0xf) << 8),
+                (alpha_tile.tile_y_lo as i32) | ((alpha_tile.tile_hi as i32 & 0xf0) << 4));
             if self
                 .z_buffer
                 .test(alpha_tile_coords, alpha_tile.object_index as u32)
@@ -111,24 +132,25 @@ impl<'a> SceneBuilder<'a> {
             alpha_tile.tile_x_lo = 0xff;
             alpha_tile.tile_y_lo = 0xff;
             alpha_tile.tile_hi = 0xff;
-        }
-    }
-
-    fn pack_alpha_tiles(&mut self, alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
-        let path_count = self.scene.paths.len() as u32;
-        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths, 0..path_count);
-        if !solid_tiles.is_empty() {
-            self.listener.send(RenderCommand::SolidTile(solid_tiles));
-        }
-        if !alpha_tiles.is_empty() {
-            self.listener.send(RenderCommand::AlphaTile(alpha_tiles));
+            alpha_tile.tile_index = 0xffff;
         }
     }
 
     fn finish_building(&mut self, mut alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
-        self.listener.send(RenderCommand::FlushFills);
+        self.listener.send(RenderCommand::FlushBlockFills);
+
         self.cull_alpha_tiles(&mut alpha_tiles);
-        self.pack_alpha_tiles(alpha_tiles);
+
+        let path_count = self.scene.paths.len() as u32;
+        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths, 0..path_count);
+
+        if !solid_tiles.is_empty() || !alpha_tiles.is_empty() {
+            self.listener.send(RenderCommand::AddBlockTiles {
+                alpha: alpha_tiles,
+                solid: solid_tiles,
+                block: self.block_key,
+            });
+        }
     }
 }
 
@@ -138,7 +160,15 @@ pub struct TileStats {
     pub alpha_tile_count: u32,
 }
 
-// Utilities for built objects
+// Built objects
+
+#[derive(Debug)]
+pub(crate) struct BuiltObject {
+    pub bounds: RectF,
+    pub fills: Vec<FillBatchPrimitive>,
+    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
+    pub tiles: DenseTileMap<TileObjectPrimitive>,
+}
 
 impl BuiltObject {
     pub(crate) fn new(bounds: RectF) -> BuiltObject {
@@ -220,9 +250,10 @@ impl BuiltObject {
             return alpha_tile_index;
         }
 
-        let alpha_tile_index = builder
-            .next_alpha_tile_index
-            .fetch_add(1, Ordering::Relaxed) as u16;
+        let alpha_tile_index = builder.next_alpha_tile_index.fetch_add(1, Ordering::Relaxed);
+        debug_assert!(alpha_tile_index < 0xffff);
+        let alpha_tile_index = alpha_tile_index as u16;
+
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
         alpha_tile_index
     }

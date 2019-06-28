@@ -1,0 +1,17 @@
+[package]
+name = "tile-perf-test"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+edition = "2018"
+
+[dependencies]
+usvg = "0.7"
+
+[dependencies.pathfinder_geometry]
+path = "../../geometry"
+
+[dependencies.pathfinder_renderer]
+path = "../../renderer"
+
+[dependencies.pathfinder_svg]
+path = "../../svg"

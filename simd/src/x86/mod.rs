@@ -627,6 +627,26 @@ impl I32x4 {
         }
     }
 
+    #[inline]
+    pub fn concat_xy_zw(self, other: I32x4) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_pd(self.0);
+            let other = x86_64::_mm_castsi128_pd(other.0);
+            let result = x86_64::_mm_shuffle_pd(this, other, 0b10);
+            I32x4(x86_64::_mm_castpd_si128(result))
+        }
+    }
+
+    #[inline]
+    pub fn concat_zw_zw(self, other: I32x4) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_pd(self.0);
+            let other = x86_64::_mm_castsi128_pd(other.0);
+            let result = x86_64::_mm_unpackhi_pd(this, other);
+            I32x4(x86_64::_mm_castpd_si128(result))
+        }
+    }
+
     // Conversions
 
     /// Converts these packed integers to floats.
@@ -650,6 +670,11 @@ impl I32x4 {
     }
 
     // Comparisons
+
+    #[inline]
+    pub fn packed_lt(self, other: I32x4) -> U32x4 {
+        unsafe { U32x4(x86_64::_mm_cmpgt_epi32(other.0, self.0)) }
+    }
 
     #[inline]
     pub fn packed_gt(self, other: I32x4) -> U32x4 {

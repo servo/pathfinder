@@ -10,13 +10,13 @@
 
 //! Software occlusion culling.
 
-use crate::gpu_data::SolidTileBatchPrimitive;
+use crate::command::SolidTileBatchPrimitive;
 use crate::paint;
 use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::vector::Vector2I;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -71,11 +71,10 @@ impl ZBuffer {
                 continue;
             }
 
+            let object_index = object_index as u16;
             let origin_uv = paint::paint_id_to_tex_coords(paths[object_index as usize].paint());
 
-            solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords + self.buffer.rect.origin(),
-                                                          object_index as u16,
-                                                          origin_uv));
+            solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords, object_index, origin_uv));
         }
 
         solid_tiles

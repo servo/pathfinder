@@ -8,31 +8,27 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Packed data ready to be sent to the GPU.
+//! Rendering commands to be interpreted by the GPU.
 
-use crate::options::BoundingQuad;
-use crate::tile_map::DenseTileMap;
+use crate::manager::BoundingQuad;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_geometry::rect::RectF;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
-
-#[derive(Debug)]
-pub(crate) struct BuiltObject {
-    pub bounds: RectF,
-    pub fills: Vec<FillBatchPrimitive>,
-    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
-    pub tiles: DenseTileMap<TileObjectPrimitive>,
-}
 
 pub enum RenderCommand {
     Start { path_count: usize, bounding_quad: BoundingQuad },
     AddPaintData(PaintData),
-    AddFills(Vec<FillBatchPrimitive>),
-    FlushFills,
-    AlphaTile(Vec<AlphaTileBatchPrimitive>),
-    SolidTile(Vec<SolidTileBatchPrimitive>),
+    AddBlockFills { block: BlockKey, fills: Vec<FillBatchPrimitive> },
+    FlushBlockFills,
+    AddBlockTiles {
+        block: BlockKey,
+        alpha: Vec<AlphaTileBatchPrimitive>,
+        solid: Vec<SolidTileBatchPrimitive>,
+    },
+    BeginComposite,
+    CompositeBlock { block: BlockKey, transform: Transform4F },
     Finish { build_time: Duration },
 }
 
@@ -42,18 +38,12 @@ pub struct PaintData {
     pub texels: Vec<u8>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct FillObjectPrimitive {
-    pub px: LineSegmentU4,
-    pub subpx: LineSegmentU8,
-    pub tile_x: i16,
-    pub tile_y: i16,
-}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BlockKey(pub u32);
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct TileObjectPrimitive {
-    /// If `u16::MAX`, then this is a solid tile.
     pub alpha_tile_index: u16,
     pub backdrop: i8,
 }
@@ -91,6 +81,33 @@ pub struct AlphaTileBatchPrimitive {
     pub origin_v: u16,
 }
 
+impl BlockKey {
+    #[inline]
+    pub fn new(level: u32, tile_origin: Vector2I) -> BlockKey {
+        debug_assert!(tile_origin.x() >= 0);
+        debug_assert!(tile_origin.y() >= 0);
+        debug_assert_eq!(tile_origin.x() & 0xff, 0);
+        debug_assert_eq!(tile_origin.y() & 0xff, 0);
+        BlockKey(level | (tile_origin.x() as u32) | ((tile_origin.y() as u32) << 16))
+    }
+
+    #[inline]
+    pub fn tile_origin(self) -> Vector2I {
+        Vector2I::new((self.0 & 0x000fff00) as i32, ((self.0 & 0xfff00000) >> 16) as i32)
+    }
+
+    #[inline]
+    pub fn level(self) -> u32 {
+        self.0 & 0xff
+    }
+
+    // TODO(pcwalton): Scales of < 1.
+    #[inline]
+    pub fn scale(self) -> u32 {
+        1 << self.level()
+    }
+}
+
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
@@ -98,13 +115,20 @@ impl Debug for RenderCommand {
             RenderCommand::AddPaintData(ref paint_data) => {
                 write!(formatter, "AddPaintData({}x{})", paint_data.size.x(), paint_data.size.y())
             }
-            RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
-            RenderCommand::FlushFills => write!(formatter, "FlushFills"),
-            RenderCommand::AlphaTile(ref tiles) => {
-                write!(formatter, "AlphaTile(x{})", tiles.len())
+            RenderCommand::AddBlockFills { block, ref fills } => {
+                write!(formatter, "AddBlockFills({:?}, x{})", block, fills.len())
             }
-            RenderCommand::SolidTile(ref tiles) => {
-                write!(formatter, "SolidTile(x{})", tiles.len())
+            RenderCommand::FlushBlockFills => write!(formatter, "FlushBlockFills"),
+            RenderCommand::BeginComposite => write!(formatter, "BeginComposite"),
+            RenderCommand::AddBlockTiles { block, ref alpha, ref solid } => {
+                write!(formatter,
+                       "AddBlockTiles({:?}, A {}, S {})",
+                       block,
+                       alpha.len(),
+                       solid.len())
+            }
+            RenderCommand::CompositeBlock { block, ref transform } => {
+                write!(formatter, "CompositeBlock({:?}, {:?})", block, transform)
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

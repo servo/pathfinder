@@ -12,7 +12,7 @@
 
 use crate::camera::{Camera, Mode};
 use crate::window::{View, Window};
-use crate::{BackgroundColor, DemoApp, UIVisibility};
+use crate::{BackgroundColor, DemoApp, FrameTransform, UIVisibility};
 use image::ColorType;
 use pathfinder_content::color::{ColorF, ColorU};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
@@ -20,10 +20,9 @@ use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, Unif
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
+use pathfinder_renderer::command::RenderCommand;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::RenderMode;
-use pathfinder_renderer::gpu_data::RenderCommand;
-use pathfinder_renderer::options::RenderTransform;
 use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
 use std::path::PathBuf;
 
@@ -200,8 +199,8 @@ impl<W> DemoApp<W> where W: Window {
         let frame = &self.current_frame.as_ref().unwrap();
 
         let perspective = match frame.transform {
-            RenderTransform::Transform2D(..) => return,
-            RenderTransform::Perspective(perspective) => perspective,
+            FrameTransform::Transform2D(..) => return,
+            FrameTransform::Perspective(perspective) => perspective,
         };
 
         if self.ui_model.background_color == BackgroundColor::Transparent {

@@ -15,7 +15,7 @@ uniform vec2 uStencilTextureSize;
 in uvec2 aTessCoord;
 in uvec3 aTileOrigin;
 in int aBackdrop;
-in int aTileIndex;
+in uint aTileIndex;
 
 out vec2 vTexCoord;
 out float vBackdrop;
@@ -32,12 +32,11 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 void computeVaryings() {
     vec2 origin = vec2(aTileOrigin.xy) + vec2(aTileOrigin.z & 15u, aTileOrigin.z >> 4u) * 256.0;
     vec2 position = (origin + vec2(aTessCoord)) * uTileSize;
-    vec2 maskTexCoordOrigin = computeTileOffset(uint(aTileIndex), uStencilTextureSize.x);
+    vec2 maskTexCoordOrigin = computeTileOffset(aTileIndex, uStencilTextureSize.x);
     vec2 maskTexCoord = maskTexCoordOrigin + aTessCoord * uTileSize;
 
-    vTexCoord = maskTexCoord / uStencilTextureSize;
+    vTexCoord = maskTexCoord;
     vBackdrop = float(aBackdrop);
     vColor = getColor();
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
-

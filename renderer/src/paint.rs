@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::gpu_data::PaintData;
+use crate::command::PaintData;
 use crate::scene::Scene;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_content::color::ColorU;

@@ -2290,6 +2290,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tile-perf-test"
+version = "0.1.0"
+dependencies = [
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_renderer 0.1.0",
+ "pathfinder_svg 0.1.0",
+ "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "time"
 version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"

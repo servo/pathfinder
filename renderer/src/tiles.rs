@@ -8,11 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::builder::SceneBuilder;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
+use crate::builder::{BuiltObject, SceneBuilder};
+use crate::command::{AlphaTileBatchPrimitive, TileObjectPrimitive};
 use crate::paint::{self, PaintId};
 use crate::sorted_vector::SortedVector;
-use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::line_segment::{LineSegment2F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
@@ -130,15 +130,16 @@ impl<'a> Tiler<'a> {
 
             let origin_uv = paint::paint_id_to_tex_coords(self.paint_id);
 
-            let alpha_tile = AlphaTileBatchPrimitive::new(
-                tile_coords,
-                tile.backdrop,
-                self.object_index,
-                tile.alpha_tile_index as u16,
-                origin_uv,
-            );
-
-            self.built_object.alpha_tiles.push(alpha_tile);
+            self.built_object.alpha_tiles.push(AlphaTileBatchPrimitive {
+                tile_x_lo: (tile_coords.x() & 0xff) as u8,
+                tile_y_lo: (tile_coords.y() & 0xff) as u8,
+                tile_hi: (tile_coords.x() >> 8) as u8 | ((tile_coords.y() & 0xf00) >> 4) as u8,
+                backdrop: tile.backdrop,
+                object_index: self.object_index,
+                tile_index: tile.alpha_tile_index,
+                origin_u: origin_uv.x() as u16,
+                origin_v: origin_uv.y() as u16,
+            });
         }
     }
 
@@ -227,7 +228,7 @@ impl<'a> Tiler<'a> {
             }
 
             // Do final subtile fill, if necessary.
-            debug_assert_eq!(current_tile_x, segment_tile_x);
+            //debug_assert_eq!(current_tile_x, segment_tile_x);
             let segment_subtile_x =
                 segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
             if segment_subtile_x > current_subtile_x {
@@ -527,35 +528,6 @@ impl ActiveEdge {
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
         self.crossing.x().partial_cmp(&other.crossing.x())
-    }
-}
-
-impl AlphaTileBatchPrimitive {
-    #[inline]
-    fn new(tile_coords: Vector2I,
-           backdrop: i8,
-           object_index: u16,
-           tile_index: u16,
-           origin_uv: Vector2I)
-           -> AlphaTileBatchPrimitive {
-        AlphaTileBatchPrimitive {
-            tile_x_lo: (tile_coords.x() & 0xff) as u8,
-            tile_y_lo: (tile_coords.y() & 0xff) as u8,
-            tile_hi: (((tile_coords.x() >> 8) & 0x0f) | ((tile_coords.y() >> 4) & 0xf0)) as u8,
-            backdrop,
-            object_index,
-            tile_index,
-            origin_u: origin_uv.x() as u16,
-            origin_v: origin_uv.y() as u16,
-        }
-    }
-
-    #[inline]
-    pub fn tile_coords(&self) -> Vector2I {
-        Vector2I::new(
-            (self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
-            (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4),
-        )
     }
 }
 

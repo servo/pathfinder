@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
 
 #[derive(Debug)]
 pub struct DenseTileMap<T> {
@@ -44,22 +44,37 @@ impl<T> DenseTileMap<T> {
 
     #[inline]
     pub fn coords_to_index(&self, coords: Vector2I) -> Option<usize> {
-        if self.rect.contains_point(coords) {
-            Some(self.coords_to_index_unchecked(coords))
-        } else {
-            None
-        }
+        coords_to_index(self.rect, coords)
     }
 
     #[inline]
     pub fn coords_to_index_unchecked(&self, coords: Vector2I) -> usize {
-        (coords.y() - self.rect.min_y()) as usize * self.rect.size().x() as usize
-            + (coords.x() - self.rect.min_x()) as usize
+        coords_to_index_unchecked(self.rect, coords)
     }
 
     #[inline]
     pub fn index_to_coords(&self, index: usize) -> Vector2I {
-        let (width, index) = (self.rect.size().x(), index as i32);
-        self.rect.origin() + Vector2I::new(index % width, index / width)
+        index_to_coords(self.rect, index)
     }
+}
+
+#[inline]
+fn coords_to_index(rect: RectI, coords: Vector2I) -> Option<usize> {
+    if rect.contains_point(coords) {
+        Some(coords_to_index_unchecked(rect, coords))
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn coords_to_index_unchecked(rect: RectI, coords: Vector2I) -> usize {
+    (coords.y() - rect.min_y()) as usize * rect.size().x() as usize
+        + (coords.x() - rect.min_x()) as usize
+}
+
+#[inline]
+fn index_to_coords(rect: RectI, index: usize) -> Vector2I {
+    let (width, index) = (rect.size().x(), index as i32);
+    rect.origin() + Vector2I::new(index % width, index / width)
 }

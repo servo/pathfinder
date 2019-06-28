@@ -10,15 +10,14 @@
 
 //! A set of paths to be rendered.
 
-use crate::builder::SceneBuilder;
-use crate::concurrent::executor::Executor;
-use crate::options::{BuildOptions, PreparedBuildOptions};
-use crate::options::{PreparedRenderTransform, RenderCommandListener};
+use crate::command::BlockKey;
+use crate::manager::{BuildOptions, CachePolicy, PreparedRenderTransform};
 use crate::paint::{Paint, PaintId};
+use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
-use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_content::color::ColorU;
 use pathfinder_content::outline::Outline;
 
@@ -88,12 +87,15 @@ impl Scene {
     pub(crate) fn apply_render_options(
         &self,
         original_outline: &Outline,
-        options: &PreparedBuildOptions,
+        transform: &PreparedRenderTransform,
+        block_key: BlockKey,
+        cache_policy: CachePolicy,
+        options: &BuildOptions,
     ) -> Outline {
-        let effective_view_box = self.effective_view_box(options);
+        let effective_view_box = self.effective_view_box(cache_policy, options);
 
         let mut outline;
-        match options.transform {
+        match *transform {
             PreparedRenderTransform::Perspective {
                 ref perspective,
                 ref clip_polygon,
@@ -109,11 +111,12 @@ impl Scene {
                     // TODO(pcwalton): Support subpixel AA in 3D.
                 }
             }
+
             _ => {
                 // TODO(pcwalton): Short circuit.
                 outline = (*original_outline).clone();
-                if options.transform.is_2d() || options.subpixel_aa_enabled {
-                    let mut transform = match options.transform {
+                if transform.is_2d() || options.subpixel_aa_enabled {
+                    let mut transform = match *transform {
                         PreparedRenderTransform::Transform2D(transform) => transform,
                         PreparedRenderTransform::None => Transform2F::default(),
                         PreparedRenderTransform::Perspective { .. } => unreachable!(),
@@ -133,7 +136,7 @@ impl Scene {
 
         // TODO(pcwalton): Fold this into previous passes to avoid unnecessary clones during
         // monotonic conversion.
-        outline.prepare_for_tiling(self.effective_view_box(options));
+        outline.prepare_for_tiling(effective_view_box);
         outline
     }
 
@@ -154,22 +157,16 @@ impl Scene {
     }
 
     #[inline]
-    pub(crate) fn effective_view_box(&self, render_options: &PreparedBuildOptions) -> RectF {
-        if render_options.subpixel_aa_enabled {
+    pub(crate) fn effective_view_box(&self, cache_policy: CachePolicy, options: &BuildOptions)
+                                     -> RectF {
+        if cache_policy != CachePolicy::Never {
+            let block_size = Vector2F::new((TILE_WIDTH * 256) as f32, (TILE_HEIGHT * 256) as f32);
+            RectF::new(Vector2F::default(), block_size)
+        } else if options.subpixel_aa_enabled {
             self.view_box.scale_xy(Vector2F::new(3.0, 1.0))
         } else {
             self.view_box
         }
-    }
-
-    #[inline]
-    pub fn build<E>(&self,
-                    options: BuildOptions,
-                    listener: Box<dyn RenderCommandListener>,
-                    executor: &E)
-                    where E: Executor {
-        let prepared_options = options.prepare(self.bounds);
-        SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
     
     pub fn paths<'a>(&'a self) -> PathIter {
@@ -179,10 +176,12 @@ impl Scene {
         }
     }
 }
+
 pub struct PathIter<'a> {
     scene: &'a Scene,
     pos: usize
 }
+
 impl<'a> Iterator for PathIter<'a> {
     type Item = (&'a Paint, &'a Outline, &'a str);
     fn next(&mut self) -> Option<Self::Item> {
@@ -197,6 +196,7 @@ impl<'a> Iterator for PathIter<'a> {
         item
     }
 }
+
 #[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,

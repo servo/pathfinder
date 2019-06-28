@@ -15,10 +15,10 @@ extern crate bitflags;
 #[macro_use]
 extern crate log;
 
+pub mod command;
 pub mod concurrent;
 pub mod gpu;
-pub mod gpu_data;
-pub mod options;
+pub mod manager;
 pub mod paint;
 pub mod post;
 pub mod scene;

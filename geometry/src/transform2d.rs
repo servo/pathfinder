@@ -187,10 +187,10 @@ impl Transform2F {
     pub fn to_3d(&self) -> Transform4F {
         Transform4F::row_major(
             self.matrix.0[0],
-            self.matrix.0[1],
+            self.matrix.0[2],
             0.0,
             self.vector.x(),
-            self.matrix.0[2],
+            self.matrix.0[1],
             self.matrix.0[3],
             0.0,
             self.vector.y(),
@@ -269,6 +269,12 @@ impl Transform2F {
     #[inline]
     pub fn scale_factor(&self) -> f32 {
         Vector2F(self.matrix.0.zw()).length()
+    }
+
+    #[inline]
+    pub fn inverse(&self) -> Transform2F {
+        let matrix_inv = self.matrix.inverse();
+        Transform2F { matrix: matrix_inv, vector: -(matrix_inv * self.vector) }
     }
 }
 

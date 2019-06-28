@@ -30,4 +30,5 @@ members = [
     "utils/gamma-lut",
     "utils/svg-to-skia",
     "utils/convert",
+    "utils/tile-perf-test",
 ]

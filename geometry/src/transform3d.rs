@@ -12,8 +12,8 @@
 
 use crate::vector::{Vector2F, Vector2I, Vector4F};
 use crate::rect::RectF;
-use crate::transform2d::Matrix2x2F;
-use pathfinder_simd::default::F32x4;
+use crate::transform2d::{Matrix2x2F, Transform2F};
+use pathfinder_simd::default::{F32x2, F32x4};
 use std::ops::{Add, Mul, MulAssign, Neg};
 
 /// An transform, optimized with SIMD.
@@ -298,6 +298,18 @@ impl Transform4F {
     #[inline]
     pub fn to_columns(&self) -> [F32x4; 4] {
         [self.c0, self.c1, self.c2, self.c3]
+    }
+
+    pub fn to_2d(&self) -> Option<Transform2F> {
+        if self.c0.concat_zw_zw(self.c1) != F32x4::default() || self.c2 != F32x4::default() ||
+                self.c3.zw() != F32x2::new(0.0, 1.0) {
+            None
+        } else {
+            Some(Transform2F {
+                matrix: Matrix2x2F(self.c0.concat_xy_xy(self.c1)),
+                vector: Vector2F(self.c3.xy()),
+            })
+        }
     }
 }
 

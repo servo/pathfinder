@@ -11,5 +11,5 @@
 //! Threading and concurrency support.
 
 pub mod executor;
+pub mod manager_proxy;
 pub mod rayon;
-pub mod scene_proxy;

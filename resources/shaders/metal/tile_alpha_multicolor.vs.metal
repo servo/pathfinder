@@ -28,7 +28,7 @@ struct main0_in
     uint2 aTessCoord [[attribute(0)]];
     uint3 aTileOrigin [[attribute(1)]];
     int aBackdrop [[attribute(2)]];
-    int aTileIndex [[attribute(3)]];
+    uint aTileIndex [[attribute(3)]];
     float2 aColorTexCoord [[attribute(4)]];
 };
 
@@ -44,15 +44,15 @@ float4 getColor(thread texture2d<float> uPaintTexture, thread const sampler uPai
     return uPaintTexture.sample(uPaintTextureSmplr, aColorTexCoord, level(0.0));
 }
 
-void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread uint2& aTessCoord, thread int& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread float4x4 uTransform, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
+void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread uint2& aTessCoord, thread uint& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread float4x4 uTransform, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
 {
     float2 origin = float2(aTileOrigin.xy) + (float2(float(aTileOrigin.z & 15u), float(aTileOrigin.z >> 4u)) * 256.0);
     float2 position = (origin + float2(aTessCoord)) * uTileSize;
-    uint param = uint(aTileIndex);
+    uint param = aTileIndex;
     float param_1 = uStencilTextureSize.x;
     float2 maskTexCoordOrigin = computeTileOffset(param, param_1, uTileSize);
     float2 maskTexCoord = maskTexCoordOrigin + (float2(aTessCoord) * uTileSize);
-    vTexCoord = maskTexCoord / uStencilTextureSize;
+    vTexCoord = maskTexCoord;
     vBackdrop = float(aBackdrop);
     vColor = getColor(uPaintTexture, uPaintTextureSmplr, aColorTexCoord);
     gl_Position = uTransform * float4(position, 0.0, 1.0);
