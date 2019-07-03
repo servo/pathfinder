@@ -94,7 +94,7 @@ impl SceneExt for Scene {
             let scale = style.size / (font.metrics().units_per_em as f32);
             let scale = Vector2F::new(scale, -scale);
             let transform =
-                Transform2DF::from_scale(scale).post_mul(transform).post_translate(offset);
+                Transform2DF::from_scale(scale).post_translate(offset).post_mul(transform);
             self.push_glyph(font,
                             glyph.glyph_id,
                             &transform,
