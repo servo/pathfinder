@@ -123,16 +123,17 @@ impl<D> UIPresenter<D> where D: Device {
     }
 
 
-    pub fn draw_solid_rect(&self, device: &D, rect: RectI, color: ColorU) {
-        self.draw_rect(device, rect, color, true);
+    pub fn draw_solid_rect(&self, device: &D::Device, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
+        encoder.draw_rect(device, encoder, rect, color, true);
     }
 
-    pub fn draw_rect_outline(&self, device: &D, rect: RectI, color: ColorU) {
-        self.draw_rect(device, rect, color, false);
+    pub fn draw_rect_outline(&self, device: &D::Device, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
+        encoder.draw_rect(device, encoder, rect, color, false);
     }
 
     fn draw_rect(&self,
-                 device: &D,
+                 device: &D::Device,
+                 encoder: &mut D::Encoder,
                  rect: RectI,
                  color: ColorU,
                  filled: bool) {
@@ -145,12 +146,14 @@ impl<D> UIPresenter<D> where D: Device {
 
         if filled {
             self.draw_solid_rects_with_vertex_data(device,
+                                                   encoder,
                                                    &vertex_data,
                                                    &QUAD_INDICES,
                                                    color,
                                                    true);
         } else {
             self.draw_solid_rects_with_vertex_data(device,
+                                                   encoder,
                                                    &vertex_data,
                                                    &RECT_LINE_INDICES,
                                                    color,
@@ -160,6 +163,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_solid_rects_with_vertex_data(&self,
                                          device: &D,
+                                         encoder: &mut D::Encoder,
                                          vertex_data: &[DebugSolidVertex],
                                          index_data: &[u32],
                                          color: ColorU,
@@ -174,10 +178,10 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferUploadMode::Dynamic);
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
-        device.draw_elements(index_data.len() as u32, &RenderState {
+        encoder.draw_elements(index_data.len() as u32, &RenderState {
             target: &RenderTarget::Default,
-            program: &self.solid_program.program,
-            vertex_array: &self.solid_vertex_array.vertex_array,
+            pipeline: &self.solid_program.program,
+            vertex_buffers: &self.solid_vertex_array.vertex_array,
             primitive,
             uniforms: &[
                 (&self.solid_program.framebuffer_size_uniform,
