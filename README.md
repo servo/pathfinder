@@ -34,7 +34,7 @@ The project features:
 
 * Fast GPU rendering, even at small pixel sizes. Even on lower-end GPUs, Pathfinder typically
   matches or exceeds the performance of the best CPU rasterizers. The difference is particularly
-  pronouced at large sizes, where Pathfinder regularly achieves multi-factor speedups. All shaders
+  pronounced at large sizes, where Pathfinder regularly achieves multi-factor speedups. All shaders
   have no loops and minimal branching.
 
 * Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
