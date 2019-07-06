@@ -44,13 +44,15 @@ pub trait Device: Sized {
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
-    fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
+    fn create_texture_from_png(
+        &self, resources: &dyn ResourceLoader, name: &str
+    ) -> (Self::Texture, Vector2I) {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
         let image = image::load_from_memory_with_format(&data, ImageFormat::PNG)
             .unwrap()
             .to_luma();
         let size = Vector2I::new(image.width() as i32, image.height() as i32);
-        self.create_texture_from_data(size, &image)
+        (self.create_texture_from_data(size, &image), size)
     }
 
     fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
@@ -92,19 +94,8 @@ pub trait Device: Sized {
         self.create_pipeline_from_shader_names(resources, name, name, name, options, vertex_buffers)
     }
 
-
-    fn bind_buffer(&self,
-                   buffer: &Self::Buffer,
-                   target: BufferTarget);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
-    fn create_buffer(&self) -> Self::Buffer;
-    fn allocate_buffer<T>(
-        &self,
-        buffer: &Self::Buffer,
-        data: BufferData<T>,
-        target: BufferTarget,
-        mode: BufferUploadMode,
-    );
+    fn create_buffer<T>(&self, data: BufferData<T>) -> Self::Buffer;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
     fn begin_commands(&self) -> Self::Encoder;
@@ -135,18 +126,6 @@ pub enum BufferData<'a, T> {
     Memory(&'a [T]),
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum BufferTarget {
-    Vertex(i8),
-    Index,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum BufferUploadMode {
-    Static,
-    Dynamic,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ShaderKind {
     Vertex,
@@ -172,7 +151,8 @@ pub enum Primitive {
 pub struct RenderState<'a, D> where D: Device {
     pub target: &'a RenderTarget<'a, D>,
     pub pipeline: &'a D::Pipeline,
-    pub vertex_buffers: &'a [D::Buffer],
+    pub index_buffer: Option<&'a D::Buffer>,
+    pub vertex_buffers: &'a [&'a D::Buffer],
     pub primitive: Primitive,
     pub uniforms: &'a [(&'a D::Uniform, UniformData)],
     pub textures: &'a [&'a D::Texture],
@@ -296,7 +276,6 @@ impl UniformData {
 
 #[derive(Clone, Debug)]
 pub struct VertexBufferDescriptor {
-    pub size: usize,
     pub stride: usize,
     pub divisor: u32,
     pub attributes: Vec<VertexAttrDescriptor>,

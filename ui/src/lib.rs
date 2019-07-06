@@ -21,9 +21,9 @@ use pathfinder_content::color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
+use pathfinder_gpu::{BlendState, BufferData, Device, Encoder, Primitive};
 use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType, VertexBufferDescriptor};
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::mem;
@@ -70,31 +70,28 @@ pub struct UIPresenter<D> where D: Device {
 
     framebuffer_size: Vector2I,
 
-    texture_program: DebugTextureProgram<D>,
-    texture_vertex_array: DebugTextureVertexArray<D>,
-    solid_program: DebugSolidProgram<D>,
-    solid_vertex_array: DebugSolidVertexArray<D>,
-    font: DebugFont,
+    texture_pipeline: DebugTexturePipeline<D>,
+    solid_pipeline: DebugSolidPipeline<D>,
 
+    font: DebugFont,
     font_texture: D::Texture,
+    font_size: Vector2I,
+
     corner_fill_texture: D::Texture,
+    corner_fill_size: Vector2I,
     corner_outline_texture: D::Texture,
+    corner_outline_size: Vector2I,
 }
 
 impl<D> UIPresenter<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Vector2I)
                -> UIPresenter<D> {
-        let texture_program = DebugTextureProgram::new(device, resources);
-        let texture_vertex_array = DebugTextureVertexArray::new(device, &texture_program);
         let font = DebugFont::load(resources);
-
-        let solid_program = DebugSolidProgram::new(device, resources);
-        let solid_vertex_array = DebugSolidVertexArray::new(device, &solid_program);
-
-        let font_texture = device.create_texture_from_png(resources, FONT_PNG_NAME);
-        let corner_fill_texture = device.create_texture_from_png(resources, CORNER_FILL_PNG_NAME);
-        let corner_outline_texture = device.create_texture_from_png(resources,
-                                                                    CORNER_OUTLINE_PNG_NAME);
+        let (font_texture, font_size) = device.create_texture_from_png(resources, FONT_PNG_NAME);
+        let (corner_fill_texture, corner_fill_size) = device.create_texture_from_png(resources, 
+                                                                                     CORNER_FILL_PNG_NAME);
+        let (corner_outline_texture, corner_outline_size) = device.create_texture_from_png(resources,
+                                                                                           CORNER_OUTLINE_PNG_NAME);
 
         UIPresenter {
             event_queue: UIEventQueue::new(),
@@ -102,15 +99,17 @@ impl<D> UIPresenter<D> where D: Device {
 
             framebuffer_size,
 
-            texture_program,
-            texture_vertex_array,
-            font,
-            solid_program,
-            solid_vertex_array,
+            texture_pipeline: DebugTexturePipeline::new(device, resources),            
+            solid_pipeline: DebugSolidPipeline::new(device, resources),
 
+            font,
             font_texture,
+            font_size,
+
             corner_fill_texture,
+            corner_fill_size,
             corner_outline_texture,
+            corner_outline_size,
         }
     }
 
@@ -123,16 +122,16 @@ impl<D> UIPresenter<D> where D: Device {
     }
 
 
-    pub fn draw_solid_rect(&self, device: &D::Device, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
-        encoder.draw_rect(device, encoder, rect, color, true);
+    pub fn draw_solid_rect(&self, device: &D, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
+        self.draw_rect(device, encoder, rect, color, true);
     }
 
-    pub fn draw_rect_outline(&self, device: &D::Device, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
-        encoder.draw_rect(device, encoder, rect, color, false);
+    pub fn draw_rect_outline(&self, device: &D, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
+        self.draw_rect(device, encoder, rect, color, false);
     }
 
     fn draw_rect(&self,
-                 device: &D::Device,
+                 device: &D,
                  encoder: &mut D::Encoder,
                  rect: RectI,
                  color: ColorU,
@@ -168,36 +167,27 @@ impl<D> UIPresenter<D> where D: Device {
                                          index_data: &[u32],
                                          color: ColorU,
                                          filled: bool) {
-        device.allocate_buffer(&self.solid_vertex_array.vertex_buffer,
-                               BufferData::Memory(vertex_data),
-                               BufferTarget::Vertex,
-                               BufferUploadMode::Dynamic);
-        device.allocate_buffer(&self.solid_vertex_array.index_buffer,
-                               BufferData::Memory(index_data),
-                               BufferTarget::Index,
-                               BufferUploadMode::Dynamic);
+        let vertex_buffer = device.create_buffer(BufferData::Memory(vertex_data));
+        let index_buffer = device.create_buffer(BufferData::Memory(index_data));
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
         encoder.draw_elements(index_data.len() as u32, &RenderState {
             target: &RenderTarget::Default,
-            pipeline: &self.solid_program.program,
-            vertex_buffers: &self.solid_vertex_array.vertex_array,
+            pipeline: &self.solid_pipeline.pipeline,
+            index_buffer: Some(&index_buffer),
+            vertex_buffers: &[&vertex_buffer],
             primitive,
             uniforms: &[
-                (&self.solid_program.framebuffer_size_uniform,
+                (&self.solid_pipeline.framebuffer_size_uniform,
                  UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
-                (&self.solid_program.color_uniform, get_color_uniform(color)),
+                (&self.solid_pipeline.color_uniform, get_color_uniform(color)),
             ],
             textures: &[],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
-            options: RenderOptions {
-                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-                ..RenderOptions::default()
-            },
         });
     }
 
-    pub fn draw_text(&self, device: &D, string: &str, origin: Vector2I, invert: bool) {
+    pub fn draw_text(&self, device: &D, encoder: &mut D::Encoder, string: &str, origin: Vector2I, invert: bool) {
         let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
@@ -228,18 +218,22 @@ impl<D> UIPresenter<D> where D: Device {
 
         let color = if invert { INVERTED_TEXT_COLOR } else { TEXT_COLOR };
         self.draw_texture_with_vertex_data(device,
+                                           encoder,
                                            &vertex_data,
                                            &index_data,
                                            &self.font_texture,
+                                           self.font_size,
                                            color);
     }
 
     pub fn draw_texture(&self,
                         device: &D,
+                        encoder: &mut D::Encoder,
                         origin: Vector2I,
                         texture: &D::Texture,
+                        texture_size: Vector2I,
                         color: ColorU) {
-        let position_rect = RectI::new(origin, device.texture_size(&texture));
+        let position_rect = RectI::new(origin, texture_size);
         let tex_coord_rect = RectI::new(Vector2I::default(), position_rect.size());
         let vertex_data = [
             DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
@@ -248,7 +242,7 @@ impl<D> UIPresenter<D> where D: Device {
             DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
         ];
 
-        self.draw_texture_with_vertex_data(device, &vertex_data, &QUAD_INDICES, texture, color);
+        self.draw_texture_with_vertex_data(device, encoder, &vertex_data, &QUAD_INDICES, texture, texture_size, color);
     }
 
     pub fn measure_text(&self, string: &str) -> i32 {
@@ -269,10 +263,10 @@ impl<D> UIPresenter<D> where D: Device {
         SEGMENT_SIZE * segment_count as i32 + (segment_count - 1) as i32
     }
 
-    pub fn draw_solid_rounded_rect(&self, device: &D, rect: RectI, color: ColorU) {
-        let corner_texture = self.corner_texture(true);
-        let corner_rects = CornerRects::new(device, rect, corner_texture);
-        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
+    pub fn draw_solid_rounded_rect(&self, device: &D, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
+        let (corner_texture, corner_size) = self.corner_texture(true);
+        let corner_rects = CornerRects::new(device, rect, corner_texture, corner_size);
+        self.draw_rounded_rect_corners(device, encoder, color, corner_texture, corner_size, &corner_rects);
 
         let solid_rect_mid   = RectI::from_points(corner_rects.upper_left.upper_right(),
                                                     corner_rects.lower_right.lower_left());
@@ -303,16 +297,17 @@ impl<D> UIPresenter<D> where D: Device {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
 
         self.draw_solid_rects_with_vertex_data(device,
+                                               encoder,
                                                &vertex_data,
                                                &index_data[0..18],
                                                color,
                                                true);
     }
 
-    pub fn draw_rounded_rect_outline(&self, device: &D, rect: RectI, color: ColorU) {
-        let corner_texture = self.corner_texture(false);
-        let corner_rects = CornerRects::new(device, rect, corner_texture);
-        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
+    pub fn draw_rounded_rect_outline(&self, device: &D, encoder: &mut D::Encoder, rect: RectI, color: ColorU) {
+        let (corner_texture, corner_size) = self.corner_texture(false);
+        let corner_rects = CornerRects::new(device, rect, corner_texture, corner_size);
+        self.draw_rounded_rect_corners(device, encoder, color, corner_texture, corner_size, &corner_rects);
 
         let vertex_data = vec![
             DebugSolidVertex::new(corner_rects.upper_left.upper_right()),
@@ -326,22 +321,23 @@ impl<D> UIPresenter<D> where D: Device {
         ];
 
         let index_data = &OUTLINE_RECT_LINE_INDICES;
-        self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
+        self.draw_solid_rects_with_vertex_data(device, encoder, &vertex_data, index_data, color, false);
     }
 
     // TODO(pcwalton): `LineSegmentI32`.
-    fn draw_line(&self, device: &D, from: Vector2I, to: Vector2I, color: ColorU) {
+    fn draw_line(&self, device: &D, encoder: &mut D::Encoder, from: Vector2I, to: Vector2I, color: ColorU) {
         let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
-        self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);
+        self.draw_solid_rects_with_vertex_data(device, encoder, &vertex_data, &[0, 1], color, false);
 
     }
 
     fn draw_rounded_rect_corners(&self,
                                  device: &D,
+                                 encoder: &mut D::Encoder,
                                  color: ColorU,
                                  texture: &D::Texture,
+                                 corner_size: Vector2I,
                                  corner_rects: &CornerRects) {
-        let corner_size = device.texture_size(&texture);
         let tex_coord_rect = RectI::new(Vector2I::default(), corner_size);
 
         let vertex_data = vec![
@@ -388,68 +384,69 @@ impl<D> UIPresenter<D> where D: Device {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 12));
 
-        self.draw_texture_with_vertex_data(device, &vertex_data, &index_data, texture, color);
+        self.draw_texture_with_vertex_data(device, encoder, &vertex_data, &index_data, texture, corner_size, color);
     }
 
-    fn corner_texture(&self, filled: bool) -> &D::Texture {
-        if filled { &self.corner_fill_texture } else { &self.corner_outline_texture }
+    fn corner_texture(&self, filled: bool) -> (&D::Texture, Vector2I) {
+        if filled {
+            (&self.corner_fill_texture, self.corner_fill_size)
+        } else {
+            (&self.corner_outline_texture, self.corner_outline_size)
+        }
     }
 
     fn draw_texture_with_vertex_data(&self,
                                      device: &D,
+                                     encoder: &mut D::Encoder,
                                      vertex_data: &[DebugTextureVertex],
                                      index_data: &[u32],
                                      texture: &D::Texture,
+                                     texture_size: Vector2I,
                                      color: ColorU) {
-        device.allocate_buffer(&self.texture_vertex_array.vertex_buffer,
-                               BufferData::Memory(vertex_data),
-                               BufferTarget::Vertex,
-                               BufferUploadMode::Dynamic);
-        device.allocate_buffer(&self.texture_vertex_array.index_buffer,
-                               BufferData::Memory(index_data),
-                               BufferTarget::Index,
-                               BufferUploadMode::Dynamic);
+        let vertex_buffer = device.create_buffer(BufferData::Memory(vertex_data));
+        let index_buffer = device.create_buffer(BufferData::Memory(index_data));
 
-        device.draw_elements(index_data.len() as u32, &RenderState {
+        encoder.draw_elements(index_data.len() as u32, &RenderState {
             target: &RenderTarget::Default,
-            program: &self.texture_program.program,
-            vertex_array: &self.texture_vertex_array.vertex_array,
+            pipeline: &self.texture_pipeline.pipeline,
+            index_buffer: Some(&index_buffer),
+            vertex_buffers: &[&vertex_buffer],
             primitive: Primitive::Triangles,
             textures: &[&texture],
             uniforms: &[
-                (&self.texture_program.framebuffer_size_uniform,
+                (&self.texture_pipeline.framebuffer_size_uniform,
                  UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
-                (&self.texture_program.color_uniform, get_color_uniform(color)),
-                (&self.texture_program.texture_uniform, UniformData::TextureUnit(0)),
-                (&self.texture_program.texture_size_uniform,
-                 UniformData::Vec2(device.texture_size(&texture).0.to_f32x2()))
+                (&self.texture_pipeline.color_uniform, get_color_uniform(color)),
+                (&self.texture_pipeline.texture_uniform, UniformData::TextureUnit(0)),
+                (&self.texture_pipeline.texture_size_uniform,
+                 UniformData::Vec2(texture_size.0.to_f32x2()))
             ],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
-            options: RenderOptions {
-                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-                ..RenderOptions::default()
-            },
         });
     }
 
-    pub fn draw_button(&mut self, device: &D, origin: Vector2I, texture: &D::Texture) -> bool {
+    pub fn draw_button(&mut self, device: &D, encoder: &mut D::Encoder, origin: Vector2I, texture: &D::Texture) -> bool {
         let button_rect = RectI::new(origin, Vector2I::new(BUTTON_WIDTH, BUTTON_HEIGHT));
-        self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
-        self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
+        self.draw_solid_rounded_rect(device, encoder, button_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, encoder, button_rect, OUTLINE_COLOR);
         self.draw_texture(device,
+                          encoder,
                           origin + Vector2I::new(PADDING, PADDING),
                           texture,
+                          button_rect.size(),
                           BUTTON_ICON_COLOR);
         self.event_queue.handle_mouse_down_in_rect(button_rect).is_some()
     }
 
     pub fn draw_text_switch(&mut self,
                             device: &D,
+                            encoder: &mut D::Encoder,
                             mut origin: Vector2I,
                             segment_labels: &[&str],
                             mut value: u8)
                             -> u8 {
         if let Some(new_value) = self.draw_segmented_control(device,
+                                                             encoder,
                                                              origin,
                                                              Some(value),
                                                              segment_labels.len() as u8) {
@@ -461,6 +458,7 @@ impl<D> UIPresenter<D> where D: Device {
             let label_width = self.measure_text(segment_label);
             let offset = SEGMENT_SIZE / 2 - label_width / 2;
             self.draw_text(device,
+                           encoder,
                            segment_label,
                            origin + Vector2I::new(offset, 0),
                            segment_index as u8 == value);
@@ -472,12 +470,15 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_image_segmented_control(&mut self,
                                         device: &D,
+                                        encoder: &mut D::Encoder,
                                         mut origin: Vector2I,
                                         segment_textures: &[&D::Texture],
+                                        segment_texture_size: Vector2I,
                                         mut value: Option<u8>)
                                         -> Option<u8> {
         let mut clicked_segment = None;
         if let Some(segment_index) = self.draw_segmented_control(device,
+                                                                 encoder,
                                                                  origin,
                                                                  value,
                                                                  segment_textures.len() as u8) {
@@ -488,7 +489,7 @@ impl<D> UIPresenter<D> where D: Device {
         }
 
         for (segment_index, segment_texture) in segment_textures.iter().enumerate() {
-            let texture_width = device.texture_size(segment_texture).x();
+            let texture_width = segment_texture_size.x();
             let offset = Vector2I::new(SEGMENT_SIZE / 2 - texture_width / 2, PADDING);
             let color = if Some(segment_index as u8) == value {
                 WINDOW_COLOR
@@ -496,7 +497,7 @@ impl<D> UIPresenter<D> where D: Device {
                 TEXT_COLOR
             };
 
-            self.draw_texture(device, origin + offset, segment_texture, color);
+            self.draw_texture(device, encoder, origin + offset, segment_texture, segment_texture_size, color);
             origin += Vector2I::new(SEGMENT_SIZE + 1, 0);
         }
 
@@ -505,6 +506,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_segmented_control(&mut self,
                               device: &D,
+                              encoder: &mut D::Encoder,
                               origin: Vector2I,
                               mut value: Option<u8>,
                               segment_count: u8)
@@ -521,13 +523,14 @@ impl<D> UIPresenter<D> where D: Device {
             clicked_segment = Some(segment);
         }
 
-        self.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
-        self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
+        self.draw_solid_rounded_rect(device, encoder, widget_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, encoder, widget_rect, OUTLINE_COLOR);
 
         if let Some(value) = value {
             let highlight_size = Vector2I::new(SEGMENT_SIZE, BUTTON_HEIGHT);
             let x_offset = value as i32 * SEGMENT_SIZE + (value as i32 - 1);
             self.draw_solid_rounded_rect(device,
+                                         encoder,
                                          RectI::new(origin + Vector2I::new(x_offset, 0),
                                                     highlight_size),
                                          TEXT_COLOR);
@@ -540,6 +543,7 @@ impl<D> UIPresenter<D> where D: Device {
                 Some(value) if value == prev_segment_index || value == next_segment_index => {}
                 _ => {
                     self.draw_line(device,
+                                   encoder,
                                    segment_origin,
                                    segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
                                    TEXT_COLOR);
@@ -551,7 +555,7 @@ impl<D> UIPresenter<D> where D: Device {
         clicked_segment
     }
 
-    pub fn draw_tooltip(&self, device: &D, string: &str, rect: RectI) {
+    pub fn draw_tooltip(&self, device: &D, encoder: &mut D::Encoder, string: &str, rect: RectI) {
         if !rect.to_f32().contains_point(self.mouse_position) {
             return;
         }
@@ -560,122 +564,105 @@ impl<D> UIPresenter<D> where D: Device {
         let window_size = Vector2I::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
         let origin = rect.origin() - Vector2I::new(0, window_size.y() + PADDING);
 
-        self.draw_solid_rounded_rect(device, RectI::new(origin, window_size), WINDOW_COLOR);
+        self.draw_solid_rounded_rect(device, encoder, RectI::new(origin, window_size), WINDOW_COLOR);
         self.draw_text(device,
+                       encoder,
                        string,
                        origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
                        false);
     }
 }
 
-struct DebugTextureProgram<D> where D: Device {
-    program: D::Program,
+struct DebugTexturePipeline<D> where D: Device {
+    pipeline: D::Pipeline,
+    /*
     framebuffer_size_uniform: D::Uniform,
     texture_size_uniform: D::Uniform,
     texture_uniform: D::Uniform,
     color_uniform: D::Uniform,
+    */
 }
 
-impl<D> DebugTextureProgram<D> where D: Device {
-    fn new(device: &D, resources: &dyn ResourceLoader) -> DebugTextureProgram<D> {
-        let program = device.create_program(resources, "debug_texture");
+impl<D> DebugTexturePipeline<D> where D: Device {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> Self {
+        let pipeline = device.create_pipeline(
+            resources,
+            "debug_texture",
+            RenderOptions {
+                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                ..RenderOptions::default()
+            },
+            &[
+                VertexBufferDescriptor {
+                    stride: DEBUG_TEXTURE_VERTEX_SIZE,
+                    divisor: 0,
+                    attributes: vec![
+                        VertexAttrDescriptor {
+                            size: 2,
+                            class: VertexAttrClass::Int,
+                            attr_type: VertexAttrType::I16,
+                            offset: 0,
+                        },
+                        VertexAttrDescriptor {
+                            size: 2,
+                            class: VertexAttrClass::Int,
+                            attr_type: VertexAttrType::I16,
+                            offset: 4,
+                        },
+                    ],
+                },
+            ],
+        );
+        /*
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let texture_size_uniform = device.get_uniform(&program, "TextureSize");
         let texture_uniform = device.get_uniform(&program, "Texture");
         let color_uniform = device.get_uniform(&program, "Color");
-        DebugTextureProgram {
-            program,
-            framebuffer_size_uniform,
-            texture_size_uniform,
-            texture_uniform,
-            color_uniform,
+        */
+
+        DebugTexturePipeline {
+            pipeline,
         }
     }
 }
 
-struct DebugTextureVertexArray<D> where D: Device {
-    vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-    index_buffer: D::Buffer,
-}
-
-impl<D> DebugTextureVertexArray<D> where D: Device {
-    fn new(device: &D, debug_texture_program: &DebugTextureProgram<D>)
-           -> DebugTextureVertexArray<D> {
-        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
-        let vertex_array = device.create_vertex_array();
-
-        let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position")
-                                  .unwrap();
-        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord") 
-                                   .unwrap();
-
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: DEBUG_TEXTURE_VERTEX_SIZE,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array, &tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: DEBUG_TEXTURE_VERTEX_SIZE,
-            offset: 4,
-            divisor: 0,
-            buffer_index: 0,
-        });
-
-        DebugTextureVertexArray { vertex_array, vertex_buffer, index_buffer }
-    }
-}
-
-struct DebugSolidVertexArray<D> where D: Device {
-    vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-    index_buffer: D::Buffer,
-}
-
-impl<D> DebugSolidVertexArray<D> where D: Device {
-    fn new(device: &D, debug_solid_program: &DebugSolidProgram<D>) -> DebugSolidVertexArray<D> {
-        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
-        let vertex_array = device.create_vertex_array();
-
-        let position_attr =
-            device.get_vertex_attr(&debug_solid_program.program, "Position").unwrap();
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: DEBUG_SOLID_VERTEX_SIZE,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-
-        DebugSolidVertexArray { vertex_array, vertex_buffer, index_buffer }
-    }
-}
-
-struct DebugSolidProgram<D> where D: Device {
-    program: D::Program,
+struct DebugSolidPipeline<D> where D: Device {
+    pipeline: D::Pipeline,
+    /*
     framebuffer_size_uniform: D::Uniform,
     color_uniform: D::Uniform,
+    */
 }
 
-impl<D> DebugSolidProgram<D> where D: Device {
-    fn new(device: &D, resources: &dyn ResourceLoader) -> DebugSolidProgram<D> {
-        let program = device.create_program(resources, "debug_solid");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let color_uniform = device.get_uniform(&program, "Color");
-        DebugSolidProgram { program, framebuffer_size_uniform, color_uniform }
+impl<D> DebugSolidPipeline<D> where D: Device {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> Self {
+        let pipeline = device.create_pipeline(
+            resources,
+            "debug_solid",
+            RenderOptions {
+                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                ..RenderOptions::default()
+            },
+            &[
+                VertexBufferDescriptor {
+                    stride: DEBUG_SOLID_VERTEX_SIZE,
+                    divisor: 0,
+                    attributes: vec![
+                        VertexAttrDescriptor {
+                            size: 2,
+                            class: VertexAttrClass::Int,
+                            attr_type: VertexAttrType::I16,
+                            offset: 0,
+                        },
+                    ],
+                },
+            ],
+        );
+        //let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        //let color_uniform = device.get_uniform(&program, "Color");
+        DebugSolidPipeline {
+            pipeline,
+        }
     }
 }
 
@@ -722,8 +709,7 @@ struct CornerRects {
 }
 
 impl CornerRects {
-    fn new<D>(device: &D, rect: RectI, texture: &D::Texture) -> CornerRects where D: Device {
-        let size = device.texture_size(texture);
+    fn new<D>(device: &D, rect: RectI, texture: &D::Texture, size: Vector2I) -> CornerRects where D: Device {
         CornerRects {
             upper_left:  RectI::new(rect.origin(),                                     size),
             upper_right: RectI::new(rect.upper_right() - Vector2I::new(size.x(), 0), size),
