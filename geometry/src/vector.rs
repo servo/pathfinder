@@ -375,6 +375,16 @@ impl Mul<Vector4F> for Vector4F {
     }
 }
 
+impl Neg for Vector4F {
+    type Output = Vector4F;
+    /// NB: This does not negate w, because that is rarely what you what for homogeneous
+    /// coordinates.
+    #[inline]
+    fn neg(self) -> Vector4F {
+        Vector4F(self.0 * F32x4::new(-1.0, -1.0, -1.0, 1.0))
+    }
+}
+
 impl Default for Vector4F {
     #[inline]
     fn default() -> Vector4F {

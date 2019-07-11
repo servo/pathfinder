@@ -221,6 +221,21 @@ impl Transform4F {
     }
 
     #[inline]
+    pub fn rotate(&self, yaw: f32, pitch: f32, roll: f32) -> Transform4F {
+        Transform4F::from_rotation(yaw, pitch, roll) * *self
+    }
+
+    #[inline]
+    pub fn scale(&self, scale: Vector4F) -> Transform4F {
+        Transform4F::from_scale(scale) * *self
+    }
+
+    #[inline]
+    pub fn uniform_scale(&self, scale: f32) -> Transform4F {
+        Transform4F::from_uniform_scale(scale) * *self
+    }
+
+    #[inline]
     pub fn translate(&self, translation: Vector4F) -> Transform4F {
         Transform4F::from_translation(translation) * *self
     }

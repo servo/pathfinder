@@ -470,7 +470,6 @@ where
 
     fn tile_transform(&self) -> Transform4F {
         let draw_viewport = self.draw_viewport().size().to_f32();
-        let scale = F32x2::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y());
         let scale = Vector4F::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y(), 1.0, 1.0);
         Transform4F::from_scale(scale).translate(Vector4F::new(-1.0, 1.0, 0.0, 1.0))
     }
