@@ -221,6 +221,11 @@ impl Transform4F {
     }
 
     #[inline]
+    pub fn translate(&self, translation: Vector4F) -> Transform4F {
+        Transform4F::from_translation(translation) * *self
+    }
+
+    #[inline]
     pub fn transform_point(&self, point: Vector4F) -> Vector4F {
         let term0 = self.c0 * F32x4::splat(point.x());
         let term1 = self.c1 * F32x4::splat(point.y());

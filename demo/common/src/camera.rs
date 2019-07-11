@@ -155,13 +155,10 @@ impl CameraTransform3D {
     pub fn to_transform(&self) -> Transform4F {
         let mut transform = Transform4F::from_rotation(self.yaw, self.pitch, 0.0);
         transform *= Transform4F::from_uniform_scale(2.0 * self.scale);
-        transform *=
-            Transform4F::from_translation(self.position * Vector4F::new(-1.0, -1.0, -1.0, 1.0));
 
-        // Flip Y.
-        transform *= Transform4F::from_scale(Vector4F::new(1.0, -1.0, 1.0, 1.0));
-
-        transform
+        // Flip Y, and translate.
+        let offset = self.position * Vector4F::new(-1.0, -1.0, -1.0, 1.0);
+        transform * Transform4F::from_scale(Vector4F::new(1.0, -1.0, 1.0, 1.0)).translate(offset)
     }
 }
 
