@@ -69,22 +69,24 @@ impl Transform3DF {
     }
 
     #[inline]
-    pub fn from_scale(x: f32, y: f32, z: f32) -> Transform3DF {
-        Transform3DF::row_major(
-            x, 0.0, 0.0, 0.0, 0.0, y, 0.0, 0.0, 0.0, 0.0, z, 0.0, 0.0, 0.0, 0.0, 1.0,
-        )
+    pub fn from_scale(scale: Vector4F) -> Transform3DF {
+        Transform3DF {
+            c0: F32x4::new(scale.x(), 0.0, 0.0, 0.0),
+            c1: F32x4::new(0.0, scale.y(), 0.0, 0.0),
+            c2: F32x4::new(0.0, 0.0, scale.z(), 0.0),
+            c3: F32x4::new(0.0, 0.0, 0.0,       1.0),
+        }
     }
 
     #[inline]
     pub fn from_uniform_scale(factor: f32) -> Transform3DF {
-        Transform3DF::from_scale(factor, factor, factor)
+        Transform3DF::from_scale(Vector4F::splat(factor))
     }
 
     #[inline]
-    pub fn from_translation(x: f32, y: f32, z: f32) -> Transform3DF {
-        Transform3DF::row_major(
-            1.0, 0.0, 0.0, x, 0.0, 1.0, 0.0, y, 0.0, 0.0, 1.0, z, 0.0, 0.0, 0.0, 1.0,
-        )
+    pub fn from_translation(mut translation: Vector4F) -> Transform3DF {
+        translation.set_w(1.0);
+        Transform3DF { c3: translation.0, ..Transform3DF::default() }
     }
 
     // TODO(pcwalton): Optimize.

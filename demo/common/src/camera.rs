@@ -70,10 +70,10 @@ impl Camera {
 
         // Create a scene transform by moving the camera back from the center of the eyes so that
         // its field of view encompasses the field of view of both eyes.
-        let z_offset = -DEFAULT_EYE_OFFSET * projection.c0.x();
+        let z_offset = Vector4F::new(0.0, 0.0, -DEFAULT_EYE_OFFSET * projection.c0.x(), 1.0);
         let scene_transform = OcularTransform {
             perspective,
-            modelview_to_eye: Transform3DF::from_translation(0.0, 0.0, z_offset),
+            modelview_to_eye: Transform3DF::from_translation(z_offset),
         };
 
         // For now, initialize the eye transforms as copies of the scene transform.
@@ -85,9 +85,10 @@ impl Camera {
                 } else {
                     -eye_offset
                 };
+                let this_eye_offset = Vector4F::new(this_eye_offset, 0.0, 0.0, 1.0);
                 OcularTransform {
                     perspective,
-                    modelview_to_eye: Transform3DF::from_translation(this_eye_offset, 0.0, 0.0),
+                    modelview_to_eye: Transform3DF::from_translation(this_eye_offset),
                 }
             })
             .collect();
@@ -154,12 +155,11 @@ impl CameraTransform3D {
     pub fn to_transform(&self) -> Transform3DF {
         let mut transform = Transform3DF::from_rotation(self.yaw, self.pitch, 0.0);
         transform *= Transform3DF::from_uniform_scale(2.0 * self.scale);
-        transform *= Transform3DF::from_translation(-self.position.x(),
-                                                    -self.position.y(),
-                                                    -self.position.z());
+        transform *=
+            Transform3DF::from_translation(self.position * Vector4F::new(-1.0, -1.0, -1.0, 1.0));
 
         // Flip Y.
-        transform *= Transform3DF::from_scale(1.0, -1.0, 1.0);
+        transform *= Transform3DF::from_scale(Vector4F::new(1.0, -1.0, 1.0, 1.0));
 
         transform
     }

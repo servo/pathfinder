@@ -22,12 +22,12 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
+use pathfinder_content::color::ColorU;
 use pathfinder_export::{Export, FileFormat};
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2DF;
 use pathfinder_geometry::transform3d::Transform3DF;
-use pathfinder_content::color::ColorU;
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
@@ -366,8 +366,9 @@ impl<W> DemoApp<W> where W: Window {
                         // TODO: calculate the eye offset from the eye transforms?
                         let z_offset = -DEFAULT_EYE_OFFSET *
                             scene_transform.perspective.transform.c0.x();
+                        let z_offset = Vector4F::new(0.0, 0.0, z_offset, 1.0);
                         scene_transform.modelview_to_eye =
-                            Transform3DF::from_translation(0.0, 0.0, z_offset) *
+                            Transform3DF::from_translation(z_offset) *
                             scene_transform.modelview_to_eye;
                     }
                 }
