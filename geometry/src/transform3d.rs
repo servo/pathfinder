@@ -14,7 +14,7 @@ use crate::vector::{Vector2F, Vector2I, Vector4F};
 use crate::rect::RectF;
 use crate::transform2d::Matrix2x2F;
 use pathfinder_simd::default::F32x4;
-use std::ops::{Add, Neg};
+use std::ops::{Add, Mul, MulAssign, Neg};
 
 /// An transform, optimized with SIMD.
 ///
@@ -218,31 +218,6 @@ impl Transform3DF {
         }
     }
 
-    // FIXME(pcwalton): Is this right, due to transposition? I think we may have to reverse the
-    // two.
-    //
-    // https://stackoverflow.com/a/18508113
-    #[inline]
-    pub fn pre_mul(&self, other: &Transform3DF) -> Transform3DF {
-        return Transform3DF {
-            c0: mul_col(self.c0, other),
-            c1: mul_col(self.c1, other),
-            c2: mul_col(self.c2, other),
-            c3: mul_col(self.c3, other),
-        };
-
-        fn mul_col(a_col: F32x4, b: &Transform3DF) -> F32x4 {
-            let (a0, a1) = (F32x4::splat(a_col[0]), F32x4::splat(a_col[1]));
-            let (a2, a3) = (F32x4::splat(a_col[2]), F32x4::splat(a_col[3]));
-            a0 * b.c0 + a1 * b.c1 + a2 * b.c2 + a3 * b.c3
-        }
-    }
-
-    #[inline]
-    pub fn post_mul(&self, other: &Transform3DF) -> Transform3DF {
-        other.pre_mul(self)
-    }
-
     #[inline]
     pub fn transform_point(&self, point: Vector4F) -> Vector4F {
         let term0 = self.c0 * F32x4::splat(point.x());
@@ -313,6 +288,32 @@ impl Transform3DF {
     }
 }
 
+impl Mul<Transform3DF> for Transform3DF {
+    type Output = Transform3DF;
+
+    // https://stackoverflow.com/a/18508113
+    #[inline]
+    fn mul(self, other: Transform3DF) -> Transform3DF {
+        return Transform3DF {
+            c0: mul_col(&self, other.c0),
+            c1: mul_col(&self, other.c1),
+            c2: mul_col(&self, other.c2),
+            c3: mul_col(&self, other.c3),
+        };
+
+        #[inline]
+        fn mul_col(a: &Transform3DF, b_col: F32x4) -> F32x4 {
+            a.c0 * b_col.xxxx() + a.c1 * b_col.yyyy() + a.c2 * b_col.zzzz() + a.c3 * b_col.wwww()
+        }
+    }
+}
+
+impl MulAssign<Transform3DF> for Transform3DF {
+    fn mul_assign(&mut self, other: Transform3DF) {
+        *self = *self * other
+    }
+}
+
 impl Add<Matrix2x2F> for Matrix2x2F {
     type Output = Matrix2x2F;
     #[inline]
@@ -366,11 +367,14 @@ impl Perspective {
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF::from_points(min_point, max_point)
     }
+}
 
+impl Mul<Transform3DF> for Perspective {
+    type Output = Perspective;
     #[inline]
-    pub fn post_mul(&self, other: &Transform3DF) -> Perspective {
+    fn mul(self, other: Transform3DF) -> Perspective {
         Perspective {
-            transform: self.transform.post_mul(other),
+            transform: self.transform * other,
             window_size: self.window_size,
         }
     }

@@ -472,7 +472,7 @@ where
         let draw_viewport = self.draw_viewport().size().to_f32();
         let scale = F32x2::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y());
         let transform = Transform3DF::from_scale(scale.x(), scale.y(), 1.0);
-        Transform3DF::from_translation(-1.0, 1.0, 0.0).post_mul(&transform)
+        Transform3DF::from_translation(-1.0, 1.0, 0.0) * transform
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {

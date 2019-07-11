@@ -153,15 +153,13 @@ impl CameraTransform3D {
 
     pub fn to_transform(&self) -> Transform3DF {
         let mut transform = Transform3DF::from_rotation(self.yaw, self.pitch, 0.0);
-        transform = transform.post_mul(&Transform3DF::from_uniform_scale(2.0 * self.scale));
-        transform = transform.post_mul(&Transform3DF::from_translation(
-            -self.position.x(),
-            -self.position.y(),
-            -self.position.z(),
-        ));
+        transform *= Transform3DF::from_uniform_scale(2.0 * self.scale);
+        transform *= Transform3DF::from_translation(-self.position.x(),
+                                                    -self.position.y(),
+                                                    -self.position.z());
 
         // Flip Y.
-        transform = transform.post_mul(&Transform3DF::from_scale(1.0, -1.0, 1.0));
+        transform *= Transform3DF::from_scale(1.0, -1.0, 1.0);
 
         transform
     }

@@ -256,10 +256,9 @@ impl<W> DemoApp<W> where W: Window {
                 if modelview_transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                let perspective = scene_transform
-                    .perspective
-                    .post_mul(&scene_transform.modelview_to_eye)
-                    .post_mul(&modelview_transform.to_transform());
+                let perspective = scene_transform.perspective *
+                    scene_transform.modelview_to_eye *
+                    modelview_transform.to_transform();
                 Some(RenderTransform::Perspective(perspective))
             }
             Camera::TwoD(transform) => Some(RenderTransform::Transform2D(transform)),
@@ -356,13 +355,20 @@ impl<W> DemoApp<W> where W: Window {
                         *scene_transform = eye_transforms[0];
                         for (index, eye_transform) in eye_transforms.iter().enumerate().skip(1) {
                             let weight = 1.0 / (index + 1) as f32;
-                            scene_transform.perspective.transform = scene_transform.perspective.transform.lerp(weight, &eye_transform.perspective.transform);
-                            scene_transform.modelview_to_eye = scene_transform.modelview_to_eye.lerp(weight, &eye_transform.modelview_to_eye);
+                            scene_transform.perspective.transform =
+                                scene_transform.perspective 
+                                               .transform
+                                               .lerp(weight, &eye_transform.perspective.transform);
+                            scene_transform.modelview_to_eye =
+                                scene_transform.modelview_to_eye
+                                               .lerp(weight, &eye_transform.modelview_to_eye);
                          }
                         // TODO: calculate the eye offset from the eye transforms?
-                        let z_offset = -DEFAULT_EYE_OFFSET * scene_transform.perspective.transform.c0.x();
-                        scene_transform.modelview_to_eye = scene_transform.modelview_to_eye
-                            .pre_mul(&Transform3DF::from_translation(0.0, 0.0, z_offset));
+                        let z_offset = -DEFAULT_EYE_OFFSET *
+                            scene_transform.perspective.transform.c0.x();
+                        scene_transform.modelview_to_eye =
+                            Transform3DF::from_translation(0.0, 0.0, z_offset) *
+                            scene_transform.modelview_to_eye;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
