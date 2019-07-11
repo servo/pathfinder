@@ -19,8 +19,8 @@ use pathfinder_content::color::{ColorF, ColorU};
 use pathfinder_content::outline::ArcDirection;
 use pathfinder_content::stroke::LineCap;
 use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2DF};
-use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
+use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
+use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
@@ -135,13 +135,13 @@ pub struct PFMatrix2x2F {
 }
 /// Row-major order.
 #[repr(C)]
-pub struct PFTransform2DF {
+pub struct PFTransform2F {
     pub matrix: PFMatrix2x2F,
     pub vector: PFVector2F,
 }
 /// Row-major order.
 #[repr(C)]
-pub struct PFTransform3DF {
+pub struct PFTransform4F {
     pub m00: f32, pub m01: f32, pub m02: f32, pub m03: f32,
     pub m10: f32, pub m11: f32, pub m12: f32, pub m13: f32,
     pub m20: f32, pub m21: f32, pub m22: f32, pub m23: f32,
@@ -149,7 +149,7 @@ pub struct PFTransform3DF {
 }
 #[repr(C)]
 pub struct PFPerspective {
-    pub transform: PFTransform3DF,
+    pub transform: PFTransform4F,
     pub window_size: PFVector2I,
 }
 
@@ -610,7 +610,7 @@ pub unsafe extern "C" fn PFMetalDevicePresentDrawable(device: PFMetalDeviceRef) 
 // `renderer`
 
 #[no_mangle]
-pub unsafe extern "C" fn PFRenderTransformCreate2D(transform: *const PFTransform2DF)
+pub unsafe extern "C" fn PFRenderTransformCreate2D(transform: *const PFTransform2F)
                                                    -> PFRenderTransformRef {
     Box::into_raw(Box::new(RenderTransform::Transform2D((*transform).to_rust())))
 }
@@ -743,17 +743,17 @@ impl PFMatrix2x2F {
     }
 }
 
-impl PFTransform2DF {
+impl PFTransform2F {
     #[inline]
-    pub fn to_rust(&self) -> Transform2DF {
-        Transform2DF { matrix: self.matrix.to_rust(), vector: self.vector.to_rust() }
+    pub fn to_rust(&self) -> Transform2F {
+        Transform2F { matrix: self.matrix.to_rust(), vector: self.vector.to_rust() }
     }
 }
 
-impl PFTransform3DF {
+impl PFTransform4F {
     #[inline]
-    pub fn to_rust(&self) -> Transform3DF {
-        Transform3DF::row_major(self.m00, self.m01, self.m02, self.m03,
+    pub fn to_rust(&self) -> Transform4F {
+        Transform4F::row_major(self.m00, self.m01, self.m02, self.m03,
                                 self.m10, self.m11, self.m12, self.m13,
                                 self.m20, self.m21, self.m22, self.m23,
                                 self.m30, self.m31, self.m32, self.m33)

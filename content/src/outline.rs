@@ -16,7 +16,7 @@ use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::unit_vector::UnitVector;
 use pathfinder_geometry::vector::Vector2F;
@@ -134,7 +134,7 @@ impl Outline {
         self.contours.push(contour);
     }
 
-    pub fn transform(&mut self, transform: &Transform2DF) {
+    pub fn transform(&mut self, transform: &Transform2F) {
         if transform.is_identity() {
             return;
         }
@@ -353,7 +353,7 @@ impl Contour {
     }
 
     pub fn push_arc(&mut self,
-                    transform: &Transform2DF,
+                    transform: &Transform2F,
                     start_angle: f32,
                     end_angle: f32,
                     direction: ArcDirection) {
@@ -367,13 +367,13 @@ impl Contour {
     }
 
     pub fn push_arc_from_unit_chord(&mut self,
-                                    transform: &Transform2DF,
+                                    transform: &Transform2F,
                                     mut chord: LineSegment2F,
                                     direction: ArcDirection) {
-        let mut direction_transform = Transform2DF::default();
+        let mut direction_transform = Transform2F::default();
         if direction == ArcDirection::CCW {
             chord = chord.scale_xy(Vector2F::new(-1.0, 1.0));
-            direction_transform = Transform2DF::from_scale(Vector2F::new(-1.0, 1.0));
+            direction_transform = Transform2F::from_scale(Vector2F::new(-1.0, 1.0));
         }
 
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
@@ -392,7 +392,7 @@ impl Contour {
             }
 
             let half_sweep_vector = sweep_vector.halve_angle();
-            let rotation = Transform2DF::from_rotation_vector(half_sweep_vector.rotate_by(vector));
+            let rotation = Transform2F::from_rotation_vector(half_sweep_vector.rotate_by(vector));
             segment = segment.transform(&direction_transform.post_mul(&rotation)
                                                             .post_mul(&transform));
 
@@ -413,18 +413,18 @@ impl Contour {
         const EPSILON: f32 = 0.001;
     }
 
-    pub fn push_ellipse(&mut self, transform: &Transform2DF) {
+    pub fn push_ellipse(&mut self, transform: &Transform2F) {
         let segment = Segment::quarter_circle_arc();
         let mut rotation;
         self.push_segment(&segment.transform(transform),
                           PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
+        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
         self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
+        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
         self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
+        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
         self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
                           PushSegmentFlags::UPDATE_BOUNDS);
     }
@@ -528,7 +528,7 @@ impl Contour {
         }
     }
 
-    pub fn transform(&mut self, transform: &Transform2DF) {
+    pub fn transform(&mut self, transform: &Transform2F) {
         if transform.is_identity() {
             return;
         }

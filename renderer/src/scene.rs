@@ -18,7 +18,7 @@ use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_content::color::ColorU;
 use pathfinder_content::outline::Outline;
 
@@ -115,12 +115,12 @@ impl Scene {
                 if options.transform.is_2d() || options.subpixel_aa_enabled {
                     let mut transform = match options.transform {
                         PreparedRenderTransform::Transform2D(transform) => transform,
-                        PreparedRenderTransform::None => Transform2DF::default(),
+                        PreparedRenderTransform::None => Transform2F::default(),
                         PreparedRenderTransform::Perspective { .. } => unreachable!(),
                     };
                     if options.subpixel_aa_enabled {
                         transform = transform
-                            .post_mul(&Transform2DF::from_scale(Vector2F::new(3.0, 1.0)))
+                            .post_mul(&Transform2F::from_scale(Vector2F::new(3.0, 1.0)))
                     }
                     outline.transform(&transform);
                 }

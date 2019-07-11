@@ -11,19 +11,19 @@
 //! Utilities for transforming paths.
 
 use crate::segment::Segment;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 
 /// Transforms a path with a SIMD 2D transform.
-pub struct Transform2DFPathIter<I>
+pub struct Transform2FPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
     iter: I,
-    transform: Transform2DF,
+    transform: Transform2F,
 }
 
-impl<I> Iterator for Transform2DFPathIter<I>
+impl<I> Iterator for Transform2FPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
@@ -47,13 +47,13 @@ where
     }
 }
 
-impl<I> Transform2DFPathIter<I>
+impl<I> Transform2FPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
     #[inline]
-    pub fn new(iter: I, transform: &Transform2DF) -> Transform2DFPathIter<I> {
-        Transform2DFPathIter {
+    pub fn new(iter: I, transform: &Transform2F) -> Transform2FPathIter<I> {
+        Transform2FPathIter {
             iter,
             transform: *transform,
         }

@@ -16,7 +16,7 @@ use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_content::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
@@ -468,14 +468,14 @@ where
         self.buffered_fills.clear();
     }
 
-    fn tile_transform(&self) -> Transform3DF {
+    fn tile_transform(&self) -> Transform4F {
         let draw_viewport = self.draw_viewport().size().to_f32();
         let scale = F32x2::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y());
-        let transform = Transform3DF::from_scale(Vector4F::new(2.0 / draw_viewport.x(),
+        let transform = Transform4F::from_scale(Vector4F::new(2.0 / draw_viewport.x(),
                                                                -2.0 / draw_viewport.y(),
                                                                1.0,
                                                                1.0));
-        Transform3DF::from_translation(Vector4F::new(-1.0, 1.0, 0.0, 1.0)) * transform
+        Transform4F::from_translation(Vector4F::new(-1.0, 1.0, 0.0, 1.0)) * transform
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {
@@ -738,8 +738,8 @@ where
     pub fn reproject_texture(
         &mut self,
         texture: &D::Texture,
-        old_transform: &Transform3DF,
-        new_transform: &Transform3DF,
+        old_transform: &Transform4F,
+        new_transform: &Transform4F,
     ) {
         let clear_color = self.clear_color_for_draw_operation();
 

@@ -19,8 +19,8 @@ use pathfinder_geometry::point::Point2DI32;
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::point::Point3DF32;
 use pathfinder_geometry::rect::RectI32;
-use pathfinder_geometry::transform2d::Transform2DF32;
-use pathfinder_geometry::transform3d::Transform3DF32;
+use pathfinder_geometry::transform2d::Transform2F32;
+use pathfinder_geometry::transform3d::Transform4F32;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_gpu::Device;
 use pathfinder_simd::default::F32x4;
@@ -41,7 +41,7 @@ pub struct ImmersiveDemo<D> {
     renderer: Renderer<GLDevice>,
     scene_thread_proxy: SceneThreadProxy,
     svg_size: Point2DF32,
-    svg_to_world: Option<Transform3DF32>,
+    svg_to_world: Option<Transform4F32>,
 }
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
@@ -87,13 +87,13 @@ impl<D: Display> ImmersiveDemo<D> {
 
         let svg_size = self.svg_size;
         let svg_to_world = self.svg_to_world.get_or_insert_with(|| {
-	    let view: Transform3DF32 = cameras[0].view();
+	    let view: Transform4F32 = cameras[0].view();
             let svg_to_world_scale = f32::max(MAX_SVG_WIDTH / svg_size.x(), MAX_SVG_HEIGHT / svg_size.y());
 	    let svg_width = svg_size.x() * svg_to_world_scale;
 	    let svg_height = svg_size.y() * svg_to_world_scale;
-            Transform3DF32::from_uniform_scale(svg_to_world_scale)
-                .pre_mul(&Transform3DF32::from_translation(-svg_width / 2.0, -svg_height / 2.0, -DEFAULT_SVG_DISTANCE))
-                .pre_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0))
+            Transform4F32::from_uniform_scale(svg_to_world_scale)
+                .pre_mul(&Transform4F32::from_translation(-svg_width / 2.0, -svg_height / 2.0, -DEFAULT_SVG_DISTANCE))
+                .pre_mul(&Transform4F32::from_scale(1.0, -1.0, 1.0))
                 .pre_mul(&view.inverse())
 	});
 

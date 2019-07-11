@@ -24,7 +24,7 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_swf::{draw_paths_into_scene, process_swf_tags};
 use std::env;
 use std::fs::read;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 
 fn main() {
     let resource_loader = FilesystemResourceLoader::locate();
@@ -118,7 +118,7 @@ fn main() {
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(scene, RayonExecutor);
     let mut build_options = BuildOptions::default();
-    let scale_transform = Transform2DF::from_scale(
+    let scale_transform = Transform2F::from_scale(
         Vector2F::new(device_pixel_ratio, device_pixel_ratio)
     );
     build_options.transform = RenderTransform::Transform2D(scale_transform);

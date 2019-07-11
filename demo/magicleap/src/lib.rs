@@ -32,7 +32,7 @@ use pathfinder_demo::window::SVGPath;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_content::color::ColorF;
 use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
@@ -216,9 +216,9 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
 
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32 /
             f32::max(svg.scene.bounds().size().x(), svg.scene.bounds().size().y());
-        let transform = Transform2DF::from_translation(svg.scene.bounds().size().scale(-0.5))
-            .post_mul(&Transform2DF::from_scale(Vector2F::splat(scale)))
-            .post_mul(&Transform2DF::from_translation(viewport_size.to_f32().scale(0.5)));
+        let transform = Transform2F::from_translation(svg.scene.bounds().size().scale(-0.5))
+            .post_mul(&Transform2F::from_scale(Vector2F::splat(scale)))
+            .post_mul(&Transform2F::from_translation(viewport_size.to_f32().scale(0.5)));
             
         let render_options = RenderOptions {
             transform: RenderTransform::Transform2D(transform),

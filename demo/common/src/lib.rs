@@ -25,8 +25,8 @@ use clap::{App, Arg};
 use pathfinder_content::color::ColorU;
 use pathfinder_export::{Export, FileFormat};
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
-use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
@@ -368,7 +368,7 @@ impl<W> DemoApp<W> where W: Window {
                             scene_transform.perspective.transform.c0.x();
                         let z_offset = Vector4F::new(0.0, 0.0, z_offset, 1.0);
                         scene_transform.modelview_to_eye =
-                            Transform3DF::from_translation(z_offset) *
+                            Transform4F::from_translation(z_offset) *
                             scene_transform.modelview_to_eye;
                     }
                 }
@@ -627,7 +627,7 @@ impl<W> DemoApp<W> where W: Window {
             }
             UIAction::ZoomActualSize => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    *transform = Transform2DF::default();
+                    *transform = Transform2F::default();
                     self.dirty = true;
                 }
             }

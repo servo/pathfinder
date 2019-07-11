@@ -15,7 +15,7 @@ use font_kit::loader::Loader;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::PaintId;
 use pathfinder_renderer::scene::{PathObject, Scene};
@@ -27,7 +27,7 @@ pub trait SceneExt {
     fn push_glyph<F>(&mut self,
                      font: &F,
                      glyph_id: u32,
-                     transform: &Transform2DF,
+                     transform: &Transform2F,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
                      paint_id: PaintId)
@@ -37,7 +37,7 @@ pub trait SceneExt {
     fn push_layout(&mut self,
                    layout: &Layout,
                    style: &TextStyle,
-                   transform: &Transform2DF,
+                   transform: &Transform2F,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
                    paint_id: PaintId)
@@ -47,7 +47,7 @@ pub trait SceneExt {
                  text: &str,
                  style: &TextStyle,
                  collection: &FontCollection,
-                 transform: &Transform2DF,
+                 transform: &Transform2F,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
                  paint_id: PaintId)
@@ -59,7 +59,7 @@ impl SceneExt for Scene {
     fn push_glyph<F>(&mut self,
                      font: &F,
                      glyph_id: u32,
-                     transform: &Transform2DF,
+                     transform: &Transform2F,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
                      paint_id: PaintId)
@@ -82,7 +82,7 @@ impl SceneExt for Scene {
     fn push_layout(&mut self,
                    layout: &Layout,
                    style: &TextStyle,
-                   transform: &Transform2DF,
+                   transform: &Transform2F,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
                    paint_id: PaintId)
@@ -94,7 +94,7 @@ impl SceneExt for Scene {
             let scale = style.size / (font.metrics().units_per_em as f32);
             let scale = Vector2F::new(scale, -scale);
             let transform =
-                Transform2DF::from_scale(scale).post_translate(offset).post_mul(transform);
+                Transform2F::from_scale(scale).post_translate(offset).post_mul(transform);
             self.push_glyph(font,
                             glyph.glyph_id,
                             &transform,
@@ -110,7 +110,7 @@ impl SceneExt for Scene {
                  text: &str,
                  style: &TextStyle,
                  collection: &FontCollection,
-                 transform: &Transform2DF,
+                 transform: &Transform2F,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
                  paint_id: PaintId)
@@ -129,11 +129,11 @@ pub enum TextRenderMode {
 struct OutlinePathBuilder {
     outline: Outline,
     current_contour: Contour,
-    transform: Transform2DF,
+    transform: Transform2F,
 }
 
 impl OutlinePathBuilder {
-    fn new(transform: &Transform2DF) -> OutlinePathBuilder {
+    fn new(transform: &Transform2F) -> OutlinePathBuilder {
         OutlinePathBuilder {
             outline: Outline::new(),
             current_contour: Contour::new(),

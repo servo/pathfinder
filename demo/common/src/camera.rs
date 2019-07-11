@@ -16,8 +16,8 @@
 use crate::window::{OcularTransform, View};
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
-use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use std::f32::consts::FRAC_PI_4;
 
 const NEAR_CLIP_PLANE: f32 = 0.01;
@@ -27,7 +27,7 @@ const FAR_CLIP_PLANE: f32 = 10.0;
 const DEFAULT_EYE_OFFSET: f32 = 0.025;
 
 pub enum Camera {
-    TwoD(Transform2DF),
+    TwoD(Transform2F),
     ThreeD {
         // The ocular transform used for rendering of the scene to the scene framebuffer. If we are
         // performing stereoscopic rendering, this is then reprojected according to the eye
@@ -56,7 +56,7 @@ impl Camera {
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
             * scale_factor_for_view_box(view_box);
         let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
-        Camera::TwoD(Transform2DF::from_scale(Vector2F::splat(scale)).post_translate(origin))
+        Camera::TwoD(Transform2F::from_scale(Vector2F::splat(scale)).post_translate(origin))
     }
 
     fn new_3d(mode: Mode, view_box: RectF, viewport_size: Vector2I) -> Camera {
@@ -65,7 +65,7 @@ impl Camera {
         let fov_y = FRAC_PI_4;
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
         let projection =
-            Transform3DF::from_perspective(fov_y, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
+            Transform4F::from_perspective(fov_y, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
         let perspective = Perspective::new(&projection, viewport_size);
 
         // Create a scene transform by moving the camera back from the center of the eyes so that
@@ -73,7 +73,7 @@ impl Camera {
         let z_offset = Vector4F::new(0.0, 0.0, -DEFAULT_EYE_OFFSET * projection.c0.x(), 1.0);
         let scene_transform = OcularTransform {
             perspective,
-            modelview_to_eye: Transform3DF::from_translation(z_offset),
+            modelview_to_eye: Transform4F::from_translation(z_offset),
         };
 
         // For now, initialize the eye transforms as copies of the scene transform.
@@ -88,7 +88,7 @@ impl Camera {
                 let this_eye_offset = Vector4F::new(this_eye_offset, 0.0, 0.0, 1.0);
                 OcularTransform {
                     perspective,
-                    modelview_to_eye: Transform3DF::from_translation(this_eye_offset),
+                    modelview_to_eye: Transform4F::from_translation(this_eye_offset),
                 }
             })
             .collect();
@@ -146,20 +146,20 @@ impl CameraTransform3D {
     pub fn offset(&mut self, vector: Vector4F) -> bool {
         let update = !vector.is_zero();
         if update {
-            let rotation = Transform3DF::from_rotation(-self.yaw, -self.pitch, 0.0);
+            let rotation = Transform4F::from_rotation(-self.yaw, -self.pitch, 0.0);
             self.position = self.position + rotation.transform_point(vector);
         }
         update
     }
 
-    pub fn to_transform(&self) -> Transform3DF {
-        let mut transform = Transform3DF::from_rotation(self.yaw, self.pitch, 0.0);
-        transform *= Transform3DF::from_uniform_scale(2.0 * self.scale);
+    pub fn to_transform(&self) -> Transform4F {
+        let mut transform = Transform4F::from_rotation(self.yaw, self.pitch, 0.0);
+        transform *= Transform4F::from_uniform_scale(2.0 * self.scale);
         transform *=
-            Transform3DF::from_translation(self.position * Vector4F::new(-1.0, -1.0, -1.0, 1.0));
+            Transform4F::from_translation(self.position * Vector4F::new(-1.0, -1.0, -1.0, 1.0));
 
         // Flip Y.
-        transform *= Transform3DF::from_scale(Vector4F::new(1.0, -1.0, 1.0, 1.0));
+        transform *= Transform4F::from_scale(Vector4F::new(1.0, -1.0, 1.0, 1.0));
 
         transform
     }

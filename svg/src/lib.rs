@@ -17,10 +17,10 @@ use pathfinder_content::color::ColorU;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
 use pathfinder_content::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
-use pathfinder_content::transform::Transform2DFPathIter;
+use pathfinder_content::transform::Transform2FPathIter;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
@@ -62,7 +62,7 @@ bitflags! {
 impl BuiltSVG {
     // TODO(pcwalton): Allow a global transform to be set.
     pub fn from_tree(tree: Tree) -> BuiltSVG {
-        let global_transform = Transform2DF::default();
+        let global_transform = Transform2F::default();
 
         let mut built_svg = BuiltSVG {
             scene: Scene::new(),
@@ -87,7 +87,7 @@ impl BuiltSVG {
         built_svg
     }
 
-    fn process_node(&mut self, node: &Node, transform: &Transform2DF) {
+    fn process_node(&mut self, node: &Node, transform: &Transform2F) {
         let node_transform = usvg_transform_to_transform_2d(&node.transform());
         let transform = transform.pre_mul(&node_transform);
 
@@ -119,7 +119,7 @@ impl BuiltSVG {
                     ));
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                    let path = Transform2DFPathIter::new(path, &transform);
+                    let path = Transform2FPathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
                     let name = format!("Fill({})", node.id());
@@ -266,8 +266,8 @@ fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> RectF {
     )
 }
 
-fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF {
-    Transform2DF::row_major(
+fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2F {
+    Transform2F::row_major(
         transform.a as f32,
         transform.b as f32,
         transform.c as f32,

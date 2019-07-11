@@ -14,7 +14,7 @@ use crate::resources::ResourceLoader;
 use image::ImageFormat;
 use pathfinder_content::color::ColorF;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::time::Duration;
@@ -286,7 +286,7 @@ pub enum TextureData {
 
 impl UniformData {
     #[inline]
-    pub fn from_transform_3d(transform: &Transform3DF) -> UniformData {
+    pub fn from_transform_3d(transform: &Transform4F) -> UniformData {
         UniformData::Mat4([transform.c0, transform.c1, transform.c2, transform.c3])
     }
 }

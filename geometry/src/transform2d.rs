@@ -13,7 +13,7 @@
 use crate::line_segment::LineSegment2F;
 use crate::vector::Vector2F;
 use crate::rect::RectF;
-use crate::transform3d::Transform3DF;
+use crate::transform3d::Transform4F;
 use crate::unit_vector::UnitVector;
 use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
@@ -114,47 +114,47 @@ impl Sub<Matrix2x2F> for Matrix2x2F {
 
 /// An affine transform, optimized with SIMD.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Transform2DF {
+pub struct Transform2F {
     // Row-major order.
     pub matrix: Matrix2x2F,
     pub vector: Vector2F,
 }
 
-impl Default for Transform2DF {
+impl Default for Transform2F {
     #[inline]
-    fn default() -> Transform2DF {
+    fn default() -> Transform2F {
         Self::from_scale(Vector2F::splat(1.0))
     }
 }
 
-impl Transform2DF {
+impl Transform2F {
     #[inline]
-    pub fn from_scale(scale: Vector2F) -> Transform2DF {
-        Transform2DF {
+    pub fn from_scale(scale: Vector2F) -> Transform2F {
+        Transform2F {
             matrix: Matrix2x2F::from_scale(scale),
             vector: Vector2F::default(),
         }
     }
 
     #[inline]
-    pub fn from_rotation(theta: f32) -> Transform2DF {
-        Transform2DF {
+    pub fn from_rotation(theta: f32) -> Transform2F {
+        Transform2F {
             matrix: Matrix2x2F::from_rotation(theta),
             vector: Vector2F::default(),
         }
     }
 
     #[inline]
-    pub fn from_rotation_vector(vector: UnitVector) -> Transform2DF {
-        Transform2DF {
+    pub fn from_rotation_vector(vector: UnitVector) -> Transform2F {
+        Transform2F {
             matrix: Matrix2x2F::from_rotation_vector(vector),
             vector: Vector2F::default(),
         }
     }
 
     #[inline]
-    pub fn from_translation(vector: Vector2F) -> Transform2DF {
-        Transform2DF { matrix: Matrix2x2F::default(), vector }
+    pub fn from_translation(vector: Vector2F) -> Transform2F {
+        Transform2F { matrix: Matrix2x2F::default(), vector }
     }
 
     #[inline]
@@ -162,15 +162,15 @@ impl Transform2DF {
         scale: Vector2F,
         theta: f32,
         translation: Vector2F,
-    ) -> Transform2DF {
-        let rotation = Transform2DF::from_rotation(theta);
-        let translation = Transform2DF::from_translation(translation);
-        Transform2DF::from_scale(scale).post_mul(&rotation).post_mul(&translation)
+    ) -> Transform2F {
+        let rotation = Transform2F::from_rotation(theta);
+        let translation = Transform2F::from_translation(translation);
+        Transform2F::from_scale(scale).post_mul(&rotation).post_mul(&translation)
     }
 
     #[inline]
-    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF {
-        Transform2DF {
+    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2F {
+        Transform2F {
             matrix: Matrix2x2F::row_major(m11, m12, m21, m22),
             vector: Vector2F::new(m31, m32),
         }
@@ -199,21 +199,21 @@ impl Transform2DF {
     }
 
     #[inline]
-    pub fn post_mul(&self, other: &Transform2DF) -> Transform2DF {
+    pub fn post_mul(&self, other: &Transform2F) -> Transform2F {
         let matrix = self.matrix.post_mul(&other.matrix);
         let vector = other.transform_point(self.vector);
-        Transform2DF { matrix, vector }
+        Transform2F { matrix, vector }
     }
 
     #[inline]
-    pub fn pre_mul(&self, other: &Transform2DF) -> Transform2DF {
+    pub fn pre_mul(&self, other: &Transform2F) -> Transform2F {
         other.post_mul(self)
     }
 
     // TODO(pcwalton): Optimize better with SIMD.
     #[inline]
-    pub fn to_3d(&self) -> Transform3DF {
-        Transform3DF::row_major(
+    pub fn to_3d(&self) -> Transform4F {
+        Transform4F::row_major(
             self.matrix.0[0],
             self.matrix.0[1],
             0.0,
@@ -235,7 +235,7 @@ impl Transform2DF {
 
     #[inline]
     pub fn is_identity(&self) -> bool {
-        *self == Transform2DF::default()
+        *self == Transform2F::default()
     }
 
     #[inline]
@@ -256,18 +256,18 @@ impl Transform2DF {
     }
 
     #[inline]
-    pub fn post_translate(&self, vector: Vector2F) -> Transform2DF {
-        self.post_mul(&Transform2DF::from_translation(vector))
+    pub fn post_translate(&self, vector: Vector2F) -> Transform2F {
+        self.post_mul(&Transform2F::from_translation(vector))
     }
 
     #[inline]
-    pub fn post_rotate(&self, theta: f32) -> Transform2DF {
-        self.post_mul(&Transform2DF::from_rotation(theta))
+    pub fn post_rotate(&self, theta: f32) -> Transform2F {
+        self.post_mul(&Transform2F::from_rotation(theta))
     }
 
     #[inline]
-    pub fn post_scale(&self, scale: Vector2F) -> Transform2DF {
-        self.post_mul(&Transform2DF::from_scale(scale))
+    pub fn post_scale(&self, scale: Vector2F) -> Transform2F {
+        self.post_mul(&Transform2F::from_scale(scale))
     }
 
     /// Returns the translation part of this matrix.

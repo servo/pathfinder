@@ -12,7 +12,7 @@
 
 use crate::gpu_data::RenderCommand;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::vector::{Vector2F, Vector4F};
 use pathfinder_content::clip::PolygonClipper3D;
@@ -51,14 +51,14 @@ impl BuildOptions {
 
 #[derive(Clone)]
 pub enum RenderTransform {
-    Transform2D(Transform2DF),
+    Transform2D(Transform2F),
     Perspective(Perspective),
 }
 
 impl Default for RenderTransform {
     #[inline]
     fn default() -> RenderTransform {
-        RenderTransform::Transform2D(Transform2DF::default())
+        RenderTransform::Transform2D(Transform2F::default())
     }
 }
 
@@ -140,7 +140,7 @@ pub(crate) type BoundingQuad = [Vector4F; 4];
 
 pub(crate) enum PreparedRenderTransform {
     None,
-    Transform2D(Transform2DF),
+    Transform2D(Transform2F),
     Perspective {
         perspective: Perspective,
         clip_polygon: Vec<Vector2F>,

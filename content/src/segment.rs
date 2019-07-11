@@ -11,7 +11,7 @@
 //! Line or curve segments, optimized with SIMD.
 
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::util::{self, EPSILON};
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_simd::default::F32x4;
@@ -215,7 +215,7 @@ impl Segment {
     }
 
     #[inline]
-    pub fn transform(self, transform: &Transform2DF) -> Segment {
+    pub fn transform(self, transform: &Transform2F) -> Segment {
         Segment {
             baseline: transform.transform_line_segment(self.baseline),
             ctrl: transform.transform_line_segment(self.ctrl),

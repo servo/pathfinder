@@ -14,7 +14,7 @@ use crate::outline::{ArcDirection, Contour, Outline, PushSegmentFlags};
 use crate::segment::Segment;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use std::f32;
 
@@ -138,9 +138,9 @@ impl<'a> OutlineStrokeToFill<'a> {
             LineCap::Round => {
                 let scale = Vector2F::splat(width * 0.5);
                 let offset = gradient.yx().scale_xy(Vector2F::new(-1.0, 1.0));
-                let mut transform = Transform2DF::from_scale(scale);
+                let mut transform = Transform2F::from_scale(scale);
                 let translation = p1 + offset.scale(width * 0.5);
-                transform = transform.post_mul(&Transform2DF::from_translation(translation));
+                transform = transform.post_mul(&Transform2F::from_translation(translation));
                 let chord = LineSegment2F::new(-offset, offset);
                 contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
             }
@@ -374,8 +374,8 @@ impl Contour {
             }
             LineJoin::Round => {
                 let scale = Vector2F::splat(distance.abs());
-                let mut transform = Transform2DF::from_scale(scale);
-                transform = transform.post_mul(&Transform2DF::from_translation(join_point));
+                let mut transform = Transform2F::from_scale(scale);
+                transform = transform.post_mul(&Transform2F::from_translation(join_point));
                 let chord_from = (prev_tangent.to() - join_point).normalize();
                 let chord_to = (next_tangent.to() - join_point).normalize();
                 let chord = LineSegment2F::new(chord_from, chord_to);
