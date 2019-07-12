@@ -370,15 +370,6 @@ impl Perspective {
             window_size,
         }
     }
-
-    #[inline]
-    pub fn transform_rect(&self, rect: RectF) -> RectF {
-        let (upper_left, upper_right) = (*self * rect.origin(),     *self * rect.upper_right());
-        let (lower_left, lower_right) = (*self * rect.lower_left(), *self * rect.lower_right());
-        let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
-        let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
-        RectF::from_points(min_point, max_point)
-    }
 }
 
 impl Mul<Transform4F> for Perspective {
@@ -399,6 +390,18 @@ impl Mul<Vector2F> for Perspective {
         let point = (self.transform * vector.to_3d()).perspective_divide().to_2d() *
             Vector2F::new(1.0, -1.0);
         (point + Vector2F::splat(1.0)) * self.window_size.to_f32().scale(0.5)
+    }
+}
+
+impl Mul<RectF> for Perspective {
+    type Output = RectF;
+    #[inline]
+    fn mul(self, rect: RectF) -> RectF {
+        let (upper_left, upper_right) = (self * rect.origin(),     self * rect.upper_right());
+        let (lower_left, lower_right) = (self * rect.lower_left(), self * rect.lower_right());
+        let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
+        let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
+        RectF::from_points(min_point, max_point)
     }
 }
 

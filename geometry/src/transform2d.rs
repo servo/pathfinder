@@ -182,20 +182,6 @@ impl Transform2F {
         }
     }
 
-    #[inline]
-    pub fn transform_line_segment(&self, line_segment: LineSegment2F) -> LineSegment2F {
-        LineSegment2F::new(*self * line_segment.from(), *self * line_segment.to())
-    }
-
-    #[inline]
-    pub fn transform_rect(&self, rect: &RectF) -> RectF {
-        let (upper_left, upper_right) = (*self * rect.origin(),     *self * rect.upper_right());
-        let (lower_left, lower_right) = (*self * rect.lower_left(), *self * rect.lower_right());
-        let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
-        let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
-        RectF::from_points(min_point, max_point)
-    }
-
     // TODO(pcwalton): Optimize better with SIMD.
     #[inline]
     pub fn to_3d(&self) -> Transform4F {
@@ -302,6 +288,26 @@ impl Mul<Vector2F> for Transform2F {
     #[inline]
     fn mul(self, vector: Vector2F) -> Vector2F {
         self.matrix * vector + self.vector
+    }
+}
+
+impl Mul<LineSegment2F> for Transform2F {
+    type Output = LineSegment2F;
+    #[inline]
+    fn mul(self, line_segment: LineSegment2F) -> LineSegment2F {
+        LineSegment2F::new(self * line_segment.from(), self * line_segment.to())
+    }
+}
+
+impl Mul<RectF> for Transform2F {
+    type Output = RectF;
+    #[inline]
+    fn mul(self, rect: RectF) -> RectF {
+        let (upper_left, upper_right) = (self * rect.origin(),     self * rect.upper_right());
+        let (lower_left, lower_right) = (self * rect.lower_left(), self * rect.lower_right());
+        let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
+        let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
+        RectF::from_points(min_point, max_point)
     }
 }
 

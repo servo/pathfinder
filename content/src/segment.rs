@@ -217,8 +217,8 @@ impl Segment {
     #[inline]
     pub fn transform(self, transform: &Transform2F) -> Segment {
         Segment {
-            baseline: transform.transform_line_segment(self.baseline),
-            ctrl: transform.transform_line_segment(self.ctrl),
+            baseline: *transform * self.baseline,
+            ctrl: *transform * self.ctrl,
             kind: self.kind,
             flags: self.flags,
         }
