@@ -14,7 +14,7 @@
 // proper.
 
 use crate::window::{OcularTransform, View};
-use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
+use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
@@ -56,8 +56,7 @@ impl Camera {
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
             * scale_factor_for_view_box(view_box);
         let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
-        Camera::TwoD(Transform2F::from_translation(origin) *
-                     Transform2F::from_uniform_scale(scale))
+        Camera::TwoD(Transform2F::from_uniform_scale(scale).translate(origin))
     }
 
     fn new_3d(mode: Mode, view_box: RectF, viewport_size: Vector2I) -> Camera {

@@ -138,9 +138,8 @@ impl<'a> OutlineStrokeToFill<'a> {
             LineCap::Round => {
                 let scale = Vector2F::splat(width * 0.5);
                 let offset = gradient.yx().scale_xy(Vector2F::new(-1.0, 1.0));
-                let mut transform = Transform2F::from_scale(scale);
                 let translation = p1 + offset.scale(width * 0.5);
-                transform = Transform2F::from_translation(translation) * transform;
+                let transform = Transform2F::from_scale(scale).translate(translation);
                 let chord = LineSegment2F::new(-offset, offset);
                 contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
             }
@@ -374,8 +373,7 @@ impl Contour {
             }
             LineJoin::Round => {
                 let scale = Vector2F::splat(distance.abs());
-                let mut transform = Transform2F::from_translation(join_point);
-                transform *= Transform2F::from_scale(scale);
+                let transform = Transform2F::from_scale(scale).translate(join_point);
                 let chord_from = (prev_tangent.to() - join_point).normalize();
                 let chord_to = (next_tangent.to() - join_point).normalize();
                 let chord = LineSegment2F::new(chord_from, chord_to);

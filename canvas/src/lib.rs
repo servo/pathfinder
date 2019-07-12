@@ -441,8 +441,7 @@ impl Path2D {
                start_angle: f32,
                end_angle: f32,
                direction: ArcDirection) {
-        let mut transform = Transform2F::from_scale(Vector2F::splat(radius));
-        transform = Transform2F::from_translation(center) * transform;
+        let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
         self.current_contour.push_arc(&transform, start_angle, end_angle, direction);
     }
 
@@ -456,8 +455,7 @@ impl Path2D {
         let bisector = vu0 + vu1;
         let center = ctrl + bisector.scale(hypot / bisector.length());
 
-        let mut transform = Transform2F::from_scale(Vector2F::splat(radius));
-        transform = Transform2F::from_translation(center) * transform;
+        let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
 
         let chord = LineSegment2F::new(vu0.yx().scale_xy(Vector2F::new(-1.0, 1.0)),
                                       vu1.yx().scale_xy(Vector2F::new(1.0, -1.0)));
@@ -483,9 +481,7 @@ impl Path2D {
                    end_angle: f32) {
         self.flush_current_contour();
 
-        let mut transform = Transform2F::from_translation(center);
-        transform *= Transform2F::from_rotation(rotation);
-        transform *= Transform2F::from_scale(axes);
+        let transform = Transform2F::from_scale(axes).rotate(rotation).translate(center);
         self.current_contour.push_arc(&transform, start_angle, end_angle, ArcDirection::CW);
 
         if end_angle - start_angle >= 2.0 * PI {

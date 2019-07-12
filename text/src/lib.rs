@@ -93,9 +93,7 @@ impl SceneExt for Scene {
             // FIXME(pcwalton): Cache this!
             let scale = style.size / (font.metrics().units_per_em as f32);
             let scale = Vector2F::new(scale, -scale);
-            let transform = *transform *
-                Transform2F::from_translation(offset) *
-                Transform2F::from_scale(scale);
+            let transform = *transform * Transform2F::from_scale(scale).translate(offset);
             self.push_glyph(font,
                             glyph.glyph_id,
                             &transform,

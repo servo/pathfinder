@@ -246,22 +246,25 @@ impl Transform2F {
         self.matrix.m22()
     }
 
-    /*
     #[inline]
-    pub fn post_translate(&self, vector: Vector2F) -> Transform2F {
-        self.post_mul(&Transform2F::from_translation(vector))
+    pub fn translate(&self, vector: Vector2F) -> Transform2F {
+        Transform2F::from_translation(vector) * *self
     }
 
     #[inline]
-    pub fn post_rotate(&self, theta: f32) -> Transform2F {
-        self.post_mul(&Transform2F::from_rotation(theta))
+    pub fn rotate(&self, theta: f32) -> Transform2F {
+        Transform2F::from_rotation(theta) * *self
     }
 
     #[inline]
-    pub fn post_scale(&self, scale: Vector2F) -> Transform2F {
-        self.post_mul(&Transform2F::from_scale(scale))
+    pub fn scale(&self, scale: Vector2F) -> Transform2F {
+        Transform2F::from_scale(scale) * *self
     }
-    */
+
+    #[inline]
+    pub fn uniform_scale(&self, scale: f32) -> Transform2F {
+        self.scale(Vector2F::splat(scale))
+    }
 
     /// Returns the translation part of this matrix.
     ///
