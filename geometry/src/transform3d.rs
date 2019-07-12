@@ -422,7 +422,7 @@ mod test {
             58.0, 107.0, 53.0, 29.0, 84.0, 177.0, 87.0, 72.0, 106.0, 199.0, 101.0, 49.0, 62.0,
             152.0, 83.0, 75.0,
         );
-        assert_eq!(a.post_mul(&b), c);
+        assert_eq!(a * b, c);
     }
 
     #[test]
@@ -437,7 +437,7 @@ mod test {
             135.0, 93.0, 110.0, 103.0, 93.0, 61.0, 85.0, 82.0, 104.0, 52.0, 90.0, 86.0, 117.0,
             50.0, 122.0, 125.0,
         );
-        assert_eq!(a.pre_mul(&b), c);
+        assert_eq!(b * a, c);
     }
 
     #[test]
@@ -447,7 +447,7 @@ mod test {
         );
         let p = Vector4F::new(3.0, 8.0, 4.0, 6.0);
         let q = Vector4F::new(63.0, 97.0, 135.0, 117.0);
-        assert_eq!(a.transform_point(p), q);
+        assert_eq!(a * p, q);
     }
 
     #[test]
@@ -459,7 +459,7 @@ mod test {
             0.51057162, 0.24812012,
         );
         let p0 = Vector4F::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
-        let p1 = m.transform_point(p0);
+        let p1 = m * p0;
         let m_inv = m.inverse();
         let m_inv_exp = Transform4F::row_major(
             -2.47290136,
@@ -480,7 +480,7 @@ mod test {
             -9.10374060,
         );
         assert!(m_inv.approx_eq(&m_inv_exp, 0.0001));
-        let p2 = m_inv.transform_point(p1);
-        assert!(p0.approx_eq(&p2, 0.0001));
+        let p2 = m_inv * p1;
+        assert!(p0.approx_eq(p2, 0.0001));
     }
 }
