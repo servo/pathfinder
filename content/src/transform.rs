@@ -34,12 +34,12 @@ where
         // TODO(pcwalton): Can we go faster by transforming an entire line segment with SIMD?
         let mut segment = self.iter.next()?;
         if !segment.is_none() {
-            segment.baseline.set_from(self.transform.transform_point(segment.baseline.from()));
-            segment.baseline.set_to(self.transform.transform_point(segment.baseline.to()));
+            segment.baseline.set_from(self.transform * segment.baseline.from());
+            segment.baseline.set_to(self.transform * segment.baseline.to());
             if !segment.is_line() {
-                segment.ctrl.set_from(self.transform.transform_point(segment.ctrl.from()));
+                segment.ctrl.set_from(self.transform * segment.ctrl.from());
                 if !segment.is_quadratic() {
-                    segment.ctrl.set_to(self.transform.transform_point(segment.ctrl.to()));
+                    segment.ctrl.set_to(self.transform * segment.ctrl.to());
                 }
             }
         }
@@ -79,14 +79,12 @@ where
     fn next(&mut self) -> Option<Segment> {
         let mut segment = self.iter.next()?;
         if !segment.is_none() {
-            segment.baseline.set_from(
-                self.perspective.transform_point_2d(segment.baseline.from()),
-            );
-            segment.baseline.set_to(self.perspective.transform_point_2d(segment.baseline.to()));
+            segment.baseline.set_from(self.perspective * segment.baseline.from());
+            segment.baseline.set_to(self.perspective * segment.baseline.to());
             if !segment.is_line() {
-                segment.ctrl.set_from(self.perspective.transform_point_2d(segment.ctrl.from()));
+                segment.ctrl.set_from(self.perspective * segment.ctrl.from());
                 if !segment.is_quadratic() {
-                    segment.ctrl.set_to(self.perspective.transform_point_2d(segment.ctrl.to()));
+                    segment.ctrl.set_to(self.perspective * segment.ctrl.to());
                 }
             }
         }

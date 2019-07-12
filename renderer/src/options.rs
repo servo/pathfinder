@@ -83,7 +83,7 @@ impl RenderTransform {
         debug!("-----");
         debug!("bounds={:?} ORIGINAL quad={:?}", bounds, points);
         for point in &mut points {
-            *point = perspective.transform.transform_point(*point);
+            *point = perspective.transform * *point;
         }
         debug!("... PERSPECTIVE quad={:?}", points);
 
@@ -105,12 +105,7 @@ impl RenderTransform {
         let inverse_transform = perspective.transform.inverse();
         let clip_polygon = points
             .into_iter()
-            .map(|point| {
-                inverse_transform
-                    .transform_point(point)
-                    .perspective_divide()
-                    .to_2d()
-            })
+            .map(|point| (inverse_transform * point).perspective_divide().to_2d())
             .collect();
         return PreparedRenderTransform::Perspective {
             perspective,

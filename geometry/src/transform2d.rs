@@ -61,12 +61,6 @@ impl Matrix2x2F {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Vector2F) -> Vector2F {
-        let halves = self.0 * point.0.to_f32x4().xxyy();
-        Vector2F(halves.xy() + halves.zw())
-    }
-
-    #[inline]
     pub fn det(&self) -> f32 {
         self.0[0] * self.0[3] - self.0[2] * self.0[1]
     }
@@ -107,6 +101,15 @@ impl Mul<Matrix2x2F> for Matrix2x2F {
     #[inline]
     fn mul(self, other: Matrix2x2F) -> Matrix2x2F {
         Matrix2x2F(self.0.xyxy() * other.0.xxzz() + self.0.zwzw() * other.0.yyww())
+    }
+}
+
+impl Mul<Vector2F> for Matrix2x2F {
+    type Output = Vector2F;
+    #[inline]
+    fn mul(self, vector: Vector2F) -> Vector2F {
+        let halves = self.0 * vector.0.to_f32x4().xxyy();
+        Vector2F(halves.xy() + halves.zw())
     }
 }
 
@@ -180,22 +183,14 @@ impl Transform2F {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Vector2F) -> Vector2F {
-        self.matrix.transform_point(point) + self.vector
-    }
-
-    #[inline]
     pub fn transform_line_segment(&self, line_segment: LineSegment2F) -> LineSegment2F {
-        LineSegment2F::new(self.transform_point(line_segment.from()),
-                            self.transform_point(line_segment.to()))
+        LineSegment2F::new(*self * line_segment.from(), *self * line_segment.to())
     }
 
     #[inline]
     pub fn transform_rect(&self, rect: &RectF) -> RectF {
-        let upper_left = self.transform_point(rect.origin());
-        let upper_right = self.transform_point(rect.upper_right());
-        let lower_left = self.transform_point(rect.lower_left());
-        let lower_right = self.transform_point(rect.lower_right());
+        let (upper_left, upper_right) = (*self * rect.origin(),     *self * rect.upper_right());
+        let (lower_left, lower_right) = (*self * rect.lower_left(), *self * rect.lower_right());
         let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF::from_points(min_point, max_point)
@@ -297,8 +292,16 @@ impl Mul<Transform2F> for Transform2F {
     fn mul(self, other: Transform2F) -> Transform2F {
         Transform2F {
             matrix: self.matrix * other.matrix,
-            vector: self.transform_point(other.vector),
+            vector: self * other.vector,
         }
+    }
+}
+
+impl Mul<Vector2F> for Transform2F {
+    type Output = Vector2F;
+    #[inline]
+    fn mul(self, vector: Vector2F) -> Vector2F {
+        self.matrix * vector + self.vector
     }
 }
 

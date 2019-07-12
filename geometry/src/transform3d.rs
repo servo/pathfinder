@@ -241,15 +241,6 @@ impl Transform4F {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Vector4F) -> Vector4F {
-        let term0 = self.c0 * F32x4::splat(point.x());
-        let term1 = self.c1 * F32x4::splat(point.y());
-        let term2 = self.c2 * F32x4::splat(point.z());
-        let term3 = self.c3 * F32x4::splat(point.w());
-        Vector4F(term0 + term1 + term2 + term3)
-    }
-
-    #[inline]
     pub fn upper_left(&self) -> Matrix2x2F {
         Matrix2x2F(self.c0.concat_xy_xy(self.c1))
     }
@@ -330,6 +321,19 @@ impl Mul<Transform4F> for Transform4F {
     }
 }
 
+impl Mul<Vector4F> for Transform4F {
+    type Output = Vector4F;
+
+    #[inline]
+    fn mul(self, vector: Vector4F) -> Vector4F {
+        let term0 = self.c0 * F32x4::splat(vector.x());
+        let term1 = self.c1 * F32x4::splat(vector.y());
+        let term2 = self.c2 * F32x4::splat(vector.z());
+        let term3 = self.c3 * F32x4::splat(vector.w());
+        Vector4F(term0 + term1 + term2 + term3)
+    }
+}
+
 impl MulAssign<Transform4F> for Transform4F {
     fn mul_assign(&mut self, other: Transform4F) {
         *self = *self * other
@@ -368,23 +372,9 @@ impl Perspective {
     }
 
     #[inline]
-    pub fn transform_point_2d(&self, point: Vector2F) -> Vector2F {
-        let point = self
-            .transform
-            .transform_point(point.to_3d())
-            .perspective_divide()
-            .to_2d()
-            * Vector2F::new(1.0, -1.0);
-        (point + Vector2F::splat(1.0)) * self.window_size.to_f32().scale(0.5)
-    }
-
-    // TODO(pcwalton): SIMD?
-    #[inline]
     pub fn transform_rect(&self, rect: RectF) -> RectF {
-        let upper_left = self.transform_point_2d(rect.origin());
-        let upper_right = self.transform_point_2d(rect.upper_right());
-        let lower_left = self.transform_point_2d(rect.lower_left());
-        let lower_right = self.transform_point_2d(rect.lower_right());
+        let (upper_left, upper_right) = (*self * rect.origin(),     *self * rect.upper_right());
+        let (lower_left, lower_right) = (*self * rect.lower_left(), *self * rect.lower_right());
         let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF::from_points(min_point, max_point)
@@ -399,6 +389,16 @@ impl Mul<Transform4F> for Perspective {
             transform: self.transform * other,
             window_size: self.window_size,
         }
+    }
+}
+
+impl Mul<Vector2F> for Perspective {
+    type Output = Vector2F;
+    #[inline]
+    fn mul(self, vector: Vector2F) -> Vector2F {
+        let point = (self.transform * vector.to_3d()).perspective_divide().to_2d() *
+            Vector2F::new(1.0, -1.0);
+        (point + Vector2F::splat(1.0)) * self.window_size.to_f32().scale(0.5)
     }
 }
 

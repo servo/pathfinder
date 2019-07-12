@@ -147,7 +147,7 @@ impl OutlinePathBuilder {
     }
 
     fn convert_point(&self, point: Point2D<f32>) -> Vector2F {
-        self.transform.transform_point(Vector2F::new(point.x, point.y))
+        self.transform * Vector2F::new(point.x, point.y)
     }
 }
 

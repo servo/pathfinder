@@ -147,7 +147,7 @@ impl CameraTransform3D {
         let update = !vector.is_zero();
         if update {
             let rotation = Transform4F::from_rotation(-self.yaw, -self.pitch, 0.0);
-            self.position = self.position + rotation.transform_point(vector);
+            self.position = self.position + rotation * vector;
         }
         update
     }

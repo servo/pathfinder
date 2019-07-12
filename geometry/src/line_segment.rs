@@ -232,7 +232,7 @@ impl LineSegment2F {
         if f32::abs(matrix.det()) < EPSILON {
             return None;
         }
-        return Some(matrix.inverse().transform_point(self.from() - other.from()).y());
+        return Some((matrix.inverse() * (self.from() - other.from())).y());
 
         const EPSILON: f32 = 0.0001;
     }
