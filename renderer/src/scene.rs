@@ -119,8 +119,7 @@ impl Scene {
                         PreparedRenderTransform::Perspective { .. } => unreachable!(),
                     };
                     if options.subpixel_aa_enabled {
-                        transform = transform
-                            .post_mul(&Transform2F::from_scale(Vector2F::new(3.0, 1.0)))
+                        transform *= Transform2F::from_scale(Vector2F::new(3.0, 1.0))
                     }
                     outline.transform(&transform);
                 }

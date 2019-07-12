@@ -16,7 +16,7 @@ use crate::rect::RectF;
 use crate::transform3d::Transform4F;
 use crate::unit_vector::UnitVector;
 use pathfinder_simd::default::F32x4;
-use std::ops::Sub;
+use std::ops::{Mul, MulAssign, Sub};
 
 /// A 2x2 matrix, optimized with SIMD, in column-major order.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,18 +46,8 @@ impl Matrix2x2F {
     }
 
     #[inline]
-    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32) -> Matrix2x2F {
-        Matrix2x2F(F32x4::new(m11, m21, m12, m22))
-    }
-
-    #[inline]
-    pub fn post_mul(&self, other: &Matrix2x2F) -> Matrix2x2F {
-        Matrix2x2F(self.0.xyxy() * other.0.xxzz() + self.0.zwzw() * other.0.yyww())
-    }
-
-    #[inline]
-    pub fn pre_mul(&self, other: &Matrix2x2F) -> Matrix2x2F {
-        other.post_mul(self)
+    pub fn row_major(m00: f32, m01: f32, m10: f32, m11: f32) -> Matrix2x2F {
+        Matrix2x2F(F32x4::new(m00, m10, m01, m11))
     }
 
     #[inline]
@@ -112,6 +102,14 @@ impl Sub<Matrix2x2F> for Matrix2x2F {
     }
 }
 
+impl Mul<Matrix2x2F> for Matrix2x2F {
+    type Output = Matrix2x2F;
+    #[inline]
+    fn mul(self, other: Matrix2x2F) -> Matrix2x2F {
+        Matrix2x2F(self.0.xyxy() * other.0.xxzz() + self.0.zwzw() * other.0.yyww())
+    }
+}
+
 /// An affine transform, optimized with SIMD.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transform2F {
@@ -134,6 +132,11 @@ impl Transform2F {
             matrix: Matrix2x2F::from_scale(scale),
             vector: Vector2F::default(),
         }
+    }
+
+    #[inline]
+    pub fn from_uniform_scale(scale: f32) -> Transform2F {
+        Transform2F::from_scale(Vector2F::splat(scale))
     }
 
     #[inline]
@@ -165,7 +168,7 @@ impl Transform2F {
     ) -> Transform2F {
         let rotation = Transform2F::from_rotation(theta);
         let translation = Transform2F::from_translation(translation);
-        Transform2F::from_scale(scale).post_mul(&rotation).post_mul(&translation)
+        Transform2F::from_scale(scale) * rotation * translation
     }
 
     #[inline]
@@ -196,18 +199,6 @@ impl Transform2F {
         let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF::from_points(min_point, max_point)
-    }
-
-    #[inline]
-    pub fn post_mul(&self, other: &Transform2F) -> Transform2F {
-        let matrix = self.matrix.post_mul(&other.matrix);
-        let vector = other.transform_point(self.vector);
-        Transform2F { matrix, vector }
-    }
-
-    #[inline]
-    pub fn pre_mul(&self, other: &Transform2F) -> Transform2F {
-        other.post_mul(self)
     }
 
     // TODO(pcwalton): Optimize better with SIMD.
@@ -255,6 +246,7 @@ impl Transform2F {
         self.matrix.m22()
     }
 
+    /*
     #[inline]
     pub fn post_translate(&self, vector: Vector2F) -> Transform2F {
         self.post_mul(&Transform2F::from_translation(vector))
@@ -269,6 +261,7 @@ impl Transform2F {
     pub fn post_scale(&self, scale: Vector2F) -> Transform2F {
         self.post_mul(&Transform2F::from_scale(scale))
     }
+    */
 
     /// Returns the translation part of this matrix.
     ///
@@ -292,5 +285,23 @@ impl Transform2F {
     #[inline]
     pub fn scale_factor(&self) -> f32 {
         Vector2F(self.matrix.0.zw()).length()
+    }
+}
+
+impl Mul<Transform2F> for Transform2F {
+    type Output = Transform2F;
+    #[inline]
+    fn mul(self, other: Transform2F) -> Transform2F {
+        Transform2F {
+            matrix: self.matrix * other.matrix,
+            vector: self.transform_point(other.vector),
+        }
+    }
+}
+
+impl MulAssign for Transform2F {
+    #[inline]
+    fn mul_assign(&mut self, other: Transform2F) {
+        *self = *self * other
     }
 }

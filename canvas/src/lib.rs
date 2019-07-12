@@ -115,8 +115,7 @@ impl CanvasRenderingContext2D {
             TextAlign::Center => position.set_x(position.x() - layout.width() * 0.5),
         }
 
-        let transform = Transform2F::from_translation(position).post_mul(&self.current_state
-                                                                               .transform);
+        let transform = self.current_state.transform * Transform2F::from_translation(position);
 
         // TODO(pcwalton): Report errors.
         drop(self.scene.push_layout(&layout,
@@ -443,7 +442,7 @@ impl Path2D {
                end_angle: f32,
                direction: ArcDirection) {
         let mut transform = Transform2F::from_scale(Vector2F::splat(radius));
-        transform = transform.post_mul(&Transform2F::from_translation(center));
+        transform = Transform2F::from_translation(center) * transform;
         self.current_contour.push_arc(&transform, start_angle, end_angle, direction);
     }
 
@@ -458,7 +457,7 @@ impl Path2D {
         let center = ctrl + bisector.scale(hypot / bisector.length());
 
         let mut transform = Transform2F::from_scale(Vector2F::splat(radius));
-        transform = transform.post_mul(&Transform2F::from_translation(center));
+        transform = Transform2F::from_translation(center) * transform;
 
         let chord = LineSegment2F::new(vu0.yx().scale_xy(Vector2F::new(-1.0, 1.0)),
                                       vu1.yx().scale_xy(Vector2F::new(1.0, -1.0)));
@@ -484,9 +483,9 @@ impl Path2D {
                    end_angle: f32) {
         self.flush_current_contour();
 
-        let mut transform = Transform2F::from_rotation(rotation);
-        transform = transform.post_mul(&Transform2F::from_scale(axes));
-        transform = transform.post_mul(&Transform2F::from_translation(center));
+        let mut transform = Transform2F::from_translation(center);
+        transform *= Transform2F::from_rotation(rotation);
+        transform *= Transform2F::from_scale(axes);
         self.current_contour.push_arc(&transform, start_angle, end_angle, ArcDirection::CW);
 
         if end_angle - start_angle >= 2.0 * PI {

@@ -89,7 +89,7 @@ impl BuiltSVG {
 
     fn process_node(&mut self, node: &Node, transform: &Transform2F) {
         let node_transform = usvg_transform_to_transform_2d(&node.transform());
-        let transform = transform.pre_mul(&node_transform);
+        let transform = node_transform * *transform;
 
         match *node.borrow() {
             NodeKind::Group(ref group) => {

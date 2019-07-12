@@ -327,10 +327,10 @@ impl<W> DemoApp<W> where W: Window {
                     if let Camera::TwoD(ref mut transform) = self.camera {
                         let backing_scale_factor = self.window_size.backing_scale_factor;
                         let position = position.to_f32().scale(backing_scale_factor);
-                        *transform = transform.post_translate(-position);
+                        *transform = Transform2F::from_translation(-position) * *transform;
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
-                        *transform = transform.post_scale(Vector2F::splat(scale_delta));
-                        *transform = transform.post_translate(position);
+                        *transform = Transform2F::from_uniform_scale(scale_delta) * *transform;
+                        *transform = Transform2F::from_translation(position) * *transform;
                     }
                 }
                 Event::Look { pitch, yaw } => {
@@ -587,7 +587,8 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 UIEvent::MouseDragged(position) => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
-                        *transform = transform.post_translate(position.relative.to_f32());
+                        *transform = Transform2F::from_translation(position.relative.to_f32()) *
+                            *transform;
                     }
                 }
                 _ => {}
@@ -607,10 +608,10 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Vector2F::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
-                    *transform = transform
-                        .post_translate(-center)
-                        .post_scale(scale)
-                        .post_translate(center);
+                    *transform = Transform2F::from_translation(center) *
+                        Transform2F::from_scale(scale) *
+                        Transform2F::from_translation(-center) *
+                        *transform;
                     self.dirty = true;
                 }
             }
@@ -618,10 +619,10 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Vector2F::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
-                    *transform = transform
-                        .post_translate(-center)
-                        .post_scale(scale)
-                        .post_translate(center);
+                    *transform = Transform2F::from_translation(center) *
+                        Transform2F::from_scale(scale) *
+                        Transform2F::from_translation(-center) *
+                        *transform;
                     self.dirty = true;
                 }
             }
@@ -635,10 +636,10 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let old_rotation = transform.rotation();
                     let center = center_of_window(&self.window_size);
-                    *transform = transform
-                        .post_translate(-center)
-                        .post_rotate(*theta - old_rotation)
-                        .post_translate(center);
+                    *transform = Transform2F::from_translation(-center) *
+                        Transform2F::from_rotation(*theta - old_rotation) *
+                        Transform2F::from_translation(center) *
+                        *transform;
                 }
             }
         }

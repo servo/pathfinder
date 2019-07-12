@@ -8,10 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::rect::RectF;
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
 use pathfinder_content::color::ColorF;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
@@ -57,6 +57,7 @@ fn main() {
 
     // Set line width.
     canvas.set_line_width(10.0);
+    canvas.set_line_join(LineJoin::Round);
 
     // Draw walls.
     canvas.stroke_rect(RectF::new(Vector2F::new(75.0, 140.0), Vector2F::new(150.0, 110.0)));

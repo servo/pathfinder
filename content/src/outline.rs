@@ -393,8 +393,7 @@ impl Contour {
 
             let half_sweep_vector = sweep_vector.halve_angle();
             let rotation = Transform2F::from_rotation_vector(half_sweep_vector.rotate_by(vector));
-            segment = segment.transform(&direction_transform.post_mul(&rotation)
-                                                            .post_mul(&transform));
+            segment = segment.transform(&(*transform * rotation * direction_transform));
 
             let mut push_segment_flags = PushSegmentFlags::UPDATE_BOUNDS;
             if first_segment {
@@ -419,13 +418,13 @@ impl Contour {
         self.push_segment(&segment.transform(transform),
                           PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT);
         rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
-        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+        self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
         rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
-        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+        self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
         rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
-        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+        self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
     }
 

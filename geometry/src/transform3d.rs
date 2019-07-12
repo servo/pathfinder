@@ -280,13 +280,13 @@ impl Transform4F {
 
         // Compute temporary matrices.
         let a_inv = a.inverse();
-        let x = c.post_mul(&a_inv);
-        let y = (d - x.post_mul(&b)).inverse();
-        let z = a_inv.post_mul(&b);
+        let x = c * a_inv;
+        let y = (d - x * b).inverse();
+        let z = a_inv * b;
 
         // Compute new submatrices.
-        let (a_new, b_new) = (a_inv + z.post_mul(&y).post_mul(&x), (-z).post_mul(&y));
-        let (c_new, d_new) = ((-y).post_mul(&x), y);
+        let (a_new, b_new) = (a_inv + z * y * x, -z * y);
+        let (c_new, d_new) = (-y * x, y);
 
         // Construct inverse.
         Transform4F::from_submatrices(a_new, b_new, c_new, d_new)
