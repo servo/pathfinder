@@ -101,6 +101,7 @@ impl SceneManager {
             RenderTransform::Transform2D(render_transform) => render_transform,
             RenderTransform::Perspective(_) => panic!("TODO"),
         };
+        println!("render transform={:?}", render_transform);
 
         // Determine needed blocks.
         let block_keys = self.determine_needed_blocks(&render_transform);
@@ -183,6 +184,9 @@ impl SceneManager {
     fn compute_block_transforms(&self, block_key: BlockKey, current_transform: &Transform2F)
                                 -> BlockTransforms {
         let block_render_transform = self.compute_block_render_transform(block_key);
+        println!("block_render_transform={:?}", block_render_transform);
+        println!("composite 2D transform={:?}",
+                 block_render_transform.inverse() * *current_transform);
 
         let view_box = self.scene.view_box();
         let scale = Vector4F::new(2.0 / view_box.size().x(), -2.0 / view_box.size().y(), 1.0, 1.0);
@@ -194,7 +198,7 @@ impl SceneManager {
         let other_composite_transform = to_ndc_transform *
             block_render_transform.inverse().to_3d() * current_transform.to_3d();
 
-        println!("expected: {:?}", composite_transform);
+        println!("expected composite transform: {:?}", composite_transform);
         println!("... got: {:?}", other_composite_transform);
 
         BlockTransforms {
