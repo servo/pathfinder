@@ -321,6 +321,16 @@ pub unsafe extern "C" fn PFCanvasResetTransform(canvas: PFCanvasRef) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn PFCanvasSave(canvas: PFCanvasRef) {
+    (*canvas).save();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasRestore(canvas: PFCanvasRef) {
+    (*canvas).restore();
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offset: f32) {
     (*canvas).set_line_dash_offset(new_offset)
 }
