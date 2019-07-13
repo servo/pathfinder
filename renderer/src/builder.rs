@@ -90,7 +90,6 @@ impl<'a> SceneBuilder<'a> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(),
                                                  &self.transform,
-                                                 self.block_key,
                                                  self.cache_policy,
                                                  &self.options);
 

@@ -19,7 +19,7 @@ use hashbrown::HashSet;
 use pathfinder_content::clip::PolygonClipper3D;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::transform3d::{Perspective, Transform4F};
+use pathfinder_geometry::transform3d::{self, Perspective, Transform4F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use std::time::Duration;
 
@@ -96,30 +96,30 @@ impl SceneManager {
             self.paints_cached = true;
         }
 
-        // TODO(pcwalton): Perspective.
-        let render_transform = match self.render_transform {
-            RenderTransform::Transform2D(render_transform) => render_transform,
-            RenderTransform::Perspective(_) => panic!("TODO"),
-        };
-        println!("render transform={:?}", render_transform);
-
         // Determine needed blocks.
-        let block_keys = self.determine_needed_blocks(&render_transform);
+        let block_keys = match self.render_transform {
+            RenderTransform::Transform2D(ref render_transform) => {
+                self.determine_needed_blocks_2d(render_transform)
+            }
+            RenderTransform::Perspective(ref perspective) => {
+                self.determine_needed_blocks_3d(perspective)
+            }
+        };
 
         // Build tiles if applicable.
         let mut total_build_time = Duration::new(0, 0);
         for &block_key in &block_keys {
-            let block_transforms = self.compute_block_transforms(block_key, &render_transform);
+            let block_transform = self.compute_block_render_transform(block_key);
             if self.cached_blocks.contains(&block_key) {
                 continue;
             }
 
             let bounds = self.scene.bounds();
-            let prepared_render_transform =
-                RenderTransform::Transform2D(block_transforms.render).prepare(bounds);
+            let prepared_block_transform =
+                RenderTransform::Transform2D(block_transform).prepare(bounds);
             let new_build_time = SceneBuilder::new(&self.scene,
                                                    block_key,
-                                                   prepared_render_transform,
+                                                   prepared_block_transform,
                                                    self.cache_policy,
                                                    &self.options,
                                                    &*listener).build(executor);
@@ -132,10 +132,18 @@ impl SceneManager {
 
         // Composite.
         for &block_key in &block_keys {
-            let block_transforms = self.compute_block_transforms(block_key, &render_transform);
+            let composite_transform = match self.render_transform {
+                RenderTransform::Transform2D(ref render_transform) => {
+                    self.compute_composite_transform_2d(block_key, render_transform)
+                }
+                RenderTransform::Perspective(ref perspective) => {
+                    self.compute_composite_transform_3d(block_key, &perspective.transform)
+                }
+            };
+
             listener.send(RenderCommand::CompositeBlock {
                 block: block_key,
-                transform: block_transforms.composite,
+                transform: composite_transform,
             });
         }
 
@@ -143,7 +151,7 @@ impl SceneManager {
         listener.send(RenderCommand::Finish { build_time: total_build_time });
     }
 
-    fn determine_needed_blocks(&self, current_transform: &Transform2F) -> Vec<BlockKey> {
+    fn determine_needed_blocks_2d(&self, current_transform: &Transform2F) -> Vec<BlockKey> {
         let matrix = current_transform.matrix;
         let scale = (f32::max(matrix.m11().abs(), matrix.m12().abs()) +
                      f32::max(matrix.m21().abs(), matrix.m22().abs())) * 0.5;
@@ -173,6 +181,11 @@ impl SceneManager {
         results
     }
 
+    // TODO(pcwalton)
+    fn determine_needed_blocks_3d(&self, current_transform: &Perspective) -> Vec<BlockKey> {
+        vec![BlockKey::new(0, Vector2I::default())]
+    }
+
     fn compute_block_render_transform(&self, block_key: BlockKey) -> Transform2F {
         let transformed_bounds = self.scene.bounds().scale(block_key.scale() as f32);
         let tile_size = Vector2I::new(-(TILE_WIDTH as i32), -(TILE_HEIGHT as i32));
@@ -181,24 +194,17 @@ impl SceneManager {
         Transform2F::from_uniform_scale(block_key.scale() as f32).translate(block_render_offset)
     }
 
-    fn compute_block_transforms(&self, block_key: BlockKey, current_transform: &Transform2F)
-                                -> BlockTransforms {
+    fn compute_composite_transform_2d(&self, block_key: BlockKey, current_transform: &Transform2F)
+                                      -> Transform4F {
         let block_render_transform = self.compute_block_render_transform(block_key);
+        transform3d::normalized_device_coordinates_transform(self.scene.view_box().size()) *
+            (*current_transform * block_render_transform.inverse()).to_3d()
+    }
 
-        let view_box = self.scene.view_box();
-        let scale = Vector4F::new(2.0 / view_box.size().x(), -2.0 / view_box.size().y(), 1.0, 1.0);
-        let offset = Vector4F::new(-1.0, 1.0, 0.0, 1.0);
-        let to_ndc_transform = Transform4F::from_scale(scale).translate(offset);
-        let composite_transform = to_ndc_transform *
-            (*current_transform * block_render_transform.inverse()).to_3d();
-
-        let other_composite_transform = to_ndc_transform *
-            current_transform.to_3d() * block_render_transform.inverse().to_3d();
-
-        BlockTransforms {
-            render: block_render_transform,
-            composite: composite_transform,
-        }
+    fn compute_composite_transform_3d(&self, block_key: BlockKey, current_transform: &Transform4F)
+                                      -> Transform4F {
+        let block_render_transform = self.compute_block_render_transform(block_key);
+        *current_transform * block_render_transform.inverse().to_3d()
     }
 }
 

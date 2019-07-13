@@ -417,6 +417,12 @@ impl Mul<RectF> for Perspective {
     }
 }
 
+pub fn normalized_device_coordinates_transform(window_size: Vector2F) -> Transform4F {
+    let scale = Vector4F::new(2.0 / window_size.x(), -2.0 / window_size.y(), 1.0, 1.0);
+    let offset = Vector4F::new(-1.0, 1.0, 0.0, 1.0);
+    Transform4F::from_scale(scale).translate(offset)
+}
+
 #[cfg(test)]
 mod test {
     use crate::vector::Vector4F;

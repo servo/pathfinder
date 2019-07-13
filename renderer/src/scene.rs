@@ -10,7 +10,6 @@
 
 //! A set of paths to be rendered.
 
-use crate::command::BlockKey;
 use crate::manager::{BuildOptions, CachePolicy, PreparedRenderTransform};
 use crate::paint::{Paint, PaintId};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
@@ -88,7 +87,6 @@ impl Scene {
         &self,
         original_outline: &Outline,
         transform: &PreparedRenderTransform,
-        block_key: BlockKey,
         cache_policy: CachePolicy,
         options: &BuildOptions,
     ) -> Outline {
