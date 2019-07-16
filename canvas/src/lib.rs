@@ -25,7 +25,7 @@ use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
@@ -125,8 +125,7 @@ impl CanvasRenderingContext2D {
             TextAlign::Center => position.set_x(position.x() - layout.width() * 0.5),
         }
 
-        let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
-                                                                               .transform);
+        let transform = self.current_state.transform * Transform2F::from_translation(position);
 
         // TODO(pcwalton): Report errors.
         drop(self.scene.push_layout(&layout,
@@ -296,7 +295,7 @@ impl CanvasRenderingContext2D {
             let paint_id = self.scene.push_paint(&paint);
 
             let mut outline = outline.clone();
-            outline.transform(&Transform2DF::from_translation(self.current_state.shadow_offset));
+            outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
             self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
         }
 
@@ -306,18 +305,18 @@ impl CanvasRenderingContext2D {
     // Transformations
 
     #[inline]
-    pub fn current_transform(&self) -> Transform2DF {
+    pub fn current_transform(&self) -> Transform2F {
         self.current_state.transform
     }
 
     #[inline]
-    pub fn set_current_transform(&mut self, new_transform: &Transform2DF) {
+    pub fn set_current_transform(&mut self, new_transform: &Transform2F) {
         self.current_state.transform = *new_transform;
     }
 
     #[inline]
     pub fn reset_transform(&mut self) {
-        self.current_state.transform = Transform2DF::default();
+        self.current_state.transform = Transform2F::default();
     }
 
     // Compositing
@@ -349,7 +348,7 @@ impl CanvasRenderingContext2D {
 
 #[derive(Clone)]
 struct State {
-    transform: Transform2DF,
+    transform: Transform2F,
     font_collection: Arc<FontCollection>,
     font_size: f32,
     line_width: f32,
@@ -369,7 +368,7 @@ struct State {
 impl State {
     fn default(default_font_collection: Arc<FontCollection>) -> State {
         State {
-            transform: Transform2DF::default(),
+            transform: Transform2F::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
             line_width: 1.0,
@@ -452,8 +451,7 @@ impl Path2D {
                start_angle: f32,
                end_angle: f32,
                direction: ArcDirection) {
-        let mut transform = Transform2DF::from_scale(Vector2F::splat(radius));
-        transform = transform.post_mul(&Transform2DF::from_translation(center));
+        let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
         self.current_contour.push_arc(&transform, start_angle, end_angle, direction);
     }
 
@@ -467,8 +465,7 @@ impl Path2D {
         let bisector = vu0 + vu1;
         let center = ctrl + bisector.scale(hypot / bisector.length());
 
-        let mut transform = Transform2DF::from_scale(Vector2F::splat(radius));
-        transform = transform.post_mul(&Transform2DF::from_translation(center));
+        let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
 
         let chord = LineSegment2F::new(vu0.yx().scale_xy(Vector2F::new(-1.0, 1.0)),
                                       vu1.yx().scale_xy(Vector2F::new(1.0, -1.0)));
@@ -494,9 +491,7 @@ impl Path2D {
                    end_angle: f32) {
         self.flush_current_contour();
 
-        let mut transform = Transform2DF::from_rotation(rotation);
-        transform = transform.post_mul(&Transform2DF::from_scale(axes));
-        transform = transform.post_mul(&Transform2DF::from_translation(center));
+        let transform = Transform2F::from_scale(axes).rotate(rotation).translate(center);
         self.current_contour.push_arc(&transform, start_angle, end_angle, ArcDirection::CW);
 
         if end_angle - start_angle >= 2.0 * PI {

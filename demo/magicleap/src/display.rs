@@ -13,7 +13,7 @@ use std::io;
 use pathfinder_geometry::point::Point2DI32;
 use pathfinder_geometry::rect::RectI32;
 use pathfinder_geometry::transform3d::Perspective;
-use pathfinder_geometry::transform3d::Transform3DF32;
+use pathfinder_geometry::transform3d::Transform4F32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 
@@ -36,7 +36,7 @@ pub trait DisplayCamera {
     type Error: DisplayError;
 
     fn bounds(&self) -> RectI32;
-    fn view(&self) -> Transform3DF32;
+    fn view(&self) -> Transform4F32;
     fn perspective(&self) -> Perspective;
 
     fn make_current(&mut self) -> Result<(), Self::Error>;

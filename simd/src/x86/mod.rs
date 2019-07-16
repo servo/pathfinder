@@ -12,12 +12,195 @@ use std::arch::x86_64::{self, __m128, __m128i, _MM_FROUND_TO_NEAREST_INT};
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, BitXor, Index, IndexMut, Mul, Not, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Index, IndexMut, Mul, Not, Shr, Sub};
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
 
-// 32-bit floats
+// Two 32-bit floats
+
+#[derive(Clone, Copy)]
+pub struct F32x2(pub u64);
+
+impl F32x2 {
+    // Constructors
+
+    #[inline]
+    pub fn new(a: f32, b: f32) -> F32x2 {
+        unsafe {
+            let a = mem::transmute::<*const f32, *const u32>(&a);
+            let b = mem::transmute::<*const f32, *const u32>(&b);
+            F32x2((*a as u64) | ((*b as u64) << 32))
+        }
+    }
+
+    #[inline]
+    pub fn splat(x: f32) -> F32x2 {
+        F32x2::new(x, x)
+    }
+
+    // Basic operations
+
+    #[inline]
+    pub fn approx_recip(self) -> F32x2 {
+        self.to_f32x4().approx_recip().xy()
+    }
+
+    #[inline]
+    pub fn min(self, other: F32x2) -> F32x2 {
+        self.to_f32x4().min(other.to_f32x4()).xy()
+    }
+
+    #[inline]
+    pub fn max(self, other: F32x2) -> F32x2 {
+        self.to_f32x4().max(other.to_f32x4()).xy()
+    }
+
+    #[inline]
+    pub fn clamp(self, min: F32x2, max: F32x2) -> F32x2 {
+        self.to_f32x4().clamp(min.to_f32x4(), max.to_f32x4()).xy()
+    }
+
+    #[inline]
+    pub fn abs(self) -> F32x2 {
+        self.to_f32x4().abs().xy()
+    }
+
+    #[inline]
+    pub fn floor(self) -> F32x2 {
+        self.to_f32x4().floor().xy()
+    }
+
+    #[inline]
+    pub fn ceil(self) -> F32x2 {
+        self.to_f32x4().ceil().xy()
+    }
+
+    #[inline]
+    pub fn round(self) -> F32x2 {
+        self.to_f32x4().round().xy()
+    }
+
+    #[inline]
+    pub fn sqrt(self) -> F32x2 {
+        self.to_f32x4().sqrt().xy()
+    }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: F32x2) -> U32x2 {
+        self.to_f32x4().packed_eq(other.to_f32x4()).xy()
+    }
+
+    #[inline]
+    pub fn packed_gt(self, other: F32x2) -> U32x2 {
+        self.to_f32x4().packed_gt(other.to_f32x4()).xy()
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: F32x2) -> U32x2 {
+        self.to_f32x4().packed_lt(other.to_f32x4()).xy()
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: F32x2) -> U32x2 {
+        self.to_f32x4().packed_le(other.to_f32x4()).xy()
+    }
+
+    // Conversions
+
+    #[inline]
+    pub fn to_f32x4(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_castsi128_ps(x86_64::_mm_cvtsi64_si128(self.0 as i64))) }
+    }
+
+    #[inline]
+    pub fn to_i32x2(self) -> I32x2 {
+        self.to_i32x4().xy()
+    }
+
+    #[inline]
+    pub fn to_i32x4(self) -> I32x4 {
+        self.to_f32x4().to_i32x4()
+    }
+
+    // Swizzle
+
+    #[inline]
+    pub fn yx(self) -> F32x2 {
+        self.to_f32x4().yx()
+    }
+
+    // Concatenations
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: F32x2) -> F32x4 {
+        self.to_f32x4().concat_xy_xy(other.to_f32x4())
+    }
+}
+
+impl Default for F32x2 {
+    #[inline]
+    fn default() -> F32x2 {
+        F32x2(0)
+    }
+}
+
+impl Index<usize> for F32x2 {
+    type Output = f32;
+    #[inline]
+    fn index(&self, index: usize) -> &f32 {
+        unsafe { &mem::transmute::<&u64, &[f32; 2]>(&self.0)[index] }
+    }
+}
+
+impl IndexMut<usize> for F32x2 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut f32 {
+        unsafe { &mut mem::transmute::<&mut u64, &mut [f32; 2]>(&mut self.0)[index] }
+    }
+}
+
+impl Debug for F32x2 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<{}, {}>", self[0], self[1])
+    }
+}
+
+impl PartialEq for F32x2 {
+    #[inline]
+    fn eq(&self, other: &F32x2) -> bool {
+        self.packed_eq(*other).is_all_ones()
+    }
+}
+
+impl Add<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn add(self, other: F32x2) -> F32x2 {
+        (self.to_f32x4() + other.to_f32x4()).xy()
+    }
+}
+
+impl Mul<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn mul(self, other: F32x2) -> F32x2 {
+        (self.to_f32x4() * other.to_f32x4()).xy()
+    }
+}
+
+impl Sub<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn sub(self, other: F32x2) -> F32x2 {
+        (self.to_f32x4() - other.to_f32x4()).xy()
+    }
+}
+
+// Four 32-bit floats
 
 #[derive(Clone, Copy)]
 pub struct F32x4(pub __m128);
@@ -126,6 +309,33 @@ impl F32x4 {
         unsafe { I32x4(x86_64::_mm_cvtps_epi32(self.0)) }
     }
 
+    // Extraction
+
+    #[inline]
+    pub fn xy(self) -> F32x2 {
+        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.0)) as u64) }
+    }
+
+    #[inline]
+    pub fn xw(self) -> F32x2 {
+        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.xwyz().0)) as u64) }
+    }
+
+    #[inline]
+    pub fn yx(self) -> F32x2 {
+        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.yxwz().0)) as u64) }
+    }
+
+    #[inline]
+    pub fn zy(self) -> F32x2 {
+        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.zyxw().0)) as u64) }
+    }
+
+    #[inline]
+    pub fn zw(self) -> F32x2 {
+        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.zwxy().0)) as u64) }
+    }
+
     // Concatenations
 
     #[inline]
@@ -224,7 +434,140 @@ impl Sub<F32x4> for F32x4 {
     }
 }
 
-// 32-bit signed integers
+// Two 32-bit signed integers
+
+#[derive(Clone, Copy)]
+pub struct I32x2(pub u64);
+
+impl I32x2 {
+    // Constructors
+
+    #[inline]
+    pub fn new(a: i32, b: i32) -> I32x2 {
+        unsafe {
+            let a = mem::transmute::<*const i32, *const u32>(&a);
+            let b = mem::transmute::<*const i32, *const u32>(&b);
+            I32x2((*a as u64) | ((*b as u64) << 32))
+        }
+    }
+
+    #[inline]
+    pub fn splat(x: i32) -> I32x2 {
+        I32x2::new(x, x)
+    }
+
+    // Concatenations
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: I32x2) -> I32x4 {
+        self.to_i32x4().concat_xy_xy(other.to_i32x4())
+    }
+
+    // Conversions
+
+    #[inline]
+    pub fn to_i32x4(self) -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_cvtsi64_si128(self.0 as i64)) }
+    }
+
+    #[inline]
+    pub fn to_f32x4(self) -> F32x4 {
+        self.to_i32x4().to_f32x4()
+    }
+
+    /// Converts these packed integers to floats.
+    #[inline]
+    pub fn to_f32x2(self) -> F32x2 {
+        self.to_f32x4().xy()
+    }
+
+    // Basic operations
+
+    #[inline]
+    pub fn min(self, other: I32x2) -> I32x2 {
+        self.to_i32x4().min(other.to_i32x4()).xy()
+    }
+
+    // Comparisons
+
+    // TODO(pcwalton): Make a `U32x2` type and use that!
+    #[inline]
+    pub fn packed_eq(self, other: I32x2) -> U32x4 {
+        self.to_i32x4().packed_eq(other.to_i32x4())
+    }
+
+    #[inline]
+    pub fn packed_gt(self, other: I32x2) -> U32x4 {
+        self.to_i32x4().packed_gt(other.to_i32x4())
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: I32x2) -> U32x4 {
+        self.to_i32x4().packed_le(other.to_i32x4())
+    }
+}
+
+impl Default for I32x2 {
+    #[inline]
+    fn default() -> I32x2 {
+        I32x2(0)
+    }
+}
+
+impl Index<usize> for I32x2 {
+    type Output = i32;
+    #[inline]
+    fn index(&self, index: usize) -> &i32 {
+        unsafe { &mem::transmute::<&u64, &[i32; 2]>(&self.0)[index] }
+    }
+}
+
+impl IndexMut<usize> for I32x2 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut i32 {
+        unsafe { &mut mem::transmute::<&mut u64, &mut [i32; 2]>(&mut self.0)[index] }
+    }
+}
+
+impl Add<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn add(self, other: I32x2) -> I32x2 {
+        (self.to_i32x4() + other.to_i32x4()).xy()
+    }
+}
+
+impl Sub<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn sub(self, other: I32x2) -> I32x2 {
+        (self.to_i32x4() - other.to_i32x4()).xy()
+    }
+}
+
+impl Mul<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn mul(self, other: I32x2) -> I32x2 {
+        (self.to_i32x4() * other.to_i32x4()).xy()
+    }
+}
+
+impl Debug for I32x2 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<{}, {}>", self[0], self[1])
+    }
+}
+
+impl PartialEq for I32x2 {
+    #[inline]
+    fn eq(&self, other: &I32x2) -> bool {
+        self.packed_eq(*other).is_all_ones()
+    }
+}
+
+// Four 32-bit signed integers
 
 #[derive(Clone, Copy)]
 pub struct I32x4(pub __m128i);
@@ -245,6 +588,33 @@ impl I32x4 {
         unsafe { I32x4(x86_64::_mm_set1_epi32(x)) }
     }
 
+    // Extraction
+
+    #[inline]
+    pub fn xy(self) -> I32x2 {
+        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.0) as u64) }
+    }
+
+    #[inline]
+    pub fn xw(self) -> I32x2 {
+        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.xwyz().0) as u64) }
+    }
+
+    #[inline]
+    pub fn yx(self) -> I32x2 {
+        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.yxwz().0) as u64) }
+    }
+
+    #[inline]
+    pub fn zy(self) -> I32x2 {
+        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.zyxw().0) as u64) }
+    }
+
+    #[inline]
+    pub fn zw(self) -> I32x2 {
+        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.zwxy().0) as u64) }
+    }
+
     // Concatenations
 
     #[inline]
@@ -258,11 +628,6 @@ impl I32x4 {
     }
 
     // Conversions
-
-    #[inline]
-    pub fn as_u8x16(self) -> U8x16 {
-        U8x16(self.0)
-    }
 
     /// Converts these packed integers to floats.
     #[inline]
@@ -343,6 +708,30 @@ impl Mul<I32x4> for I32x4 {
     }
 }
 
+impl BitAnd<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn bitand(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_and_si128(self.0, other.0)) }
+    }
+}
+
+impl BitOr<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn bitor(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_or_si128(self.0, other.0)) }
+    }
+}
+
+impl Shr<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn shr(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_srlv_epi32(self.0, other.0)) }
+    }
+}
+
 impl Debug for I32x4 {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
@@ -357,7 +746,24 @@ impl PartialEq for I32x4 {
     }
 }
 
-// 32-bit unsigned integers
+// Two 32-bit unsigned integers
+
+#[derive(Clone, Copy)]
+pub struct U32x2(pub u64);
+
+impl U32x2 {
+    #[inline]
+    pub fn is_all_ones(self) -> bool {
+        self.0 == !0
+    }
+
+    #[inline]
+    pub fn is_all_zeroes(self) -> bool {
+        self.0 == 0
+    }
+}
+
+// Four 32-bit unsigned integers
 
 #[derive(Clone, Copy)]
 pub struct U32x4(pub __m128i);
@@ -388,6 +794,13 @@ impl U32x4 {
     #[inline]
     pub fn is_all_zeroes(self) -> bool {
         unsafe { x86_64::_mm_test_all_zeros(self.0, self.0) != 0 }
+    }
+
+    // Extraction
+
+    #[inline]
+    pub fn xy(self) -> U32x2 {
+        unsafe { U32x2(x86_64::_mm_cvtsi128_si64(self.0) as u64) }
     }
 
     // Packed comparisons
@@ -433,22 +846,5 @@ impl BitXor<U32x4> for U32x4 {
     #[inline]
     fn bitxor(self, other: U32x4) -> U32x4 {
         unsafe { U32x4(x86_64::_mm_xor_si128(self.0, other.0)) }
-    }
-}
-
-// 8-bit unsigned integers
-
-#[derive(Clone, Copy)]
-pub struct U8x16(pub __m128i);
-
-impl U8x16 {
-    #[inline]
-    pub fn as_i32x4(self) -> I32x4 {
-        I32x4(self.0)
-    }
-
-    #[inline]
-    pub fn shuffle(self, indices: U8x16) -> U8x16 {
-        unsafe { U8x16(x86_64::_mm_shuffle_epi8(self.0, indices.0)) }
     }
 }

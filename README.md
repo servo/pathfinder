@@ -3,7 +3,7 @@
 # Pathfinder 3
 
 Pathfinder 3 is a fast, practical, GPU-based rasterizer for fonts and vector graphics using OpenGL
-and OpenGL ES 3.0+.
+3.0+, OpenGL ES 3.0+, or Metal.
 
 Please note that Pathfinder is under heavy development and is incomplete in various areas.
 
@@ -34,7 +34,7 @@ The project features:
 
 * Fast GPU rendering, even at small pixel sizes. Even on lower-end GPUs, Pathfinder typically
   matches or exceeds the performance of the best CPU rasterizers. The difference is particularly
-  pronouced at large sizes, where Pathfinder regularly achieves multi-factor speedups. All shaders
+  pronounced at large sizes, where Pathfinder regularly achieves multi-factor speedups. All shaders
   have no loops and minimal branching.
 
 * Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
@@ -74,12 +74,6 @@ Running the demo is as simple as:
 The SDL 2 library requires some additional manual installation steps. Follow the
 [`rust-sdl2` installation instructions](https://github.com/Rust-SDL2/rust-sdl2#sdl20-development-libraries) to make sure the libraries are installed. Note that SDL2 is
 only required to run the demo; Pathfinder itself has no dependency on the library.
-
-On macOS, it is recommended that you force the use of the integrated GPU, as issues with Apple's
-OpenGL drivers may limit performance on discrete GPUs. You can use
-[gfxCardStatus.app](https://gfx.io/) for this. See the
-[wiki](https://github.com/pcwalton/pathfinder/wiki/GPU-driver-compatibility) for more information
-on GPU compatibility issues.
 
 ## Authors
 

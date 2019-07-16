@@ -9,11 +9,10 @@ using namespace metal;
 struct spvDescriptorSetBuffer0
 {
     constant float2* uTileSize [[id(0)]];
-    constant float2* uViewBoxOrigin [[id(1)]];
-    constant float2* uFramebufferSize [[id(2)]];
-    constant float2* uStencilTextureSize [[id(3)]];
-    texture2d<float> uPaintTexture [[id(4)]];
-    sampler uPaintTextureSmplr [[id(5)]];
+    constant float2* uStencilTextureSize [[id(1)]];
+    constant float4x4* uTransform [[id(2)]];
+    texture2d<float> uPaintTexture [[id(3)]];
+    sampler uPaintTextureSmplr [[id(4)]];
 };
 
 struct main0_out
@@ -45,11 +44,10 @@ float4 getColor(thread texture2d<float> uPaintTexture, thread const sampler uPai
     return uPaintTexture.sample(uPaintTextureSmplr, aColorTexCoord, level(0.0));
 }
 
-void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread uint2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread int& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
+void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread uint2& aTessCoord, thread int& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread float4x4 uTransform, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
 {
     float2 origin = float2(aTileOrigin.xy) + (float2(float(aTileOrigin.z & 15u), float(aTileOrigin.z >> 4u)) * 256.0);
-    float2 pixelPosition = ((origin + float2(aTessCoord)) * uTileSize) + uViewBoxOrigin;
-    float2 position = (((pixelPosition / uFramebufferSize) * 2.0) - float2(1.0)) * float2(1.0, -1.0);
+    float2 position = (origin + float2(aTessCoord)) * uTileSize;
     uint param = uint(aTileIndex);
     float param_1 = uStencilTextureSize.x;
     float2 maskTexCoordOrigin = computeTileOffset(param, param_1, uTileSize);
@@ -57,13 +55,13 @@ void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread 
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
     vColor = getColor(uPaintTexture, uPaintTextureSmplr, aColorTexCoord);
-    gl_Position = float4(position, 0.0, 1.0);
+    gl_Position = uTransform * float4(position, 0.0, 1.0);
 }
 
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    computeVaryings((*spvDescriptorSet0.uTileSize), in.aTileOrigin, in.aTessCoord, (*spvDescriptorSet0.uViewBoxOrigin), (*spvDescriptorSet0.uFramebufferSize), in.aTileIndex, (*spvDescriptorSet0.uStencilTextureSize), out.vTexCoord, out.vBackdrop, in.aBackdrop, out.vColor, out.gl_Position, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.aColorTexCoord);
+    computeVaryings((*spvDescriptorSet0.uTileSize), in.aTileOrigin, in.aTessCoord, in.aTileIndex, (*spvDescriptorSet0.uStencilTextureSize), out.vTexCoord, out.vBackdrop, in.aBackdrop, out.vColor, out.gl_Position, (*spvDescriptorSet0.uTransform), spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.aColorTexCoord);
     return out;
 }
 

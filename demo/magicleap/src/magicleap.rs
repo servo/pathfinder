@@ -53,7 +53,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Perspective;
-use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
@@ -77,7 +77,7 @@ pub struct MagicLeapWindow {
     graphics_client: MLHandle,
     size: Vector2I,
     virtual_camera_array: MLGraphicsVirtualCameraInfoArray,
-    initial_camera_transform: Option<Transform3DF>,
+    initial_camera_transform: Option<Transform4F>,
     frame_handle: MLHandle,
     resource_loader: FilesystemResourceLoader,
     pose_event: Option<Vec<OcularTransform>>,
@@ -234,21 +234,21 @@ impl MagicLeapWindow {
             }
             let virtual_camera_array = &self.virtual_camera_array;
             let initial_camera = self.initial_camera_transform.get_or_insert_with(|| {
-                let initial_offset = Transform3DF::from_translation(0.0, 0.0, 1.0);
+                let initial_offset = Transform4F::from_translation(0.0, 0.0, 1.0);
 	        let mut camera = virtual_camera_array.virtual_cameras[0].transform;
 		for i in 1..virtual_camera_array.num_virtual_cameras {
 		    let next = virtual_camera_array.virtual_cameras[i as usize].transform;
 		    camera = camera.lerp(next, 1.0 / (i as f32 + 1.0));
 		}
-		Transform3DF::from(camera).post_mul(&initial_offset)
+		Transform4F::from(camera).post_mul(&initial_offset)
             });
             let camera_transforms = (0..virtual_camera_array.num_virtual_cameras)
                 .map(|i| {
 		    let camera = &virtual_camera_array.virtual_cameras[i as usize];
-                    let projection = Transform3DF::from(camera.projection);
+                    let projection = Transform4F::from(camera.projection);
                     let size = RectI::from(virtual_camera_array.viewport).size();
                     let perspective = Perspective::new(&projection, size);
-                    let modelview_to_eye = Transform3DF::from(camera.transform).inverse().post_mul(initial_camera);
+                    let modelview_to_eye = Transform4F::from(camera.transform).inverse().post_mul(initial_camera);
                     OcularTransform { perspective, modelview_to_eye }
                 })
                 .collect();
@@ -355,16 +355,16 @@ impl MLTransform {
 
 // Impl pathfinder traits for c-api types
 
-impl From<MLTransform> for Transform3DF {
+impl From<MLTransform> for Transform4F {
     fn from(mat: MLTransform) -> Self {
-        Transform3DF::from(mat.rotation)
-           .pre_mul(&Transform3DF::from(mat.position))
+        Transform4F::from(mat.rotation)
+           .pre_mul(&Transform4F::from(mat.position))
     }
 }
 
-impl From<MLVec3f> for Transform3DF {
+impl From<MLVec3f> for Transform4F {
     fn from(v: MLVec3f) -> Self {
-        Transform3DF::from_translation(v.x, v.y, v.z)
+        Transform4F::from_translation(v.x, v.y, v.z)
     }
 }
 
@@ -380,16 +380,16 @@ impl From<MLRectf> for RectI {
     }
 }
 
-impl From<MLQuaternionf> for Transform3DF {
+impl From<MLQuaternionf> for Transform4F {
     fn from(q: MLQuaternionf) -> Self {
-        Transform3DF::from_rotation_quaternion(F32x4::new(q.x, q.y, q.z, q.w))
+        Transform4F::from_rotation_quaternion(F32x4::new(q.x, q.y, q.z, q.w))
     }
 }
 
-impl From<MLMat4f> for Transform3DF {
+impl From<MLMat4f> for Transform4F {
     fn from(mat: MLMat4f) -> Self {
         let a = mat.matrix_colmajor;
-        Transform3DF::row_major(a[0], a[4], a[8],  a[12],
+        Transform4F::row_major(a[0], a[4], a[8],  a[12],
                                   a[1], a[5], a[9],  a[13],
                                   a[2], a[6], a[10], a[14],
                                   a[3], a[7], a[11], a[15])

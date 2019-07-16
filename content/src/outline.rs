@@ -16,7 +16,7 @@ use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::unit_vector::UnitVector;
 use pathfinder_geometry::vector::Vector2F;
@@ -134,7 +134,7 @@ impl Outline {
         self.contours.push(contour);
     }
 
-    pub fn transform(&mut self, transform: &Transform2DF) {
+    pub fn transform(&mut self, transform: &Transform2F) {
         if transform.is_identity() {
             return;
         }
@@ -353,7 +353,7 @@ impl Contour {
     }
 
     pub fn push_arc(&mut self,
-                    transform: &Transform2DF,
+                    transform: &Transform2F,
                     start_angle: f32,
                     end_angle: f32,
                     direction: ArcDirection) {
@@ -367,13 +367,13 @@ impl Contour {
     }
 
     pub fn push_arc_from_unit_chord(&mut self,
-                                    transform: &Transform2DF,
+                                    transform: &Transform2F,
                                     mut chord: LineSegment2F,
                                     direction: ArcDirection) {
-        let mut direction_transform = Transform2DF::default();
+        let mut direction_transform = Transform2F::default();
         if direction == ArcDirection::CCW {
             chord = chord.scale_xy(Vector2F::new(-1.0, 1.0));
-            direction_transform = Transform2DF::from_scale(Vector2F::new(-1.0, 1.0));
+            direction_transform = Transform2F::from_scale(Vector2F::new(-1.0, 1.0));
         }
 
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
@@ -392,9 +392,8 @@ impl Contour {
             }
 
             let half_sweep_vector = sweep_vector.halve_angle();
-            let rotation = Transform2DF::from_rotation_vector(half_sweep_vector.rotate_by(vector));
-            segment = segment.transform(&direction_transform.post_mul(&rotation)
-                                                            .post_mul(&transform));
+            let rotation = Transform2F::from_rotation_vector(half_sweep_vector.rotate_by(vector));
+            segment = segment.transform(&(*transform * rotation * direction_transform));
 
             let mut push_segment_flags = PushSegmentFlags::UPDATE_BOUNDS;
             if first_segment {
@@ -413,19 +412,19 @@ impl Contour {
         const EPSILON: f32 = 0.001;
     }
 
-    pub fn push_ellipse(&mut self, transform: &Transform2DF) {
+    pub fn push_ellipse(&mut self, transform: &Transform2F) {
         let segment = Segment::quarter_circle_arc();
         let mut rotation;
         self.push_segment(&segment.transform(transform),
                           PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
-        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
+        self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
-        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
+        self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
-        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
+        self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
     }
 
@@ -434,25 +433,25 @@ impl Contour {
         debug_assert!(self.point_is_endpoint(point_index));
 
         let mut segment = Segment::none();
-        segment.baseline.set_from(&self.position_of(point_index));
+        segment.baseline.set_from(self.position_of(point_index));
 
         let point1_index = self.add_to_point_index(point_index, 1);
         if self.point_is_endpoint(point1_index) {
-            segment.baseline.set_to(&self.position_of(point1_index));
+            segment.baseline.set_to(self.position_of(point1_index));
             segment.kind = SegmentKind::Line;
         } else {
-            segment.ctrl.set_from(&self.position_of(point1_index));
+            segment.ctrl.set_from(self.position_of(point1_index));
 
             let point2_index = self.add_to_point_index(point_index, 2);
             if self.point_is_endpoint(point2_index) {
-                segment.baseline.set_to(&self.position_of(point2_index));
+                segment.baseline.set_to(self.position_of(point2_index));
                 segment.kind = SegmentKind::Quadratic;
             } else {
-                segment.ctrl.set_to(&self.position_of(point2_index));
+                segment.ctrl.set_to(self.position_of(point2_index));
                 segment.kind = SegmentKind::Cubic;
 
                 let point3_index = self.add_to_point_index(point_index, 3);
-                segment.baseline.set_to(&self.position_of(point3_index));
+                segment.baseline.set_to(self.position_of(point3_index));
             }
         }
 
@@ -528,20 +527,20 @@ impl Contour {
         }
     }
 
-    pub fn transform(&mut self, transform: &Transform2DF) {
+    pub fn transform(&mut self, transform: &Transform2F) {
         if transform.is_identity() {
             return;
         }
 
         for (point_index, point) in self.points.iter_mut().enumerate() {
-            *point = transform.transform_point(*point);
+            *point = *transform * *point;
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         for (point_index, point) in self.points.iter_mut().enumerate() {
-            *point = perspective.transform_point_2d(point);
+            *point = *perspective * *point;
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
     }
@@ -610,14 +609,14 @@ impl Contour {
                     let ctrl_position = &contour.points[ctrl_point_index];
                     handle_cubic(
                         self,
-                        &Segment::quadratic(&baseline, *ctrl_position).to_cubic(),
+                        &Segment::quadratic(baseline, *ctrl_position).to_cubic(),
                     );
                 } else if point_count == 4 {
                     let first_ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
                     let ctrl_position_1 = &contour.points[first_ctrl_point_index + 1];
                     let ctrl = LineSegment2F::new(*ctrl_position_0, *ctrl_position_1);
-                    handle_cubic(self, &Segment::cubic(&baseline, &ctrl));
+                    handle_cubic(self, &Segment::cubic(baseline, ctrl));
                 }
 
                 self.push_point(
@@ -802,21 +801,21 @@ impl<'a> Iterator for ContourIter<'a> {
         if self.index == contour.len() {
             let point1 = contour.position_of(0);
             self.index += 1;
-            return Some(Segment::line(&LineSegment2F::new(point0, point1)));
+            return Some(Segment::line(LineSegment2F::new(point0, point1)));
         }
 
         let point1_index = self.index;
         self.index += 1;
         let point1 = contour.position_of(point1_index);
         if contour.point_is_endpoint(point1_index) {
-            return Some(Segment::line(&LineSegment2F::new(point0, point1)));
+            return Some(Segment::line(LineSegment2F::new(point0, point1)));
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         if contour.point_is_endpoint(point2_index) {
-            return Some(Segment::quadratic(&LineSegment2F::new(point0, point2), point1));
+            return Some(Segment::quadratic(LineSegment2F::new(point0, point2), point1));
         }
 
         let point3_index = self.index;
@@ -824,8 +823,8 @@ impl<'a> Iterator for ContourIter<'a> {
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point3_index));
         return Some(Segment::cubic(
-            &LineSegment2F::new(point0, point3),
-            &LineSegment2F::new(point1, point2),
+            LineSegment2F::new(point0, point3),
+            LineSegment2F::new(point1, point2),
         ));
     }
 }

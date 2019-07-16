@@ -29,36 +29,34 @@ impl RectF {
 
     #[inline]
     pub fn origin(&self) -> Vector2F {
-        Vector2F(self.0)
+        Vector2F(self.0.xy())
     }
 
     #[inline]
     pub fn size(&self) -> Vector2F {
-        Vector2F(self.0.zwxy() - self.0.xyxy())
+        Vector2F(self.0.zw() - self.0.xy())
     }
 
     #[inline]
     pub fn upper_right(&self) -> Vector2F {
-        Vector2F(self.0.zyxw())
+        Vector2F(self.0.zy())
     }
 
     #[inline]
     pub fn lower_left(&self) -> Vector2F {
-        Vector2F(self.0.xwzy())
+        Vector2F(self.0.xw())
     }
 
     #[inline]
     pub fn lower_right(&self) -> Vector2F {
-        Vector2F(self.0.zwxy())
+        Vector2F(self.0.zw())
     }
 
     #[inline]
     pub fn contains_point(&self, point: Vector2F) -> bool {
         // self.origin <= point && point <= self.lower_right
-        self.0
-            .concat_xy_xy(point.0)
-            .packed_le(point.0.concat_xy_zw(self.0))
-            .is_all_ones()
+        let point = point.0.to_f32x4();
+        self.0.concat_xy_xy(point).packed_le(point.concat_xy_zw(self.0)).is_all_ones()
     }
 
     #[inline]
@@ -166,27 +164,27 @@ impl RectI {
 
     #[inline]
     pub fn origin(&self) -> Vector2I {
-        Vector2I(self.0)
+        Vector2I(self.0.xy())
     }
 
     #[inline]
     pub fn size(&self) -> Vector2I {
-        Vector2I(self.0.zwxy() - self.0.xyxy())
+        Vector2I(self.0.zw() - self.0.xy())
     }
 
     #[inline]
     pub fn upper_right(&self) -> Vector2I {
-        Vector2I(self.0.zyxw())
+        Vector2I(self.0.zy())
     }
 
     #[inline]
     pub fn lower_left(&self) -> Vector2I {
-        Vector2I(self.0.xwzy())
+        Vector2I(self.0.xw())
     }
 
     #[inline]
     pub fn lower_right(&self) -> Vector2I {
-        Vector2I(self.0.zwxy())
+        Vector2I(self.0.zw())
     }
 
     #[inline]
@@ -213,7 +211,8 @@ impl RectI {
     pub fn contains_point(&self, point: Vector2I) -> bool {
         // self.origin <= point && point <= self.lower_right - 1
         let lower_right = self.lower_right() - Vector2I::splat(1);
-        self.0
+        self.origin()
+            .0
             .concat_xy_xy(point.0)
             .packed_le(point.0.concat_xy_xy(lower_right.0))
             .is_all_ones()

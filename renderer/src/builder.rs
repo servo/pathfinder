@@ -160,7 +160,7 @@ impl BuiltObject {
     fn add_fill(
         &mut self,
         builder: &SceneBuilder,
-        segment: &LineSegment2F,
+        segment: LineSegment2F,
         tile_coords: Vector2I,
     ) {
         debug!("add_fill({:?} ({:?}))", segment, tile_coords);
@@ -171,31 +171,19 @@ impl BuiltObject {
         };
 
         debug_assert_eq!(TILE_WIDTH, TILE_HEIGHT);
+
+        // Compute the upper left corner of the tile.
         let tile_size = F32x4::splat(TILE_WIDTH as f32);
-        let (min, max) = (
-            F32x4::default(),
-            F32x4::splat((TILE_WIDTH * 256 - 1) as f32),
-        );
-        let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0).as_u8x16();
+        let tile_upper_left = tile_coords.to_f32().0.to_f32x4().xyxy() * tile_size;
 
-        let tile_upper_left = tile_coords.to_f32().0.xyxy() * tile_size;
-
+        // Convert to 4.8 fixed point.
         let segment = (segment.0 - tile_upper_left) * F32x4::splat(256.0);
-        let segment = segment
-            .clamp(min, max)
-            .to_i32x4()
-            .as_u8x16()
-            .shuffle(shuffle_mask)
-            .as_i32x4();
-
-        // Unpack whole and fractional pixels.
-        let px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
-        let subpx = LineSegmentU8(segment[0] as u32);
+        let (min, max) = (F32x4::default(), F32x4::splat((TILE_WIDTH * 256 - 1) as f32));
+        let segment = segment.clamp(min, max).to_i32x4();
+        let (from_x, from_y, to_x, to_y) = (segment[0], segment[1], segment[2], segment[3]);
 
         // Cull degenerate fills.
-        if (px.0 & 0xf) as u8 == ((px.0 >> 8) & 0xf) as u8
-            && (subpx.0 & 0xff) as u8 == ((subpx.0 >> 16) & 0xff) as u8
-        {
+        if from_x == to_x {
             debug!("... culling!");
             return;
         }
@@ -203,10 +191,20 @@ impl BuiltObject {
         // Allocate global tile if necessary.
         let alpha_tile_index = self.get_or_allocate_alpha_tile_index(builder, tile_coords);
 
+        // Pack whole pixels.
+        let mut px = (segment & I32x4::splat(0xf00)) >> I32x4::new(8, 4, 8, 4);
+        px = px | px.yxwz();
+
+        // Pack instance data.
         debug!("... OK, pushing");
         self.fills.push(FillBatchPrimitive {
-            px,
-            subpx,
+            px: LineSegmentU4 { from: px[0] as u8, to: px[2] as u8 },
+            subpx: LineSegmentU8 {
+                from_x: from_x as u8,
+                from_y: from_y as u8,
+                to_x:   to_x   as u8,
+                to_y:   to_y   as u8,
+            },
             alpha_tile_index,
         });
     }
@@ -256,7 +254,7 @@ impl BuiltObject {
         );
 
         while winding != 0 {
-            self.add_fill(builder, &segment, tile_coords);
+            self.add_fill(builder, segment, tile_coords);
             if winding < 0 {
                 winding += 1
             } else {
@@ -315,7 +313,7 @@ impl BuiltObject {
 
             let fill_segment = LineSegment2F::new(fill_from, fill_to);
             let fill_tile_coords = Vector2I::new(subsegment_tile_x, tile_y);
-            self.add_fill(builder, &fill_segment, fill_tile_coords);
+            self.add_fill(builder, fill_segment, fill_tile_coords);
         }
     }
 

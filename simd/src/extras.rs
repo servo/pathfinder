@@ -8,10 +8,84 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::default::{F32x4, I32x4};
+use crate::default::{F32x2, F32x4, I32x2, I32x4};
 use std::ops::{AddAssign, MulAssign, Neg, SubAssign};
 
-// 32-bit floats
+// Two 32-bit floats
+
+impl F32x2 {
+    // Constructors
+
+    #[inline]
+    pub fn from_slice(slice: &[f32]) -> F32x2 {
+        F32x2::new(slice[0], slice[1])
+    }
+
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> f32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> f32 {
+        self[1]
+    }
+
+    // Mutators
+
+    #[inline]
+    pub fn set_x(&mut self, x: f32) {
+        self[0] = x
+    }
+
+    #[inline]
+    pub fn set_y(&mut self, y: f32) {
+        self[1] = y
+    }
+
+    // Comparisons
+
+    #[inline]
+    pub fn approx_eq(self, other: F32x2, epsilon: f32) -> bool {
+        (self - other)
+            .abs()
+            .packed_gt(F32x2::splat(epsilon))
+            .is_all_zeroes()
+    }
+}
+
+impl AddAssign for F32x2 {
+    #[inline]
+    fn add_assign(&mut self, other: F32x2) {
+        *self = *self + other
+    }
+}
+
+impl SubAssign for F32x2 {
+    #[inline]
+    fn sub_assign(&mut self, other: F32x2) {
+        *self = *self - other
+    }
+}
+
+impl MulAssign for F32x2 {
+    #[inline]
+    fn mul_assign(&mut self, other: F32x2) {
+        *self = *self * other
+    }
+}
+
+impl Neg for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn neg(self) -> F32x2 {
+        F32x2::default() - self
+    }
+}
+
+// Four 32-bit floats
 
 impl F32x4 {
     // Constructors
@@ -105,7 +179,38 @@ impl Neg for F32x4 {
     }
 }
 
-// 32-bit integers
+// Two 32-bit integers
+
+impl AddAssign for I32x2 {
+    #[inline]
+    fn add_assign(&mut self, other: I32x2) {
+        *self = *self + other
+    }
+}
+
+impl SubAssign for I32x2 {
+    #[inline]
+    fn sub_assign(&mut self, other: I32x2) {
+        *self = *self - other
+    }
+}
+
+impl MulAssign for I32x2 {
+    #[inline]
+    fn mul_assign(&mut self, other: I32x2) {
+        *self = *self * other
+    }
+}
+
+impl Neg for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn neg(self) -> I32x2 {
+        I32x2::default() - self
+    }
+}
+
+// Four 32-bit integers
 
 impl AddAssign for I32x4 {
     #[inline]

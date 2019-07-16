@@ -13,13 +13,12 @@ members = [
     "examples/canvas_moire",
     "examples/canvas_text",
     "examples/lottie_basic",
-    "examples/svg2pdf",
     "examples/swf_basic",
     "geometry",
     "gl",
     "gpu",
     "lottie",
-    "pdf",
+    "export",
     "metal",
     "renderer",
     "simd",
@@ -29,5 +28,6 @@ members = [
     "ui",
     "utils/area-lut",
     "utils/gamma-lut",
-    "utils/svg-to-skia"
+    "utils/svg-to-skia",
+    "utils/convert",
 ]

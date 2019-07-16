@@ -47,7 +47,7 @@ use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Dep
 use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData};
 use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
-use pathfinder_simd::default::F32x4;
+use pathfinder_simd::default::{F32x2, F32x4};
 use std::cell::{Cell, RefCell};
 use std::mem;
 use std::ptr;
@@ -1146,7 +1146,7 @@ impl UniformDataExt for UniformData {
                     Some(slice::from_raw_parts(&data[0] as *const F32x4 as *const u8, 4 * 16))
                 }
                 UniformData::Vec2(ref data) => {
-                    Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 2))
+                    Some(slice::from_raw_parts(data as *const F32x2 as *const u8, 4 * 2))
                 }
                 UniformData::Vec4(ref data) => {
                     Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4))

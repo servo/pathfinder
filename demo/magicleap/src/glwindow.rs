@@ -27,7 +27,7 @@ use crate::display::DisplayError;
 
 use pathfinder_geometry::point::Point2DI32;
 use pathfinder_geometry::rect::RectI32;
-use pathfinder_geometry::transform3d::Transform3DF32;
+use pathfinder_geometry::transform3d::Transform4F32;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
@@ -149,15 +149,15 @@ impl DisplayCamera for GlWindowCamera {
         // TODO: add eye offsets
         let bounds = self.bounds();
         let aspect = bounds.size().x() as f32 / bounds.size().y() as f32;
-        let transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
+        let transform = Transform4F32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
         Perspective::new(&transform, bounds.size())
     }
 
-    fn view(&self) -> Transform3DF32 {
+    fn view(&self) -> Transform4F32 {
         let duration = Instant::now() - self.start;
         let rotation = duration.as_millis() as f32 / 1000.0;
-        Transform3DF32::from_rotation(rotation, 0.0, 0.0)
-            .pre_mul(&Transform3DF32::from_translation(0.0, 0.0, -CAMERA_DISTANCE))
+        Transform4F32::from_rotation(rotation, 0.0, 0.0)
+            .pre_mul(&Transform4F32::from_translation(0.0, 0.0, -CAMERA_DISTANCE))
     }
 }
 

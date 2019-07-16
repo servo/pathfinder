@@ -18,8 +18,8 @@ use pathfinder_content::color::{ColorF, ColorU};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, UniformData};
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::transform3d::Transform3DF;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::RenderMode;
 use pathfinder_renderer::gpu_data::RenderCommand;
@@ -163,24 +163,20 @@ impl<W> DemoApp<W> where W: Window {
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
 
-        let quad_scale_transform = Transform3DF::from_scale(
-            self.scene_metadata.view_box.size().x(),
-            self.scene_metadata.view_box.size().y(),
-            1.0,
-        );
+        let mut quad_scale = self.scene_metadata.view_box.size().to_3d();
+        quad_scale.set_z(1.0);
+        let quad_scale_transform = Transform4F::from_scale(quad_scale);
 
-        let scene_transform_matrix = scene_transform
-            .perspective
-            .post_mul(&scene_transform.modelview_to_eye)
-            .post_mul(&modelview_transform.to_transform())
-            .post_mul(&quad_scale_transform);
+        let scene_transform_matrix = scene_transform.perspective *
+            scene_transform.modelview_to_eye *
+            modelview_transform.to_transform() *
+            quad_scale_transform;
 
         let eye_transform = &eye_transforms[render_scene_index as usize];
-        let eye_transform_matrix = eye_transform
-            .perspective
-            .post_mul(&eye_transform.modelview_to_eye)
-            .post_mul(&modelview_transform.to_transform())
-            .post_mul(&quad_scale_transform);
+        let eye_transform_matrix = eye_transform.perspective *
+            eye_transform.modelview_to_eye *
+            modelview_transform.to_transform() *
+            quad_scale_transform;
 
         debug!(
             "eye transform({}).modelview_to_eye={:?}",
@@ -214,17 +210,14 @@ impl<W> DemoApp<W> where W: Window {
 
         let ground_scale = self.scene_metadata.view_box.max_x() * 2.0;
 
-        let mut base_transform = perspective.transform;
-        base_transform = base_transform.post_mul(&Transform3DF::from_translation(
-            -0.5 * self.scene_metadata.view_box.max_x(),
-            self.scene_metadata.view_box.max_y(),
-            -0.5 * ground_scale,
-        ));
+        let mut offset = self.scene_metadata.view_box.lower_right().to_3d();
+        offset.set_z(ground_scale);
+        offset = offset * Vector4F::new(-0.5, 1.0, -0.5, 1.0);
+        let base_transform = perspective.transform * Transform4F::from_translation(offset);
 
         // Fill ground.
-        let mut transform = base_transform;
-        transform =
-            transform.post_mul(&Transform3DF::from_scale(ground_scale, 1.0, ground_scale));
+        let transform = base_transform *    
+            Transform4F::from_scale(Vector4F::new(ground_scale, 1.0, ground_scale, 1.0));
 
         // Don't clear the first scene after drawing it.
         let clear_color = if render_scene_index == 0 {

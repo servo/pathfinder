@@ -22,11 +22,12 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
-use pathfinder_geometry::transform3d::Transform3DF;
 use pathfinder_content::color::ColorU;
+use pathfinder_export::{Export, FileFormat};
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
@@ -38,7 +39,7 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -255,10 +256,9 @@ impl<W> DemoApp<W> where W: Window {
                 if modelview_transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                let perspective = scene_transform
-                    .perspective
-                    .post_mul(&scene_transform.modelview_to_eye)
-                    .post_mul(&modelview_transform.to_transform());
+                let perspective = scene_transform.perspective *
+                    scene_transform.modelview_to_eye *
+                    modelview_transform.to_transform();
                 Some(RenderTransform::Perspective(perspective))
             }
             Camera::TwoD(transform) => Some(RenderTransform::Transform2D(transform)),
@@ -327,10 +327,10 @@ impl<W> DemoApp<W> where W: Window {
                     if let Camera::TwoD(ref mut transform) = self.camera {
                         let backing_scale_factor = self.window_size.backing_scale_factor;
                         let position = position.to_f32().scale(backing_scale_factor);
-                        *transform = transform.post_translate(-position);
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
-                        *transform = transform.post_scale(Vector2F::splat(scale_delta));
-                        *transform = transform.post_translate(position);
+                        *transform = transform.translate(-position)
+                                              .uniform_scale(scale_delta)
+                                              .translate(position);
                     }
                 }
                 Event::Look { pitch, yaw } => {
@@ -355,13 +355,21 @@ impl<W> DemoApp<W> where W: Window {
                         *scene_transform = eye_transforms[0];
                         for (index, eye_transform) in eye_transforms.iter().enumerate().skip(1) {
                             let weight = 1.0 / (index + 1) as f32;
-                            scene_transform.perspective.transform = scene_transform.perspective.transform.lerp(weight, &eye_transform.perspective.transform);
-                            scene_transform.modelview_to_eye = scene_transform.modelview_to_eye.lerp(weight, &eye_transform.modelview_to_eye);
+                            scene_transform.perspective.transform =
+                                scene_transform.perspective 
+                                               .transform
+                                               .lerp(weight, &eye_transform.perspective.transform);
+                            scene_transform.modelview_to_eye =
+                                scene_transform.modelview_to_eye
+                                               .lerp(weight, &eye_transform.modelview_to_eye);
                          }
                         // TODO: calculate the eye offset from the eye transforms?
-                        let z_offset = -DEFAULT_EYE_OFFSET * scene_transform.perspective.transform.c0.x();
-                        scene_transform.modelview_to_eye = scene_transform.modelview_to_eye
-                            .pre_mul(&Transform3DF::from_translation(0.0, 0.0, z_offset));
+                        let z_offset = -DEFAULT_EYE_OFFSET *
+                            scene_transform.perspective.transform.c0.x();
+                        let z_offset = Vector4F::new(0.0, 0.0, z_offset, 1.0);
+                        scene_transform.modelview_to_eye =
+                            Transform4F::from_translation(z_offset) *
+                            scene_transform.modelview_to_eye;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
@@ -550,7 +558,8 @@ impl<W> DemoApp<W> where W: Window {
             }
             Some(ScreenshotInfo { kind: ScreenshotType::SVG, path }) => {
                 // FIXME(pcwalton): This won't work on Android.
-                File::create(path).unwrap().write_all(&mut self.scene_proxy.as_svg()).unwrap();
+                let mut writer = BufWriter::new(File::create(path).unwrap());
+                self.scene_proxy.copy_scene().export(&mut writer, FileFormat::SVG).unwrap();
             }
         }
     }
@@ -578,7 +587,7 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 UIEvent::MouseDragged(position) => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
-                        *transform = transform.post_translate(position.relative.to_f32());
+                        *transform = transform.translate(position.relative.to_f32());
                     }
                 }
                 _ => {}
@@ -598,10 +607,7 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Vector2F::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
-                    *transform = transform
-                        .post_translate(-center)
-                        .post_scale(scale)
-                        .post_translate(center);
+                    *transform = transform.translate(-center).scale(scale).translate(center);
                     self.dirty = true;
                 }
             }
@@ -609,16 +615,13 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Vector2F::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
-                    *transform = transform
-                        .post_translate(-center)
-                        .post_scale(scale)
-                        .post_translate(center);
+                    *transform = transform.translate(-center).scale(scale).translate(center);
                     self.dirty = true;
                 }
             }
             UIAction::ZoomActualSize => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    *transform = Transform2DF::default();
+                    *transform = Transform2F::default();
                     self.dirty = true;
                 }
             }
@@ -626,10 +629,9 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let old_rotation = transform.rotation();
                     let center = center_of_window(&self.window_size);
-                    *transform = transform
-                        .post_translate(-center)
-                        .post_rotate(*theta - old_rotation)
-                        .post_translate(center);
+                    *transform = transform.translate(-center)
+                                          .rotate(*theta - old_rotation)
+                                          .translate(center);
                 }
             }
         }

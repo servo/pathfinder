@@ -25,6 +25,9 @@ features = ["release_max_level_warn"]
 [dependencies.pathfinder_content]
 path = "../../content"
 
+[dependencies.pathfinder_export]
+path = "../../export"
+
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
 

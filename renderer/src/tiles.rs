@@ -413,14 +413,11 @@ impl ActiveEdge {
         } else {
             segment.baseline.to()
         };
-        ActiveEdge::from_segment_and_crossing(segment, &crossing)
+        ActiveEdge::from_segment_and_crossing(segment, crossing)
     }
 
-    fn from_segment_and_crossing(segment: &Segment, crossing: &Vector2F) -> ActiveEdge {
-        ActiveEdge {
-            segment: *segment,
-            crossing: *crossing,
-        }
+    fn from_segment_and_crossing(segment: &Segment, crossing: Vector2F) -> ActiveEdge {
+        ActiveEdge { segment: *segment, crossing }
     }
 
     fn process(&mut self, builder: &SceneBuilder, built_object: &mut BuiltObject, tile_y: i32) {
@@ -436,8 +433,8 @@ impl ActiveEdge {
         if segment.is_line() {
             let line_segment = segment.as_line_segment();
             self.segment =
-                match self.process_line_segment(&line_segment, builder, built_object, tile_y) {
-                    Some(lower_part) => Segment::line(&lower_part),
+                match self.process_line_segment(line_segment, builder, built_object, tile_y) {
+                    Some(lower_part) => Segment::line(lower_part),
                     None => Segment::none(),
                 };
             return;
@@ -453,7 +450,7 @@ impl ActiveEdge {
             let first_line_segment =
                 LineSegment2F::new(self.crossing, segment.baseline.upper_point()).orient(winding);
             if self
-                .process_line_segment(&first_line_segment, builder, built_object, tile_y)
+                .process_line_segment(first_line_segment, builder, built_object, tile_y)
                 .is_some()
             {
                 return;
@@ -484,9 +481,9 @@ impl ActiveEdge {
             );
 
             let line = before_segment.baseline.orient(winding);
-            match self.process_line_segment(&line, builder, built_object, tile_y) {
-                Some(ref lower_part) if split_t == 1.0 => {
-                    self.segment = Segment::line(&lower_part);
+            match self.process_line_segment(line, builder, built_object, tile_y) {
+                Some(lower_part) if split_t == 1.0 => {
+                    self.segment = Segment::line(lower_part);
                     return;
                 }
                 None if split_t == 1.0 => {
@@ -504,7 +501,7 @@ impl ActiveEdge {
 
     fn process_line_segment(
         &mut self,
-        line_segment: &LineSegment2F,
+        line_segment: LineSegment2F,
         builder: &SceneBuilder,
         built_object: &mut BuiltObject,
         tile_y: i32,
@@ -516,7 +513,7 @@ impl ActiveEdge {
         );
 
         if line_segment.max_y() <= tile_bottom {
-            built_object.generate_fill_primitives_for_line(builder, *line_segment, tile_y);
+            built_object.generate_fill_primitives_for_line(builder, line_segment, tile_y);
             return None;
         }
 

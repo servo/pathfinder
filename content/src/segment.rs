@@ -11,7 +11,7 @@
 //! Line or curve segments, optimized with SIMD.
 
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::util::{self, EPSILON};
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_simd::default::F32x4;
@@ -39,9 +39,9 @@ impl Segment {
     }
 
     #[inline]
-    pub fn line(line: &LineSegment2F) -> Segment {
+    pub fn line(line: LineSegment2F) -> Segment {
         Segment {
-            baseline: *line,
+            baseline: line,
             ctrl: LineSegment2F::default(),
             kind: SegmentKind::Line,
             flags: SegmentFlags::empty(),
@@ -49,9 +49,9 @@ impl Segment {
     }
 
     #[inline]
-    pub fn quadratic(baseline: &LineSegment2F, ctrl: Vector2F) -> Segment {
+    pub fn quadratic(baseline: LineSegment2F, ctrl: Vector2F) -> Segment {
         Segment {
-            baseline: *baseline,
+            baseline,
             ctrl: LineSegment2F::new(ctrl, Vector2F::default()),
             kind: SegmentKind::Quadratic,
             flags: SegmentFlags::empty(),
@@ -59,10 +59,10 @@ impl Segment {
     }
 
     #[inline]
-    pub fn cubic(baseline: &LineSegment2F, ctrl: &LineSegment2F) -> Segment {
+    pub fn cubic(baseline: LineSegment2F, ctrl: LineSegment2F) -> Segment {
         Segment {
-            baseline: *baseline,
-            ctrl: *ctrl,
+            baseline,
+            ctrl,
             kind: SegmentKind::Cubic,
             flags: SegmentFlags::empty(),
         }
@@ -91,7 +91,7 @@ impl Segment {
         let (p0x, p0y) = (p3p0.z(), p3p0.w());
         let (p1x, p1y) = (4.0 - p0x, (1.0 - p0x) * (3.0 - p0x) / p0y);
         let p2p1 = F32x4::new(p1x, -p1y, p1x, p1y) * F32x4::splat(1.0 / 3.0);
-        return Segment::cubic(&LineSegment2F(p3p0), &LineSegment2F(p2p1));
+        return Segment::cubic(LineSegment2F(p3p0), LineSegment2F(p2p1));
     }
 
     #[inline]
@@ -100,7 +100,7 @@ impl Segment {
         let p1 = Vector2F::new(-SQRT_2 / 6.0 + 4.0 / 3.0, 7.0 * SQRT_2 / 6.0 - 4.0 / 3.0);
         let flip = Vector2F::new(1.0, -1.0);
         let (p2, p3) = (p1.scale_xy(flip), p0.scale_xy(flip));
-        Segment::cubic(&LineSegment2F::new(p3, p0), &LineSegment2F::new(p2, p1))
+        Segment::cubic(LineSegment2F::new(p3, p0), LineSegment2F::new(p2, p1))
     }
 
     #[inline]
@@ -198,7 +198,7 @@ impl Segment {
         // FIXME(pcwalton): Don't degree elevate!
         if self.is_line() {
             let (before, after) = self.as_line_segment().split(t);
-            (Segment::line(&before), Segment::line(&after))
+            (Segment::line(before), Segment::line(after))
         } else {
             self.to_cubic().as_cubic_segment().split(t)
         }
@@ -215,10 +215,10 @@ impl Segment {
     }
 
     #[inline]
-    pub fn transform(self, transform: &Transform2DF) -> Segment {
+    pub fn transform(self, transform: &Transform2F) -> Segment {
         Segment {
-            baseline: transform.transform_line_segment(&self.baseline),
-            ctrl: transform.transform_line_segment(&self.ctrl),
+            baseline: *transform * self.baseline,
+            ctrl: *transform * self.ctrl,
             kind: self.kind,
             flags: self.flags,
         }

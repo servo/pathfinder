@@ -8,10 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-uniform vec2 uFramebufferSize;
+uniform mat4 uTransform;
 uniform vec2 uTileSize;
 uniform vec2 uStencilTextureSize;
-uniform vec2 uViewBoxOrigin;
 
 in uvec2 aTessCoord;
 in uvec3 aTileOrigin;
@@ -32,14 +31,13 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 
 void computeVaryings() {
     vec2 origin = vec2(aTileOrigin.xy) + vec2(aTileOrigin.z & 15u, aTileOrigin.z >> 4u) * 256.0;
-    vec2 pixelPosition = (origin + vec2(aTessCoord)) * uTileSize + uViewBoxOrigin;
-    vec2 position = (pixelPosition / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0);
+    vec2 position = (origin + vec2(aTessCoord)) * uTileSize;
     vec2 maskTexCoordOrigin = computeTileOffset(uint(aTileIndex), uStencilTextureSize.x);
     vec2 maskTexCoord = maskTexCoordOrigin + aTessCoord * uTileSize;
 
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
     vColor = getColor();
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 

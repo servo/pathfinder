@@ -358,6 +358,15 @@ version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "convert"
+version = "0.1.0"
+dependencies = [
+ "pathfinder_export 0.1.0",
+ "pathfinder_svg 0.1.0",
+ "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1446,6 +1455,7 @@ dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_content 0.1.0",
+ "pathfinder_export 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -1456,6 +1466,16 @@ dependencies = [
  "pathfinder_ui 0.1.0",
  "rayon 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pathfinder_export"
+version = "0.1.0"
+dependencies = [
+ "deflate 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_renderer 0.1.0",
 ]
 
 [[package]]
@@ -1535,16 +1555,6 @@ dependencies = [
  "pathfinder_geometry 0.3.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_simd 0.3.0",
-]
-
-[[package]]
-name = "pathfinder_pdf"
-version = "0.1.0"
-dependencies = [
- "deflate 0.7.19 (registry+https://github.com/rust-lang/crates.io-index)",
- "pathfinder_content 0.1.0",
- "pathfinder_geometry 0.3.0",
- "pathfinder_renderer 0.1.0",
 ]
 
 [[package]]
@@ -2124,15 +2134,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "svg-to-skia"
 version = "0.1.0"
 dependencies = [
- "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "svg2pdf"
-version = "0.1.0"
-dependencies = [
- "pathfinder_pdf 0.1.0",
- "pathfinder_svg 0.1.0",
  "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

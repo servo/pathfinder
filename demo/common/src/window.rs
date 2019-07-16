@@ -12,7 +12,7 @@
 
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
+use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
@@ -109,7 +109,7 @@ pub struct OcularTransform {
     pub perspective: Perspective,
 
     // The view transform which converts from world coordinates to camera coordinates
-    pub modelview_to_eye: Transform3DF,
+    pub modelview_to_eye: Transform4F,
 }
 
 #[derive(Clone)]

@@ -10,13 +10,182 @@
 
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
-use std::mem;
-use std::ops::{Add, Index, IndexMut, Mul, Sub};
+use std::ops::{Add, BitAnd, BitOr, Index, IndexMut, Mul, Shr, Sub};
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
 
-// 32-bit floats
+// Two 32-bit floats
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct F32x2(pub [f32; 2]);
+
+impl F32x2 {
+    // Constructors
+
+    #[inline]
+    pub fn new(a: f32, b: f32) -> F32x2 {
+        F32x2([a, b])
+    }
+
+    #[inline]
+    pub fn splat(x: f32) -> F32x2 {
+        F32x2([x, x])
+    }
+
+    // Basic operations
+
+    #[inline]
+    pub fn approx_recip(self) -> F32x2 {
+        F32x2([1.0 / self[0], 1.0 / self[1]])
+    }
+
+    #[inline]
+    pub fn min(self, other: F32x2) -> F32x2 {
+        F32x2([f32::min(self[0], other[0]), f32::min(self[1], other[1])])
+    }
+
+    #[inline]
+    pub fn max(self, other: F32x2) -> F32x2 {
+        F32x2([f32::max(self[0], other[0]), f32::max(self[1], other[1])])
+    }
+
+    #[inline]
+    pub fn clamp(self, min: F32x2, max: F32x2) -> F32x2 {
+        self.max(min).min(max)
+    }
+
+    #[inline]
+    pub fn abs(self) -> F32x2 {
+        F32x2([self[0].abs(), self[1].abs()])
+    }
+
+    #[inline]
+    pub fn floor(self) -> F32x2 {
+        F32x2([self[0].floor(), self[1].floor()])
+    }
+
+    #[inline]
+    pub fn ceil(self) -> F32x2 {
+        F32x2([self[0].ceil(), self[1].ceil()])
+    }
+
+    #[inline]
+    pub fn round(self) -> F32x2 {
+        F32x2([self[0].round(), self[1].round()])
+    }
+
+    #[inline]
+    pub fn sqrt(self) -> F32x2 {
+        F32x2([self[0].sqrt(), self[1].sqrt()])
+    }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: F32x2) -> U32x2 {
+        U32x2([
+            if self[0] == other[0] { !0 } else { 0 },
+            if self[1] == other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_gt(self, other: F32x2) -> U32x2 {
+        U32x2([
+            if self[0] > other[0] { !0 } else { 0 },
+            if self[1] > other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: F32x2) -> U32x2 {
+        U32x2([
+            if self[0] < other[0] { !0 } else { 0 },
+            if self[1] < other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: F32x2) -> U32x2 {
+        U32x2([
+            if self[0] <= other[0] { !0 } else { 0 },
+            if self[1] <= other[1] { !0 } else { 0 },
+        ])
+    }
+
+    // Conversions
+
+    #[inline]
+    pub fn to_f32x4(self) -> F32x4 {
+        F32x4([self[0] as f32, self[1] as f32, 0.0, 0.0])
+    }
+
+    #[inline]
+    pub fn to_i32x2(self) -> I32x2 {
+        I32x2([self[0] as i32, self[1] as i32])
+    }
+
+    #[inline]
+    pub fn to_i32x4(self) -> I32x4 {
+        I32x4([self[0] as i32, self[1] as i32, 0, 0])
+    }
+
+    // Swizzle
+
+    #[inline]
+    pub fn yx(self) -> F32x2 {
+        F32x2([self[1], self[0]])
+    }
+
+    // Concatenations
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: F32x2) -> F32x4 {
+        F32x4([self[0], self[1], other[0], other[1]])
+    }
+}
+
+impl Index<usize> for F32x2 {
+    type Output = f32;
+    #[inline]
+    fn index(&self, index: usize) -> &f32 {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for F32x2 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut f32 {
+        &mut self.0[index]
+    }
+}
+
+impl Add<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn add(self, other: F32x2) -> F32x2 {
+        F32x2([self[0] + other[0], self[1] + other[1]])
+    }
+}
+
+impl Mul<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn mul(self, other: F32x2) -> F32x2 {
+        F32x2([self[0] * other[0], self[1] * other[1]])
+    }
+}
+
+impl Sub<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn sub(self, other: F32x2) -> F32x2 {
+        F32x2([self[0] - other[0], self[1] - other[1]])
+    }
+}
+
+// Four 32-bit floats
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub struct F32x4(pub [f32; 4]);
@@ -162,6 +331,33 @@ impl F32x4 {
         ])
     }
 
+    // Swizzle conversions
+
+    #[inline]
+    pub fn xy(self) -> F32x2 {
+        F32x2([self[0], self[1]])
+    }
+
+    #[inline]
+    pub fn xw(self) -> F32x2 {
+        F32x2([self[0], self[3]])
+    }
+
+    #[inline]
+    pub fn yx(self) -> F32x2 {
+        F32x2([self[1], self[0]])
+    }
+
+    #[inline]
+    pub fn zy(self) -> F32x2 {
+        F32x2([self[2], self[1]])
+    }
+
+    #[inline]
+    pub fn zw(self) -> F32x2 {
+        F32x2([self[2], self[3]])
+    }
+
     // Concatenations
 
     #[inline]
@@ -246,7 +442,84 @@ impl Sub<F32x4> for F32x4 {
     }
 }
 
-// 32-bit signed integers
+// Two 32-bit signed integers
+
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct I32x2([i32; 2]);
+
+impl I32x2 {
+    #[inline]
+    pub fn new(x: i32, y: i32) -> I32x2 {
+        I32x2([x, y])
+    }
+
+    #[inline]
+    pub fn splat(x: i32) -> I32x2 {
+        I32x2([x, x])
+    }
+
+    #[inline]
+    pub fn packed_eq(self, other: I32x2) -> U32x2 {
+        U32x2([
+            if self[0] == other[0] { !0 } else { 0 },
+            if self[1] == other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: I32x2) -> I32x4 {
+        I32x4([self[0], self[1], other[0], other[1]])
+    }
+
+    // Conversions
+
+    /// Converts these packed integers to floats.
+    #[inline]
+    pub fn to_f32x2(self) -> F32x2 {
+        F32x2([self[0] as f32, self[1] as f32])
+    }
+}
+
+impl Index<usize> for I32x2 {
+    type Output = i32;
+    #[inline]
+    fn index(&self, index: usize) -> &i32 {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for I32x2 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut i32 {
+        &mut self.0[index]
+    }
+}
+
+impl Add<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn add(self, other: I32x2) -> I32x2 {
+        I32x2([self[0] + other[0], self[1] + other[1]])
+    }
+}
+
+impl Sub<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn sub(self, other: I32x2) -> I32x2 {
+        I32x2([self[0] - other[0], self[1] - other[1]])
+    }
+}
+
+impl Mul<I32x2> for I32x2 {
+    type Output = I32x2;
+    #[inline]
+    fn mul(self, other: I32x2) -> I32x2 {
+        I32x2([self[0] * other[0], self[1] * other[1]])
+    }
+}
+
+// Four 32-bit signed integers
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub struct I32x4([i32; 4]);
@@ -263,10 +536,6 @@ impl I32x4 {
     }
 
     #[inline]
-    pub fn as_u8x16(self) -> U8x16 {
-        unsafe { U8x16(*mem::transmute::<&[i32; 4], &[u8; 16]>(&self.0)) }
-    }
-
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
         I32x4([
@@ -304,6 +573,28 @@ impl I32x4 {
     #[inline]
     pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
         I32x4([self[0], self[1], other[0], other[1]])
+    }
+
+    // Swizzle conversions
+
+    #[inline]
+    pub fn xy(self) -> I32x2 {
+        I32x2([self[0], self[1]])
+    }
+
+    #[inline]
+    pub fn xw(self) -> I32x2 {
+        I32x2([self[0], self[3]])
+    }
+
+    #[inline]
+    pub fn zy(self) -> I32x2 {
+        I32x2([self[2], self[1]])
+    }
+
+    #[inline]
+    pub fn zw(self) -> I32x2 {
+        I32x2([self[2], self[3]])
     }
 
     // Conversions
@@ -374,7 +665,61 @@ impl Mul<I32x4> for I32x4 {
     }
 }
 
-// 32-bit unsigned integers
+impl BitAnd<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn bitand(self, other: I32x4) -> I32x4 {
+        I32x4([self[0] & other[0], self[1] & other[1], self[2] & other[2], self[3] & other[3]])
+    }
+}
+
+impl BitOr<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn bitor(self, other: I32x4) -> I32x4 {
+        I32x4([self[0] | other[0], self[1] | other[1], self[2] | other[2], self[3] | other[3]])
+    }
+}
+
+impl Shr<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn shr(self, other: I32x4) -> I32x4 {
+        I32x4([
+            self[0] >> other[0],
+            self[1] >> other[1],
+            self[2] >> other[2],
+            self[3] >> other[3],
+        ])
+    }
+}
+
+// Two 32-bit unsigned integers
+
+#[derive(Clone, Copy)]
+pub struct U32x2(pub [u32; 2]);
+
+impl U32x2 {
+    #[inline]
+    pub fn is_all_ones(&self) -> bool {
+        self[0] == !0 && self[1] == !0
+    }
+
+    #[inline]
+    pub fn is_all_zeroes(&self) -> bool {
+        self[0] == 0 && self[1] == 0
+    }
+}
+
+impl Index<usize> for U32x2 {
+    type Output = u32;
+    #[inline]
+    fn index(&self, index: usize) -> &u32 {
+        &self.0[index]
+    }
+}
+
+// Four 32-bit unsigned integers
 
 #[derive(Clone, Copy)]
 pub struct U32x4(pub [u32; 4]);
@@ -396,26 +741,5 @@ impl Index<usize> for U32x4 {
     #[inline]
     fn index(&self, index: usize) -> &u32 {
         &self.0[index]
-    }
-}
-
-// 8-bit unsigned integers
-
-#[derive(Clone, Copy)]
-pub struct U8x16([u8; 16]);
-
-impl U8x16 {
-    #[inline]
-    pub fn as_i32x4(self) -> I32x4 {
-        unsafe { I32x4(*mem::transmute::<&[u8; 16], &[i32; 4]>(&self.0)) }
-    }
-
-    #[inline]
-    pub fn shuffle(self, indices: U8x16) -> U8x16 {
-        let mut result = [0; 16];
-        for index in 0..16 {
-            result[index] = self.0[(indices.0[index] & 0x0f) as usize]
-        }
-        U8x16(result)
     }
 }

@@ -18,10 +18,9 @@ use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_content::color::ColorU;
 use pathfinder_content::outline::Outline;
-use std::io::{self, Write};
 
 #[derive(Clone)]
 pub struct Scene {
@@ -116,12 +115,11 @@ impl Scene {
                 if options.transform.is_2d() || options.subpixel_aa_enabled {
                     let mut transform = match options.transform {
                         PreparedRenderTransform::Transform2D(transform) => transform,
-                        PreparedRenderTransform::None => Transform2DF::default(),
+                        PreparedRenderTransform::None => Transform2F::default(),
                         PreparedRenderTransform::Perspective { .. } => unreachable!(),
                     };
                     if options.subpixel_aa_enabled {
-                        transform = transform
-                            .post_mul(&Transform2DF::from_scale(Vector2F::new(3.0, 1.0)))
+                        transform *= Transform2F::from_scale(Vector2F::new(3.0, 1.0))
                     }
                     outline.transform(&transform);
                 }
@@ -173,31 +171,6 @@ impl Scene {
         let prepared_options = options.prepare(self.bounds);
         SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
-
-    pub fn write_svg<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
-        writeln!(
-            writer,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\">",
-            self.view_box.origin().x(),
-            self.view_box.origin().y(),
-            self.view_box.size().x(),
-            self.view_box.size().y()
-        )?;
-        for path_object in &self.paths {
-            let paint = &self.paints[path_object.paint.0 as usize];
-            write!(writer, "    <path")?;
-            if !path_object.name.is_empty() {
-                write!(writer, " id=\"{}\"", path_object.name)?;
-            }
-            writeln!(
-                writer,
-                " fill=\"{:?}\" d=\"{:?}\" />",
-                paint.color, path_object.outline
-            )?;
-        }
-        writeln!(writer, "</svg>")?;
-        Ok(())
-    }
     
     pub fn paths<'a>(&'a self) -> PathIter {
         PathIter {
@@ -211,10 +184,14 @@ pub struct PathIter<'a> {
     pos: usize
 }
 impl<'a> Iterator for PathIter<'a> {
-    type Item = (&'a Paint, &'a Outline);
+    type Item = (&'a Paint, &'a Outline, &'a str);
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.scene.paths.get(self.pos).map(|path_object| {
-            (self.scene.paints.get(path_object.paint.0 as usize).unwrap(), &path_object.outline)
+            (
+                self.scene.paints.get(path_object.paint.0 as usize).unwrap(),
+                &path_object.outline,
+                &*path_object.name
+            )
         });
         self.pos += 1;
         item
