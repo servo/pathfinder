@@ -77,9 +77,11 @@ impl SceneProxy {
     ///
     /// Exactly equivalent to:
     ///
-    ///     for command in scene_proxy.build_with_stream(options) {
-    ///         renderer.render_command(&command)
-    ///     }
+    /// ```norun
+    /// for command in scene_proxy.build_with_stream(options) {
+    ///     renderer.render_command(&command)
+    /// }
+    /// ```
     #[inline]
     pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, build_options: BuildOptions)
                                where D: Device {

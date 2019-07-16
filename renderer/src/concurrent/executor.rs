@@ -14,7 +14,9 @@
 pub trait Executor {
     /// Like the Rayon snippet:
     ///
-    ///     (0..length).into_par_iter().flat_map(builder).collect()
+    /// ```norun
+    /// (0..length).into_par_iter().flat_map(builder).collect()
+    /// ```
     fn flatten_into_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
                                  where T: Send, F: Fn(usize) -> Vec<T> + Send + Sync;
 }
