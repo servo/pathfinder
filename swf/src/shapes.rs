@@ -93,12 +93,12 @@ impl Shape {
     }
 
     #[inline]
-    fn first(&self) -> LineSegment {
+    fn first(&self) -> &LineSegment {
         self.outline.first().unwrap()
     }
 
     #[inline]
-    fn last(&self) -> LineSegment {
+    fn last(&self) -> &LineSegment {
         self.outline.last().unwrap()
     }
 
