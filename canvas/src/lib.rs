@@ -102,6 +102,16 @@ impl CanvasRenderingContext2D {
         TextMetrics { width: self.layout_text(string).width() }
     }
 
+    pub fn fill_layout(&mut self, layout: &Layout, transform: Transform2F) {
+        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        drop(self.scene.push_layout(&layout,
+                                    &TextStyle { size: self.current_state.font_size },
+                                    &(transform * self.current_state.transform),
+                                    TextRenderMode::Fill,
+                                    HintingOptions::None,
+                                    paint_id));
+    }
+    
     fn fill_or_stroke_text(&mut self,
                            string: &str,
                            mut position: Vector2F,
