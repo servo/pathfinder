@@ -29,4 +29,4 @@ rev = "a2d683856ba1f2d0095b12dd7823d1602a87614e"
 optional = true
 
 [features]
-text = ["pathfinder_text", "skribo", "font-kit"]
+pf-text = ["pathfinder_text", "skribo", "font-kit"]

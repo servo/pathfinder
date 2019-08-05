@@ -26,14 +26,14 @@ use std::f32::consts::PI;
 use std::mem;
 use std::sync::Arc;
 use text::FontCollection;
-#[cfg(feature = "text")]
+#[cfg(feature = "pf-text")]
 pub use text::TextMetrics;
 pub use text::CanvasFontContext;
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 const DEFAULT_FONT_SIZE: f32 = 10.0;
 
-#[cfg_attr(not(feature = "text"), path = "text_no_text.rs")]
+#[cfg_attr(not(feature = "pf-text"), path = "text_no_text.rs")]
 mod text;
 
 pub struct CanvasRenderingContext2D {
@@ -53,9 +53,9 @@ impl CanvasRenderingContext2D {
     }
 
     pub fn from_scene(font_context: CanvasFontContext, scene: Scene) -> CanvasRenderingContext2D {
-        #[cfg(feature = "text")]
+        #[cfg(feature = "pf-text")]
         let default_font_collection = font_context.default_font_collection.clone();
-        #[cfg(not(feature = "text"))]
+        #[cfg(not(feature = "pf-text"))]
         let default_font_collection = Arc::new(FontCollection);
         CanvasRenderingContext2D {
             scene,
