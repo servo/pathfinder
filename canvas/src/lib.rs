@@ -168,7 +168,13 @@ impl CanvasRenderingContext2D {
         let paint_id = self.scene.push_paint(&paint);
 
         let mut stroke_style = self.current_state.resolve_stroke_style();
-        stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
+        
+        // the smaller scale is relevant here, as we multiply by it and want to ensure it is always bigger than HAIRLINE_STROKE_WIDTH
+        let transform_scale = f32::min(self.current_state.transform.m11(), self.current_state.transform.m22());
+        // avoid the division in the normal case of sufficient thickness
+        if stroke_style.line_width * transform_scale < HAIRLINE_STROKE_WIDTH {
+            stroke_style.line_width = HAIRLINE_STROKE_WIDTH / transform_scale;
+        }
 
         let mut outline = path.into_outline();
         if !self.current_state.line_dash.is_empty() {
