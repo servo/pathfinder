@@ -477,7 +477,10 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn process_mouse_position(&mut self, new_position: Vector2I) -> MousePosition {
-        let absolute = new_position.scale(self.window_size.backing_scale_factor as i32);
+        let absolute = new_position
+            .to_f32()
+            .scale(self.window_size.backing_scale_factor)
+            .to_i32();
         let relative = absolute - self.last_mouse_position;
         self.last_mouse_position = absolute;
         MousePosition { absolute, relative }
