@@ -24,28 +24,28 @@ use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use foreign_types::ForeignTypeRef;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use metal::{CAMetalLayer, CoreAnimationLayerRef};
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use sdl2::hint;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use sdl2::render::Canvas;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use sdl2_sys::SDL_RenderGetMetalLayer;
 
-#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+#[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
 use pathfinder_gl::{GLDevice, GLVersion};
-#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+#[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
 use sdl2::video::{GLContext, GLProfile};
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), any(not(target_vendor = "apple"), target_os = "macos")))]
 use jemallocator;
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), any(not(target_vendor = "apple"), target_os = "macos")))]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
@@ -87,14 +87,14 @@ thread_local! {
 }
 
 struct WindowImpl {
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     window: SDLWindow,
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     gl_context: GLContext,
 
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     canvas: Canvas<SDLWindow>,
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     metal_layer: *mut CAMetalLayer,
 
     event_pump: EventPump,
@@ -105,12 +105,12 @@ struct WindowImpl {
 }
 
 impl Window for WindowImpl {
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     fn gl_version(&self) -> GLVersion {
         GLVersion::GL3
     }
 
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     fn metal_layer(&self) -> &CoreAnimationLayerRef {
         unsafe { CoreAnimationLayerRef::from_ptr(self.metal_layer) }
     }
@@ -127,20 +127,20 @@ impl Window for WindowImpl {
         RectI::new(Vector2I::new(x_offset, 0), Vector2I::new(width, height))
     }
 
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     fn make_current(&mut self, _view: View) {
         self.window().gl_make_current(&self.gl_context).unwrap();
     }
 
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     fn make_current(&mut self, _: View) {}
 
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     fn present(&mut self, _: &mut GLDevice) {
         self.window().gl_swap_window();
     }
 
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     fn present(&mut self, device: &mut MetalDevice) {
         device.present_drawable();
     }
@@ -183,7 +183,7 @@ impl Window for WindowImpl {
 }
 
 impl WindowImpl {
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     fn new() -> WindowImpl {
         SDL_VIDEO.with(|sdl_video| {
             SDL_EVENT.with(|sdl_event| {
@@ -228,7 +228,7 @@ impl WindowImpl {
         })
     }
 
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     fn new() -> WindowImpl {
         assert!(hint::set("SDL_RENDER_DRIVER", "metal"));
 
@@ -269,9 +269,9 @@ impl WindowImpl {
         })
     }
 
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(any(not(target_vendor = "apple"), feature = "pf-gl"))]
     fn window(&self) -> &SDLWindow { &self.window }
-    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    #[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
     fn window(&self) -> &SDLWindow { self.canvas.window() }
 
     fn size(&self) -> WindowSize {

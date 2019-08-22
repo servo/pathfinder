@@ -19,3 +19,6 @@ path = "../geometry"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+
+[target.'cfg(all(target_vendor = "apple", not(target_os = "macos")))'.dependencies]
+objc = "0.2.6"

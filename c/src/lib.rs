@@ -36,9 +36,9 @@ use std::os::raw::{c_char, c_void};
 use std::slice;
 use std::str;
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use metal::{CAMetalLayer, CoreAnimationLayerRef};
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
 
 // Constants
@@ -161,9 +161,9 @@ pub type PFGLFunctionLoader = extern "C" fn(name: *const c_char, userdata: *mut 
 // `gpu`
 pub type PFGLDestFramebufferRef = *mut DestFramebuffer<GLDevice>;
 pub type PFGLRendererRef = *mut Renderer<GLDevice>;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 pub type PFMetalDestFramebufferRef = *mut DestFramebuffer<MetalDevice>;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 pub type PFMetalRendererRef = *mut Renderer<MetalDevice>;
 // FIXME(pcwalton): Double-boxing is unfortunate. Remove this when `std::raw::TraitObject` is
 // stable?
@@ -171,7 +171,7 @@ pub type PFResourceLoaderRef = *mut ResourceLoaderWrapper;
 pub struct ResourceLoaderWrapper(Box<dyn ResourceLoader>);
 
 // `metal`
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 pub type PFMetalDeviceRef = *mut MetalDevice;
 
 // `renderer`
@@ -541,14 +541,14 @@ pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFG
     &mut (*renderer).device
 }
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDestFramebufferCreateFullWindow(window_size: *const PFVector2I)
                                                                 -> PFMetalDestFramebufferRef {
     Box::into_raw(Box::new(DestFramebuffer::full_window((*window_size).to_rust())))
 }
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
                                                        PFMetalDestFramebufferRef) {
@@ -558,7 +558,7 @@ pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
 /// This function takes ownership of and automatically takes responsibility for destroying `device`
 /// and `dest_framebuffer`. However, it does not take ownership of `resources`; therefore, if you
 /// created the resource loader, you must destroy it yourself to avoid a memory leak.
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
                                                resources: PFResourceLoaderRef,
@@ -571,7 +571,7 @@ pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
                                          (*options).to_rust())))
 }
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
     drop(Box::from_raw(renderer))
@@ -580,7 +580,7 @@ pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
 /// Returns a reference to the Metal device in the renderer.
 ///
 /// This reference remains valid as long as the device is alive.
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef)
                                                   -> PFMetalDeviceRef {
@@ -598,7 +598,7 @@ pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyR
 
 /// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
 /// created the renderer and/or options, you must destroy them yourself to avoid a leak.
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFSceneProxyRef,
                                                          renderer: PFMetalRendererRef,
@@ -608,20 +608,20 @@ pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFScenePro
 
 // `metal`
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
                                              -> PFMetalDeviceRef {
     Box::into_raw(Box::new(MetalDevice::new(CoreAnimationLayerRef::from_ptr(layer))))
 }
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDeviceDestroy(device: PFMetalDeviceRef) {
     drop(Box::from_raw(device))
 }
 
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[cfg(all(target_vendor = "apple", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDevicePresentDrawable(device: PFMetalDeviceRef) {
     (*device).present_drawable()

@@ -58,6 +58,16 @@ use std::time::{Duration, Instant};
 
 const FIRST_VERTEX_BUFFER_INDEX: u64 = 1;
 
+#[cfg(target_os = "macos")]
+const STORAGE_MODE: MTLStorageMode = MTLStorageMode::Managed;
+#[cfg(not(target_os = "macos"))]
+const STORAGE_MODE: MTLStorageMode = MTLStorageMode::Shared;
+
+#[cfg(target_os = "macos")]
+const RESOURCE_STORAGE_MODE: MTLResourceOptions = MTLResourceOptions::StorageModeManaged;
+#[cfg(not(target_os = "macos"))]
+const RESOURCE_STORAGE_MODE: MTLResourceOptions = MTLResourceOptions::StorageModeShared;
+
 pub struct MetalDevice {
     device: metal::Device,
     layer: CoreAnimationLayer,
@@ -199,7 +209,7 @@ impl Device for MetalDevice {
         }
         descriptor.set_width(size.x() as u64);
         descriptor.set_height(size.y() as u64);
-        descriptor.set_storage_mode(MTLStorageMode::Managed);
+        descriptor.set_storage_mode(STORAGE_MODE);
         descriptor.set_usage(MTLTextureUsage::Unknown);
         MetalTexture { texture: self.device.new_texture(&descriptor), dirty: Cell::new(false) }
     }
@@ -387,7 +397,7 @@ impl Device for MetalDevice {
             BufferUploadMode::Static => MTLResourceOptions::CPUCacheModeWriteCombined,
             BufferUploadMode::Dynamic => MTLResourceOptions::CPUCacheModeDefaultCache,
         };
-        options |= MTLResourceOptions::StorageModeManaged;
+        options |= RESOURCE_STORAGE_MODE;
 
         match data {
             BufferData::Uninitialized(size) => {
@@ -650,7 +660,9 @@ impl MetalDevice {
                 blit_command_encoder = Some(command_buffer.new_blit_command_encoder());
             }
             let blit_command_encoder = blit_command_encoder.as_ref().unwrap();
-            blit_command_encoder.synchronize_resource(&texture.texture);
+            if cfg!(target_os = "macos") {
+                blit_command_encoder.synchronize_resource(&texture.texture);
+            }
             texture.dirty.set(false);
         }
         if let Some(blit_command_encoder) = blit_command_encoder {
@@ -759,8 +771,7 @@ impl MetalDevice {
             ShaderUniforms::Uniforms { ref encoder, .. } => encoder,
         };
 
-        let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
-            MTLResourceOptions::StorageModeManaged;
+        let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache | RESOURCE_STORAGE_MODE;
         let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
         encoder.set_argument_buffer(&buffer, 0);
         Some(buffer)
@@ -824,8 +835,7 @@ impl MetalDevice {
             uniform_buffer_ranges.push(start_index..end_index);
         }
 
-        let buffer_options = MTLResourceOptions::CPUCacheModeWriteCombined |
-            MTLResourceOptions::StorageModeManaged;
+        let buffer_options = MTLResourceOptions::CPUCacheModeWriteCombined | RESOURCE_STORAGE_MODE;
         let data_buffer = self.device
                               .new_buffer_with_data(uniform_buffer_data.as_ptr() as *const _,
                                                     uniform_buffer_data.len() as u64,
@@ -873,13 +883,15 @@ impl MetalDevice {
         // lifetime semantics?
         mem::forget(data_buffer);
 
-        if let Some(vertex_argument_buffer) = vertex_argument_buffer {
-            let range = NSRange::new(0, vertex_argument_buffer.length());
-            vertex_argument_buffer.did_modify_range(range);
-        }
-        if let Some(fragment_argument_buffer) = fragment_argument_buffer {
-            let range = NSRange::new(0, fragment_argument_buffer.length());
-            fragment_argument_buffer.did_modify_range(range);
+        if cfg!(target_os = "macos") {
+            if let Some(vertex_argument_buffer) = vertex_argument_buffer {
+                let range = NSRange::new(0, vertex_argument_buffer.length());
+                vertex_argument_buffer.did_modify_range(range);
+            }
+            if let Some(fragment_argument_buffer) = fragment_argument_buffer {
+                let range = NSRange::new(0, fragment_argument_buffer.length());
+                fragment_argument_buffer.did_modify_range(range);
+            }
         }
     }
 

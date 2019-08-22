@@ -10,6 +10,10 @@
 
 //! Minimal abstractions over GPU device capabilities.
 
+#[cfg(all(target_vendor = "apple", not(target_os = "macos")))]
+#[macro_use]
+extern crate objc;
+
 use crate::resources::ResourceLoader;
 use image::ImageFormat;
 use pathfinder_content::color::ColorF;

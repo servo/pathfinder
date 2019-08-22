@@ -31,12 +31,12 @@ path = "../../gpu"
 [dependencies.pathfinder_simd]
 path = "../../simd"
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(target_vendor = "apple")'.dependencies]
 foreign-types = "0.3"
 metal = "0.14"
 
-[target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
+[target.'cfg(target_vendor = "apple")'.dependencies.pathfinder_metal]
 path = "../../metal"
 
-[target.'cfg(not(windows))'.dependencies]
+[target.'cfg(all(not(windows), any(not(target_vendor = "apple"), target_os = "macos")))'.dependencies]
 jemallocator = "0.1"
