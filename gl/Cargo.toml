@@ -10,11 +10,6 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 gl = "0.6"
 
-[dependencies.image]
-version = "0.21"
-default-features = false
-features = ["png_codec"]
-
 [dependencies.log]
 version = "0.4"
 features = ["release_max_level_warn"]
@@ -24,9 +19,6 @@ path = "../geometry"
 
 [dependencies.pathfinder_gpu]
 path = "../gpu"
-
-[dependencies.pathfinder_renderer]
-path = "../renderer"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
