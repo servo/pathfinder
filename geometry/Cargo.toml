@@ -16,3 +16,4 @@ features = ["release_max_level_warn"]
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+version = "0.3"
