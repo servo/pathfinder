@@ -270,6 +270,13 @@ impl Transform2F {
     pub fn scale_factor(&self) -> f32 {
         Vector2F(self.matrix.0.zw()).length()
     }
+
+    #[inline]
+    pub fn inverse(&self) -> Transform2F {
+        let matrix_inv = self.matrix.inverse();
+        let vector_inv = -(matrix_inv * self.vector);
+        Transform2F { matrix: matrix_inv, vector: vector_inv }
+    }
 }
 
 impl Mul<Transform2F> for Transform2F {

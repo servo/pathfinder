@@ -800,6 +800,12 @@ impl MetalDevice {
                 UniformData::Int(value) => {
                     uniform_buffer_data.write_i32::<NativeEndian>(value).unwrap()
                 }
+                UniformData::Mat2(matrix) => {
+                    uniform_buffer_data.write_f32::<NativeEndian>(matrix.x()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(matrix.y()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(matrix.z()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(matrix.w()).unwrap();
+                }
                 UniformData::Mat4(matrix) => {
                     for column in &matrix {
                         uniform_buffer_data.write_f32::<NativeEndian>(column.x()).unwrap();
@@ -1141,6 +1147,9 @@ impl UniformDataExt for UniformData {
                 UniformData::TextureUnit(_) => None,
                 UniformData::Int(ref data) => {
                     Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 1))
+                }
+                UniformData::Mat2(ref data) => {
+                    Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4))
                 }
                 UniformData::Mat4(ref data) => {
                     Some(slice::from_raw_parts(&data[0] as *const F32x4 as *const u8, 4 * 16))

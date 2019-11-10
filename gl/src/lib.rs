@@ -156,6 +156,13 @@ impl GLDevice {
                 UniformData::Int(value) => {
                     gl::Uniform1i(uniform.location, value); ck();
                 }
+                UniformData::Mat2(data) => {
+                    assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
+                    gl::UniformMatrix2fv(uniform.location,
+                                         1,
+                                         gl::FALSE,
+                                         &data as *const F32x4 as *const GLfloat);
+                }
                 UniformData::Mat4(data) => {
                     assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
                     let data_ptr: *const F32x4 = data.as_ptr();
