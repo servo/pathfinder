@@ -797,6 +797,9 @@ impl MetalDevice {
         for &(_, uniform_data) in render_state.uniforms.iter() {
             let start_index = uniform_buffer_data.len();
             match uniform_data {
+                UniformData::Float(value) => {
+                    uniform_buffer_data.write_f32::<NativeEndian>(value).unwrap()
+                }
                 UniformData::Int(value) => {
                     uniform_buffer_data.write_i32::<NativeEndian>(value).unwrap()
                 }
@@ -1145,6 +1148,9 @@ impl UniformDataExt for UniformData {
         unsafe {
             match *self {
                 UniformData::TextureUnit(_) => None,
+                UniformData::Float(ref data) => {
+                    Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 1))
+                }
                 UniformData::Int(ref data) => {
                     Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 1))
                 }

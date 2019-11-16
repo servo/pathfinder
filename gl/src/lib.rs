@@ -153,6 +153,9 @@ impl GLDevice {
     fn set_uniform(&self, uniform: &GLUniform, data: &UniformData) {
         unsafe {
             match *data {
+                UniformData::Float(value) => {
+                    gl::Uniform1f(uniform.location, value); ck();
+                }
                 UniformData::Int(value) => {
                     gl::Uniform1i(uniform.location, value); ck();
                 }
