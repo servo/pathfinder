@@ -5,9 +5,9 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-euclid = "0.19"
-font-kit = "0.2"
-lyon_path = "0.12"
+euclid = "0.20"
+font-kit = "0.4"
+lyon_path = "0.14"
 
 [dependencies.pathfinder_content]
 path = "../content"
@@ -20,4 +20,4 @@ path = "../renderer"
 
 [dependencies.skribo]
 git = "https://github.com/linebender/skribo.git"
-rev = "a2d683856ba1f2d0095b12dd7823d1602a87614e"
+rev = "03c63ac17bb93e29f82e959dac94027935a21159"
