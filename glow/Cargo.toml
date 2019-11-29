@@ -1,0 +1,28 @@
+[package]
+name = "pathfinder_glow"
+version = "0.1.0"
+edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>", "Joshua Netterfield <joshua@nettek.ca"]
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+glow = "0.3.0-alpha4"
+
+[dependencies.log]
+version = "0.4"
+features = ["release_max_level_warn"]
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_gpu]
+path = "../gpu"
+
+[dependencies.pathfinder_simd]
+path = "../simd"
+
+[dependencies.web-sys]
+version = "0.3.32"
+features = ["console"]

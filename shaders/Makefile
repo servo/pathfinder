@@ -50,7 +50,9 @@ SPIRVCROSSFLAGS=--msl --msl-version 020100 --msl-argument-buffers
 GLSL_VERSION_HEADER="\#version {{version}}"
 HEADER="// Automatically generated from files in pathfinder/shaders/. Do not edit!"
 
-GLSL_SED_ARGS=-e "s/\#version 330//" -e "s/\#line.*$$//"
+# We remove the include extension pragma because the compiled result does not
+# contain include directives.
+GLSL_SED_ARGS=-e "s/\#version 330//" -e "s/\#line.*$$//" -e "s/\#extension.*GL_GOOGLE_include_directive.*$$//"
 
 all:	$(OUT)
 

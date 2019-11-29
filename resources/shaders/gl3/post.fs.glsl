@@ -15,7 +15,7 @@
 
 
 
-#extension GL_GOOGLE_include_directive : enable
+
 
 precision highp float;
 

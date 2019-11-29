@@ -1,0 +1,44 @@
+[package]
+name = "canvas_glow"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>", "Joshua Netterfield <joshua@nettek.ca"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+gl = "0.6"
+sdl2 = "0.32"
+sdl2-sys = "0.32"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3"
+features = [
+  "HtmlCanvasElement",
+]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[dependencies.glow]
+version = "0.3.0-alpha4"
+features = ["sdl2"]
+
+[dependencies.pathfinder_canvas]
+path = "../../canvas"
+
+[dependencies.pathfinder_content]
+path = "../../content"
+
+[dependencies.pathfinder_geometry]
+path = "../../geometry"
+
+[dependencies.pathfinder_glow]
+path = "../../glow"
+
+[dependencies.pathfinder_gpu]
+path = "../../gpu"
+
+[dependencies.pathfinder_renderer]
+path = "../../renderer"

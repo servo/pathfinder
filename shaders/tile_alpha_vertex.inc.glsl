@@ -33,7 +33,7 @@ void computeVaryings() {
     vec2 origin = vec2(aTileOrigin.xy) + vec2(aTileOrigin.z & 15u, aTileOrigin.z >> 4u) * 256.0;
     vec2 position = (origin + vec2(aTessCoord)) * uTileSize;
     vec2 maskTexCoordOrigin = computeTileOffset(uint(aTileIndex), uStencilTextureSize.x);
-    vec2 maskTexCoord = maskTexCoordOrigin + aTessCoord * uTileSize;
+    vec2 maskTexCoord = maskTexCoordOrigin + vec2(aTessCoord) * uTileSize;
 
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
