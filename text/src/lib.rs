@@ -8,11 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use euclid::{Angle, Point2D, Vector2D};
+use euclid::Angle;
+use euclid::default::{Point2D, Vector2D};
 use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
-use lyon_path::builder::{FlatPathBuilder, PathBuilder};
+use lyon_path::builder::{FlatPathBuilder, PathBuilder, Build};
 use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
@@ -172,8 +173,21 @@ impl PathBuilder for OutlinePathBuilder {
     }
 }
 
-impl FlatPathBuilder for OutlinePathBuilder {
+impl Build for OutlinePathBuilder {
     type PathType = Outline;
+    fn build(mut self) -> Outline {
+        self.flush_current_contour();
+        self.outline
+    }
+    
+    fn build_and_reset(&mut self) -> Outline {
+        self.flush_current_contour();
+        mem::replace(&mut self.outline, Outline::new())
+    }
+
+}
+
+impl FlatPathBuilder for OutlinePathBuilder {
 
     fn move_to(&mut self, to: Point2D<f32>) {
         self.flush_current_contour();
@@ -205,13 +219,4 @@ impl FlatPathBuilder for OutlinePathBuilder {
         Point2D::new(point.x(), point.y())
     }
 
-    fn build(mut self) -> Outline {
-        self.flush_current_contour();
-        self.outline
     }
-
-    fn build_and_reset(&mut self) -> Outline {
-        self.flush_current_contour();
-        mem::replace(&mut self.outline, Outline::new())
-    }
-}
