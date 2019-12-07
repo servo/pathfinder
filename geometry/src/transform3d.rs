@@ -387,8 +387,7 @@ impl Mul<Vector2F> for Perspective {
     type Output = Vector2F;
     #[inline]
     fn mul(self, vector: Vector2F) -> Vector2F {
-        let point = (self.transform * vector.to_3d()).perspective_divide().to_2d() *
-            Vector2F::new(1.0, -1.0);
+        let point = (self.transform * vector.to_4d()).to_2d() * Vector2F::new(1.0, -1.0);
         (point + Vector2F::splat(1.0)) * self.window_size.to_f32().scale(0.5)
     }
 }

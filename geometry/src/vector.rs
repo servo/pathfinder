@@ -29,7 +29,12 @@ impl Vector2F {
     }
 
     #[inline]
-    pub fn to_3d(self) -> Vector4F {
+    pub fn to_3d(self) -> Vector3F {
+        Vector3F(self.0.to_f32x4().concat_xy_zw(F32x4::new(0.0, 0.0, 0.0, 0.0)))
+    }
+
+    #[inline]
+    pub fn to_4d(self) -> Vector4F {
         Vector4F(self.0.to_f32x4().concat_xy_zw(F32x4::new(0.0, 0.0, 0.0, 1.0)))
     }
 
@@ -260,6 +265,84 @@ impl PartialEq for Vector2I {
     }
 }
 
+/// 3D points.
+///
+/// The w value in the SIMD vector is always 0.0.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Vector3F(pub F32x4);
+
+impl Vector3F {
+    #[inline]
+    pub fn new(x: f32, y: f32, z: f32) -> Vector3F {
+        Vector3F(F32x4::new(x, y, z, 0.0))
+    }
+
+    #[inline]
+    pub fn splat(x: f32) -> Vector3F {
+        let mut vector = F32x4::splat(x);
+        vector.set_w(0.0);
+        Vector3F(vector)
+    }
+
+    /// Truncates this vector to 2D.
+    #[inline]
+    pub fn to_2d(self) -> Vector2F {
+        Vector2F(self.0.xy())
+    }
+
+    /// Converts this vector to an equivalent 3D homogeneous one with a w component of 1.0.
+    #[inline]
+    pub fn to_4d(self) -> Vector4F {
+        let mut vector = self.0;
+        vector.set_w(1.0);
+        Vector4F(vector)
+    }
+
+    #[inline]
+    pub fn cross(self, other: Vector3F) -> Vector3F {
+        Vector3F(self.0.yzxw() * other.0.zxyw() - self.0.zxyw() * other.0.yzxw())
+    }
+
+    #[inline]
+    pub fn square_length(self) -> f32 {
+        let squared = self.0 * self.0;
+        squared[0] + squared[1] + squared[2]
+    }
+
+    #[inline]
+    pub fn length(self) -> f32 {
+        f32::sqrt(self.square_length())
+    }
+
+    #[inline]
+    pub fn normalize(self) -> Vector3F {
+        Vector3F(self.0 * F32x4::splat(1.0 / self.length()))
+    }
+}
+
+impl Add<Vector3F> for Vector3F {
+    type Output = Vector3F;
+    #[inline]
+    fn add(self, other: Vector3F) -> Vector3F {
+        Vector3F(self.0 + other.0)
+    }
+}
+
+impl AddAssign for Vector3F {
+    #[inline]
+    fn add_assign(&mut self, other: Vector3F) {
+        self.0 += other.0
+    }
+}
+
+impl Sub<Vector3F> for Vector3F {
+    type Output = Vector3F;
+    #[inline]
+    fn sub(self, other: Vector3F) -> Vector3F {
+        Vector3F(self.0 - other.0)
+    }
+}
+
 /// 3D homogeneous points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vector4F(pub F32x4);
@@ -277,7 +360,15 @@ impl Vector4F {
 
     #[inline]
     pub fn to_2d(self) -> Vector2F {
-        Vector2F(self.0.xy())
+        self.to_3d().to_2d()
+    }
+
+    /// Performs perspective division to convert this vector to 3D.
+    #[inline]
+    pub fn to_3d(self) -> Vector3F {
+        let mut vector = self.0 * F32x4::splat(1.0 / self.w());
+        vector.set_w(0.0);
+        Vector3F(vector)
     }
 
     #[inline]
@@ -325,11 +416,6 @@ impl Vector4F {
     #[inline]
     pub fn set_w(&mut self, w: f32) {
         self.0[3] = w
-    }
-
-    #[inline]
-    pub fn perspective_divide(self) -> Vector4F {
-        Vector4F(self.0 * F32x4::splat(1.0 / self.w()))
     }
 
     #[inline]
@@ -382,6 +468,14 @@ impl Neg for Vector4F {
     #[inline]
     fn neg(self) -> Vector4F {
         Vector4F(self.0 * F32x4::new(-1.0, -1.0, -1.0, 1.0))
+    }
+}
+
+impl Sub<Vector4F> for Vector4F {
+    type Output = Vector4F;
+    #[inline]
+    fn sub(self, other: Vector4F) -> Vector4F {
+        Vector4F(self.0 - other.0)
     }
 }
 

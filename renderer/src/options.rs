@@ -75,10 +75,10 @@ impl RenderTransform {
         };
 
         let mut points = vec![
-            bounds.origin().to_3d(),
-            bounds.upper_right().to_3d(),
-            bounds.lower_right().to_3d(),
-            bounds.lower_left().to_3d(),
+            bounds.origin().to_4d(),
+            bounds.upper_right().to_4d(),
+            bounds.lower_right().to_4d(),
+            bounds.lower_left().to_4d(),
         ];
         debug!("-----");
         debug!("bounds={:?} ORIGINAL quad={:?}", bounds, points);
@@ -89,24 +89,23 @@ impl RenderTransform {
 
         // Compute depth.
         let quad = [
-            points[0].perspective_divide(),
-            points[1].perspective_divide(),
-            points[2].perspective_divide(),
-            points[3].perspective_divide(),
+            points[0].to_3d().to_4d(),
+            points[1].to_3d().to_4d(),
+            points[2].to_3d().to_4d(),
+            points[3].to_3d().to_4d(),
         ];
         debug!("... PERSPECTIVE-DIVIDED points = {:?}", quad);
 
         points = PolygonClipper3D::new(points).clip();
         debug!("... CLIPPED quad={:?}", points);
         for point in &mut points {
-            *point = point.perspective_divide()
+            *point = point.to_3d().to_4d()
         }
 
         let inverse_transform = perspective.transform.inverse();
-        let clip_polygon = points
-            .into_iter()
-            .map(|point| (inverse_transform * point).perspective_divide().to_2d())
-            .collect();
+        let clip_polygon = points.into_iter()
+                                 .map(|point| (inverse_transform * point).to_2d())
+                                 .collect();
         return PreparedRenderTransform::Perspective {
             perspective,
             clip_polygon,
