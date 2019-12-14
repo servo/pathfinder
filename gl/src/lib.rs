@@ -470,17 +470,18 @@ impl Device for GLDevice {
     }
 
     fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]) {
+        // FIXME(pcwalton): Fix size issues!!
         assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
         unsafe {
             self.bind_texture(texture, 0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
-                           gl::RGBA as GLint,
+                           texture.format.gl_internal_format(),
                            size.x() as GLsizei,
                            size.y() as GLsizei,
                            0,
-                           gl::RGBA,
-                           gl::UNSIGNED_BYTE,
+                           texture.format.gl_format(),
+                           texture.format.gl_type(),
                            data.as_ptr() as *const GLvoid); ck();
         }
 
@@ -521,6 +522,21 @@ impl Device for GLDevice {
                 }
                 flip_y(&mut pixels, size, 1);
                 TextureData::U16(pixels)
+            }
+            TextureFormat::RGBA32F => {
+                let channels = format.channels();
+                let mut pixels = vec![0.0; size.x() as usize * size.y() as usize * channels];
+                unsafe {
+                    gl::ReadPixels(origin.x(),
+                                   origin.y(),
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   format.gl_format(),
+                                   format.gl_type(),
+                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
+                }
+                flip_y(&mut pixels, size, channels);
+                TextureData::F32(pixels)
             }
         }
     }
@@ -955,13 +971,14 @@ impl TextureFormatExt for TextureFormat {
             TextureFormat::R8 => gl::R8 as GLint,
             TextureFormat::R16F => gl::R16F as GLint,
             TextureFormat::RGBA8 => gl::RGBA as GLint,
+            TextureFormat::RGBA32F => gl::RGBA32F as GLint,
         }
     }
 
     fn gl_format(self) -> GLuint {
         match self {
             TextureFormat::R8 | TextureFormat::R16F => gl::RED,
-            TextureFormat::RGBA8 => gl::RGBA,
+            TextureFormat::RGBA8 | TextureFormat::RGBA32F => gl::RGBA,
         }
     }
 
@@ -969,6 +986,7 @@ impl TextureFormatExt for TextureFormat {
         match self {
             TextureFormat::R8 | TextureFormat::RGBA8 => gl::UNSIGNED_BYTE,
             TextureFormat::R16F => gl::HALF_FLOAT,
+            TextureFormat::RGBA32F => gl::FLOAT,
         }
     }
 }

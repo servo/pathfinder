@@ -114,6 +114,7 @@ pub enum TextureFormat {
     R8,
     R16F,
     RGBA8,
+    RGBA32F,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -284,6 +285,7 @@ impl Default for StencilFunc {
 pub enum TextureData {
     U8(Vec<u8>),
     U16(Vec<u16>),
+    F32(Vec<f32>),
 }
 
 impl UniformData {
@@ -316,7 +318,7 @@ impl TextureFormat {
     pub fn channels(self) -> usize {
         match self {
             TextureFormat::R8 | TextureFormat::R16F => 1,
-            TextureFormat::RGBA8 => 4,
+            TextureFormat::RGBA8 | TextureFormat::RGBA32F => 4,
         }
     }
 }
