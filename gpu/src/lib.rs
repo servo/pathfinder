@@ -21,92 +21,87 @@ use std::time::Duration;
 
 pub mod resources;
 
+pub trait Encoder<D: Device> {
+    fn draw_arrays(&mut self, index_count: u32, render_state: &RenderState<D>);
+    fn draw_elements(&mut self, index_count: u32, render_state: &RenderState<D>);
+    fn draw_elements_instanced(&mut self,
+                               index_count: u32,
+                               instance_count: u32,
+                               render_state: &RenderState<D>);
+    fn begin_timer_query(&mut self, query: &D::TimerQuery);
+    fn end_timer_query(&mut self, query: &D::TimerQuery);
+}
+
 pub trait Device: Sized {
     type Buffer;
     type Framebuffer;
-    type Program;
+    type Pipeline;
     type Shader;
     type Texture;
     type TimerQuery;
     type Uniform;
-    type VertexArray;
-    type VertexAttr;
+    type Encoder: Encoder<Self>;
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
-    fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
-                     -> Self::Shader;
-    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
-                                 -> Self::Shader;
-    fn create_vertex_array(&self) -> Self::VertexArray;
-    fn create_program_from_shaders(
-        &self,
-        resources: &dyn ResourceLoader,
-        name: &str,
-        vertex_shader: Self::Shader,
-        fragment_shader: Self::Shader,
-    ) -> Self::Program;
-    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<Self::VertexAttr>;
-    fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
-    fn bind_buffer(&self,
-                   vertex_array: &Self::VertexArray,
-                   buffer: &Self::Buffer,
-                   target: BufferTarget);
-    fn configure_vertex_attr(&self,
-                             vertex_array: &Self::VertexArray,
-                             attr: &Self::VertexAttr,
-                             descriptor: &VertexAttrDescriptor);
-    fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
-    fn create_buffer(&self) -> Self::Buffer;
-    fn allocate_buffer<T>(
-        &self,
-        buffer: &Self::Buffer,
-        data: BufferData<T>,
-        target: BufferTarget,
-        mode: BufferUploadMode,
-    );
-    fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
-    fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
-    fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
-    fn begin_commands(&self);
-    fn end_commands(&self);
-    fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
-    fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>);
-    fn draw_elements_instanced(&self,
-                               index_count: u32,
-                               instance_count: u32,
-                               render_state: &RenderState<Self>);
-    fn create_timer_query(&self) -> Self::TimerQuery;
-    fn begin_timer_query(&self, query: &Self::TimerQuery);
-    fn end_timer_query(&self, query: &Self::TimerQuery);
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration>;
-
-    fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
+    fn create_texture_from_png(
+        &self, resources: &dyn ResourceLoader, name: &str
+    ) -> (Self::Texture, Vector2I) {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
         let image = image::load_from_memory_with_format(&data, ImageFormat::PNG)
             .unwrap()
             .to_luma();
         let size = Vector2I::new(image.width() as i32, image.height() as i32);
-        self.create_texture_from_data(size, &image)
+        (self.create_texture_from_data(size, &image), size)
     }
 
-    fn create_program_from_shader_names(
+    fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
+                     -> Self::Shader;
+    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
+                                 -> Self::Shader;
+    fn create_pipeline_from_shaders(
+        &self,
+        resources: &dyn ResourceLoader,
+        name: &str,
+        vertex_shader: Self::Shader,
+        fragment_shader: Self::Shader,
+        options: RenderOptions,
+        vertex_buffers: &[VertexBufferDescriptor],
+    ) -> Self::Pipeline;
+    fn create_pipeline_from_shader_names(
         &self,
         resources: &dyn ResourceLoader,
         program_name: &str,
         vertex_shader_name: &str,
         fragment_shader_name: &str,
-    ) -> Self::Program {
+        options: RenderOptions,
+        vertex_buffers: &[VertexBufferDescriptor],
+    ) -> Self::Pipeline {
         let vertex_shader = self.create_shader(resources, vertex_shader_name, ShaderKind::Vertex);
         let fragment_shader =
             self.create_shader(resources, fragment_shader_name, ShaderKind::Fragment);
-        self.create_program_from_shaders(resources, program_name, vertex_shader, fragment_shader)
+        self.create_pipeline_from_shaders(
+            resources, program_name, vertex_shader, fragment_shader, options, vertex_buffers
+        )
+    }
+    fn create_pipeline(
+        &self,
+        resources: &dyn ResourceLoader,
+        name: &str,
+        options: RenderOptions,
+        vertex_buffers: &[VertexBufferDescriptor],
+    ) -> Self::Pipeline {
+        self.create_pipeline_from_shader_names(resources, name, name, name, options, vertex_buffers)
     }
 
-    fn create_program(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Program {
-        self.create_program_from_shader_names(resources, name, name, name)
-    }
+    fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
+    fn create_buffer<T>(&self, data: BufferData<T>) -> Self::Buffer;
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
+    fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
+    fn begin_commands(&self) -> Self::Encoder;
+    fn end_commands(&self, encoder: Self::Encoder);
+    fn create_timer_query(&self) -> Self::TimerQuery;
+    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -130,18 +125,6 @@ pub enum VertexAttrType {
 pub enum BufferData<'a, T> {
     Uninitialized(usize),
     Memory(&'a [T]),
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum BufferTarget {
-    Vertex,
-    Index,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum BufferUploadMode {
-    Static,
-    Dynamic,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -170,13 +153,13 @@ pub enum Primitive {
 #[derive(Clone)]
 pub struct RenderState<'a, D> where D: Device {
     pub target: &'a RenderTarget<'a, D>,
-    pub program: &'a D::Program,
-    pub vertex_array: &'a D::VertexArray,
+    pub pipeline: &'a D::Pipeline,
+    pub index_buffer: Option<&'a D::Buffer>,
+    pub vertex_buffers: &'a [&'a D::Buffer],
     pub primitive: Primitive,
     pub uniforms: &'a [(&'a D::Uniform, UniformData)],
     pub textures: &'a [&'a D::Texture],
     pub viewport: RectI,
-    pub options: RenderOptions,
 }
 
 #[derive(Clone, Debug)]
@@ -295,15 +278,19 @@ impl UniformData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct VertexBufferDescriptor {
+    pub stride: usize,
+    pub divisor: u32,
+    pub attributes: Vec<VertexAttrDescriptor>,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct VertexAttrDescriptor {
     pub size: usize,
     pub class: VertexAttrClass,
     pub attr_type: VertexAttrType,
-    pub stride: usize,
     pub offset: usize,
-    pub divisor: u32,
-    pub buffer_index: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
