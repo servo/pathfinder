@@ -318,6 +318,26 @@ impl Vector3F {
     pub fn normalize(self) -> Vector3F {
         Vector3F(self.0 * F32x4::splat(1.0 / self.length()))
     }
+
+    #[inline]
+    pub fn x(self) -> f32 {
+        self.0[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> f32 {
+        self.0[1]
+    }
+
+    #[inline]
+    pub fn z(self) -> f32 {
+        self.0[2]
+    }
+
+    #[inline]
+    pub fn scale(self, factor: f32) -> Vector3F {
+        Vector3F(self.0 * F32x4::splat(factor))
+    }
 }
 
 impl Add<Vector3F> for Vector3F {
@@ -332,6 +352,14 @@ impl AddAssign for Vector3F {
     #[inline]
     fn add_assign(&mut self, other: Vector3F) {
         self.0 += other.0
+    }
+}
+
+impl Neg for Vector3F {
+    type Output = Vector3F;
+    #[inline]
+    fn neg(self) -> Vector3F {
+        Vector3F(self.0 * F32x4::new(-1.0, -1.0, -1.0, 0.0))
     }
 }
 

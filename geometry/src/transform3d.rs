@@ -10,7 +10,7 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::vector::{Vector2F, Vector2I, Vector4F};
+use crate::vector::{Vector2F, Vector2I, Vector3F, Vector4F};
 use crate::rect::RectF;
 use crate::transform2d::Matrix2x2F;
 use pathfinder_simd::default::F32x4;
@@ -199,6 +199,25 @@ impl Transform4F {
         Transform4F::row_major(
             m00, 0.0, 0.0, 0.0, 0.0, m11, 0.0, 0.0, 0.0, 0.0, m22, m23, 0.0, 0.0, m32, 0.0,
         )
+    }
+
+    /// Just like `gluLookAt()`.
+    #[inline]
+    pub fn looking_at(eye: Vector3F, center: Vector3F, mut up: Vector3F) -> Transform4F {
+        let f = (center - eye).normalize();
+        up = up.normalize();
+        let s = f.cross(up);
+        let u = s.normalize().cross(f);
+        let minus_f = -f;
+
+        // TODO(pcwalton): Use SIMD. This needs a matrix transpose:
+        // https://fgiesen.wordpress.com/2013/07/09/simd-transposes-1/
+        let transform = Transform4F::row_major(s.x(),       s.y(),       s.z(),       0.0,
+                                               u.x(),       u.y(),       u.z(),       0.0,
+                                               minus_f.x(), minus_f.y(), minus_f.z(), 0.0,
+                                               0.0,         0.0,         0.0,         1.0) *
+                        Transform4F::from_translation((-eye).to_4d());
+        transform
     }
 
     //     +-     -+
