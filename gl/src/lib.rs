@@ -17,10 +17,10 @@ use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{RenderTarget, BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat};
+use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::mem;
@@ -86,28 +86,35 @@ impl GLDevice {
         unsafe {
             // Set blend.
             match render_options.blend {
-                BlendState::Off => {
+                None => {
                     gl::Disable(gl::BLEND); ck();
                 }
-                BlendState::RGBOneAlphaOne => {
-                    gl::BlendEquation(gl::FUNC_ADD); ck();
-                    gl::BlendFunc(gl::ONE, gl::ONE); ck();
-                    gl::Enable(gl::BLEND); ck();
-                }
-                BlendState::RGBOneAlphaOneMinusSrcAlpha => {
-                    gl::BlendEquation(gl::FUNC_ADD); ck();
-                    gl::BlendFuncSeparate(gl::ONE,
-                                          gl::ONE_MINUS_SRC_ALPHA,
-                                          gl::ONE,
-                                          gl::ONE); ck();
-                    gl::Enable(gl::BLEND); ck();
-                }
-                BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
-                    gl::BlendEquation(gl::FUNC_ADD); ck();
-                    gl::BlendFuncSeparate(gl::SRC_ALPHA,
-                                          gl::ONE_MINUS_SRC_ALPHA,
-                                          gl::ONE,
-                                          gl::ONE); ck();
+                Some(ref blend) => {
+                    match blend.func {
+                        BlendFunc::RGBOneAlphaOne => {
+                            gl::BlendFunc(gl::ONE, gl::ONE); ck();
+                        }
+                        BlendFunc::RGBOneAlphaOneMinusSrcAlpha => {
+                            gl::BlendFuncSeparate(gl::ONE,
+                                                  gl::ONE_MINUS_SRC_ALPHA,
+                                                  gl::ONE,
+                                                  gl::ONE); ck();
+                        }
+                        BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
+                            gl::BlendFuncSeparate(gl::SRC_ALPHA,
+                                                  gl::ONE_MINUS_SRC_ALPHA,
+                                                  gl::ONE,
+                                                  gl::ONE); ck();
+                        }
+                    }
+                    match blend.op {
+                        BlendOp::Add => {
+                            gl::BlendEquation(gl::FUNC_ADD); ck();
+                        }
+                        BlendOp::Subtract => {
+                            gl::BlendEquation(gl::FUNC_SUBTRACT); ck();
+                        }
+                    }
                     gl::Enable(gl::BLEND); ck();
                 }
             }
@@ -198,13 +205,8 @@ impl GLDevice {
 
     fn reset_render_options(&self, render_options: &RenderOptions) {
         unsafe {
-            match render_options.blend {
-                BlendState::Off => {}
-                BlendState::RGBOneAlphaOneMinusSrcAlpha |
-                BlendState::RGBOneAlphaOne |
-                BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
-                    gl::Disable(gl::BLEND); ck();
-                }
+            if render_options.blend.is_some() {
+                gl::Disable(gl::BLEND); ck();
             }
 
             if render_options.depth.is_some() {
@@ -252,8 +254,26 @@ impl Device for GLDevice {
         texture
     }
 
-    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> GLTexture {
-        assert!(data.len() >= size.x() as usize * size.y() as usize);
+    fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
+                                -> GLTexture {
+        let channels = match (format, data) {
+            (TextureFormat::R8, TextureDataRef::U8(_)) => 1,
+            (TextureFormat::RGBA8, TextureDataRef::U8(_)) => 4,
+            (TextureFormat::RGBA32F, TextureDataRef::F32(_)) => 4,
+            _ => panic!("Unimplemented texture format in `create_texture_from_data`!"),
+        };
+
+        let area = size.x() as usize * size.y() as usize;
+        let data_ptr = match data {
+            TextureDataRef::U8(data) => {
+                assert!(data.len() >= area * channels);
+                data.as_ptr() as *const GLvoid
+            }
+            TextureDataRef::F32(data) => {
+                assert!(data.len() >= area * channels);
+                data.as_ptr() as *const GLvoid
+            }
+        };
 
         let mut texture = GLTexture { gl_texture: 0, size, format: TextureFormat::R8 };
         unsafe {
@@ -261,13 +281,13 @@ impl Device for GLDevice {
             self.bind_texture(&texture, 0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
-                           gl::R8 as GLint,
+                           format.gl_internal_format(),
                            size.x() as GLsizei,
                            size.y() as GLsizei,
                            0,
-                           gl::RED,
-                           gl::UNSIGNED_BYTE,
-                           data.as_ptr() as *const GLvoid); ck();
+                           format.gl_format(),
+                           format.gl_type(),
+                           data_ptr)
         }
 
         self.set_texture_parameters(&texture);

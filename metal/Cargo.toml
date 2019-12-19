@@ -8,10 +8,10 @@ edition = "2018"
 bitflags = "1.0"
 byteorder = "1.3"
 block = "0.1"
-cocoa = "0.18"
+cocoa = "0.19"
 core-foundation = "0.6"
 foreign-types = "0.3"
-metal = "0.14"
+metal = "0.17"
 objc = "0.2"
 
 [dependencies.pathfinder_geometry]

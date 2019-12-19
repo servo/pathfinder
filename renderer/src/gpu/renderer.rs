@@ -19,7 +19,7 @@ use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_content::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
+use pathfinder_gpu::{BlendFunc, BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
 use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureFormat, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
@@ -455,7 +455,10 @@ where
             ],
             viewport: self.mask_viewport(),
             options: RenderOptions {
-                blend: BlendState::RGBOneAlphaOne,
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBOneAlphaOne,
+                    ..BlendState::default()
+                }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
             },
@@ -523,7 +526,10 @@ where
             uniforms: &uniforms,
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                    ..BlendState::default()
+                }),
                 stencil: self.stencil_state(),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
@@ -754,7 +760,10 @@ where
             ],
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                    ..BlendState::default()
+                }),
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()

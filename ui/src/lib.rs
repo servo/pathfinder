@@ -21,9 +21,9 @@ use pathfinder_content::color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
-use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BlendFunc, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
+use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::mem;
@@ -187,7 +187,10 @@ impl<D> UIPresenter<D> where D: Device {
             textures: &[],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
-                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBOneAlphaOneMinusSrcAlpha,
+                    ..BlendState::default()
+                }),
                 ..RenderOptions::default()
             },
         });
@@ -422,7 +425,10 @@ impl<D> UIPresenter<D> where D: Device {
             ],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
-                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBOneAlphaOneMinusSrcAlpha,
+                    ..BlendState::default()
+                }),
                 ..RenderOptions::default()
             },
         });

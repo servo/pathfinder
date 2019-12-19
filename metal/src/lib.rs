@@ -26,9 +26,9 @@ use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef};
 use metal::{CommandQueue, CompileOptions, CoreAnimationDrawable, CoreAnimationDrawableRef};
 use metal::{CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
-use metal::{MTLArgument, MTLArgumentEncoder, MTLBlendFactor, MTLClearColor, MTLColorWriteMask};
-use metal::{MTLCompareFunction, MTLDataType, MTLDevice, MTLFunctionType, MTLIndexType};
-use metal::{MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
+use metal::{MTLArgument, MTLArgumentEncoder, MTLBlendFactor, MTLBlendOperation, MTLClearColor};
+use metal::{MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLFunctionType};
+use metal::{MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
 use metal::{MTLRenderPipelineReflection, MTLRenderPipelineState, MTLResourceOptions};
 use metal::{MTLResourceUsage, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage};
@@ -43,9 +43,9 @@ use objc::runtime::{Class, Object};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc, Device};
-use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
+use pathfinder_gpu::{Device, Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc};
+use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cell::{Cell, RefCell};
@@ -196,6 +196,7 @@ impl Device for MetalDevice {
             TextureFormat::R8 => descriptor.set_pixel_format(MTLPixelFormat::R8Unorm),
             TextureFormat::R16F => descriptor.set_pixel_format(MTLPixelFormat::R16Float),
             TextureFormat::RGBA8 => descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm),
+            TextureFormat::RGBA32F => descriptor.set_pixel_format(MTLPixelFormat::RGBA32Float),
         }
         descriptor.set_width(size.x() as u64);
         descriptor.set_height(size.y() as u64);
@@ -204,11 +205,18 @@ impl Device for MetalDevice {
         MetalTexture { texture: self.device.new_texture(&descriptor), dirty: Cell::new(false) }
     }
 
-    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> MetalTexture {
-        assert!(data.len() >= size.x() as usize * size.y() as usize);
-        let texture = self.create_texture(TextureFormat::R8, size);
-        self.upload_to_texture(&texture, size, data);
-        texture
+    fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
+                                -> MetalTexture {
+        match (format, data) {
+            (TextureFormat::R8, TextureDataRef::U8(data)) => {
+                assert!(data.len() >= size.x() as usize * size.y() as usize);
+                let texture = self.create_texture(TextureFormat::R8, size);
+                self.upload_to_texture(&texture, size, data);
+                texture
+            }
+            _ => panic!("Unimplemented texture format in `create_texture_from_data`!"),
+        }
+
     }
 
     fn create_shader_from_source(&self, _: &str, source: &[u8], _: ShaderKind) -> MetalShader {
@@ -454,6 +462,16 @@ impl Device for MetalDevice {
                                   0,
                                   stride as u64 * 2);
                 TextureData::U16(pixels)
+            }
+            TextureFormat::RGBA32F => {
+                let channels = format.channels();
+                let stride = size.x() as usize * channels;
+                let mut pixels = vec![0.0; stride * size.y() as usize];
+                texture.get_bytes(pixels.as_mut_ptr() as *mut _,
+                                  metal_region,
+                                  0,
+                                  stride as u64 * 4);
+                TextureData::F32(pixels)
             }
         }
     }
@@ -922,29 +940,53 @@ impl MetalDevice {
         let pixel_format = self.render_target_color_texture(&render_state.target).pixel_format();
         pipeline_color_attachment.set_pixel_format(pixel_format);
 
-        let blending_enabled = render_state.options.blend != BlendState::Off;
-        pipeline_color_attachment.set_blending_enabled(blending_enabled);
         match render_state.options.blend {
-            BlendState::Off => {}
-            BlendState::RGBOneAlphaOne => {
-                pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-                pipeline_color_attachment.set_destination_rgb_blend_factor(MTLBlendFactor::One);
-                pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
-                pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
-            }
-            BlendState::RGBOneAlphaOneMinusSrcAlpha => {
-                pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-                pipeline_color_attachment.set_destination_rgb_blend_factor(
-                    MTLBlendFactor::OneMinusSourceAlpha);
-                pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
-                pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
-            }
-            BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
-                pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::SourceAlpha);
-                pipeline_color_attachment.set_destination_rgb_blend_factor(
-                    MTLBlendFactor::OneMinusSourceAlpha);
-                pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
-                pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
+            None => pipeline_color_attachment.set_blending_enabled(false),
+            Some(ref blend) => {
+                pipeline_color_attachment.set_blending_enabled(true);
+                match blend.func {
+                    BlendFunc::RGBOneAlphaOne => {
+                        pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
+                        pipeline_color_attachment.set_destination_rgb_blend_factor(
+                            MTLBlendFactor::One);
+                        pipeline_color_attachment.set_source_alpha_blend_factor(
+                            MTLBlendFactor::One);
+                        pipeline_color_attachment.set_destination_alpha_blend_factor(
+                            MTLBlendFactor::One);
+                    }
+                    BlendFunc::RGBOneAlphaOneMinusSrcAlpha => {
+                        pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
+                        pipeline_color_attachment.set_destination_rgb_blend_factor(
+                            MTLBlendFactor::OneMinusSourceAlpha);
+                        pipeline_color_attachment.set_source_alpha_blend_factor(
+                            MTLBlendFactor::One);
+                        pipeline_color_attachment.set_destination_alpha_blend_factor(
+                            MTLBlendFactor::One);
+                    }
+                    BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
+                        pipeline_color_attachment.set_source_rgb_blend_factor(
+                            MTLBlendFactor::SourceAlpha);
+                        pipeline_color_attachment.set_destination_rgb_blend_factor(
+                            MTLBlendFactor::OneMinusSourceAlpha);
+                        pipeline_color_attachment.set_source_alpha_blend_factor(
+                            MTLBlendFactor::One);
+                        pipeline_color_attachment.set_destination_alpha_blend_factor(
+                            MTLBlendFactor::One);
+                    }
+                }
+                match blend.op {
+                    BlendOp::Add => {
+                        pipeline_color_attachment.set_rgb_blend_operation(MTLBlendOperation::Add);
+                        pipeline_color_attachment.set_alpha_blend_operation(
+                            MTLBlendOperation::Add);
+                    }
+                    BlendOp::Subtract => {
+                        pipeline_color_attachment.set_rgb_blend_operation(
+                            MTLBlendOperation::Subtract);
+                        pipeline_color_attachment.set_alpha_blend_operation(
+                            MTLBlendOperation::Subtract);
+                    }
+                }
             }
         }
 
@@ -1228,7 +1270,7 @@ impl SharedEvent {
                 *mut BlockBase<(*mut Object, u64), ()>;
             (*block).flags |= BLOCK_HAS_SIGNATURE | BLOCK_HAS_COPY_DISPOSE;
             (*block).extra = &BLOCK_EXTRA;
-            msg_send![self.0, notifyListener:listener.0 atValue:value block:block];
+            let () = msg_send![self.0, notifyListener:listener.0 atValue:value block:block];
             mem::forget(block);
         }
 
@@ -1376,7 +1418,7 @@ impl FunctionExt for Function {
             let encoder: *mut MTLArgumentEncoder =
                 msg_send![self.as_ptr(), newArgumentEncoderWithBufferIndex:buffer_index
                                                                 reflection:&mut reflection];
-            msg_send![reflection, retain];
+            let () = msg_send![reflection, retain];
             (ArgumentEncoder::from_ptr(encoder), Argument::from_ptr(reflection))
         }
     }

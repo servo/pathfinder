@@ -33,7 +33,8 @@ pub trait Device: Sized {
     type VertexAttr;
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
-    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
+    fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
+                                -> Self::Texture;
     fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
                      -> Self::Shader;
     fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
@@ -88,7 +89,7 @@ pub trait Device: Sized {
             .unwrap()
             .to_luma();
         let size = Vector2I::new(image.width() as i32, image.height() as i32);
-        self.create_texture_from_data(size, &image)
+        self.create_texture_from_data(TextureFormat::R8, size, TextureDataRef::U8(&image))
     }
 
     fn create_program_from_shader_names(
@@ -181,7 +182,7 @@ pub struct RenderState<'a, D> where D: Device {
 
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
-    pub blend: BlendState,
+    pub blend: Option<BlendState>,
     pub depth: Option<DepthState>,
     pub stencil: Option<StencilState>,
     pub clear_ops: ClearOps,
@@ -201,12 +202,23 @@ pub enum RenderTarget<'a, D> where D: Device {
     Framebuffer(&'a D::Framebuffer),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct BlendState {
+    pub func: BlendFunc,
+    pub op: BlendOp,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum BlendState {
-    Off,
+pub enum BlendFunc {
     RGBOneAlphaOne,
     RGBOneAlphaOneMinusSrcAlpha,
     RGBSrcAlphaAlphaOneMinusSrcAlpha,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BlendOp {
+    Add,
+    Subtract,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -239,7 +251,7 @@ impl Default for RenderOptions {
     #[inline]
     fn default() -> RenderOptions {
         RenderOptions {
-            blend: BlendState::default(),
+            blend: None,
             depth: None,
             stencil: None,
             clear_ops: ClearOps::default(),
@@ -248,10 +260,17 @@ impl Default for RenderOptions {
     }
 }
 
-impl Default for BlendState {
+impl Default for BlendFunc {
     #[inline]
-    fn default() -> BlendState {
-        BlendState::Off
+    fn default() -> BlendFunc {
+        BlendFunc::RGBOneAlphaOneMinusSrcAlpha
+    }
+}
+
+impl Default for BlendOp {
+    #[inline]
+    fn default() -> BlendOp {
+        BlendOp::Add
     }
 }
 
@@ -286,6 +305,12 @@ pub enum TextureData {
     U8(Vec<u8>),
     U16(Vec<u16>),
     F32(Vec<f32>),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TextureDataRef<'a> {
+    U8(&'a [u8]),
+    F32(&'a [f32]),
 }
 
 impl UniformData {
