@@ -23,6 +23,7 @@ use cocoa::foundation::{NSRange, NSUInteger};
 use core_foundation::base::TCFType;
 use core_foundation::string::{CFString, CFStringRef};
 use foreign_types::{ForeignType, ForeignTypeRef};
+use half::f16;
 use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef};
 use metal::{CommandQueue, CompileOptions, CoreAnimationDrawable, CoreAnimationDrawableRef};
 use metal::{CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
@@ -196,6 +197,7 @@ impl Device for MetalDevice {
             TextureFormat::R8 => descriptor.set_pixel_format(MTLPixelFormat::R8Unorm),
             TextureFormat::R16F => descriptor.set_pixel_format(MTLPixelFormat::R16Float),
             TextureFormat::RGBA8 => descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm),
+            TextureFormat::RGBA16F => descriptor.set_pixel_format(MTLPixelFormat::RGBA16Float),
             TextureFormat::RGBA32F => descriptor.set_pixel_format(MTLPixelFormat::RGBA32Float),
         }
         descriptor.set_width(size.x() as u64);
@@ -207,16 +209,9 @@ impl Device for MetalDevice {
 
     fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
                                 -> MetalTexture {
-        match (format, data) {
-            (TextureFormat::R8, TextureDataRef::U8(data)) => {
-                assert!(data.len() >= size.x() as usize * size.y() as usize);
-                let texture = self.create_texture(TextureFormat::R8, size);
-                self.upload_to_texture(&texture, size, data);
-                texture
-            }
-            _ => panic!("Unimplemented texture format in `create_texture_from_data`!"),
-        }
-
+        let texture = self.create_texture(format, size);
+        self.upload_to_texture(&texture, RectI::new(Vector2I::default(), size), data);
+        texture
     }
 
     fn create_shader_from_source(&self, _: &str, source: &[u8], _: ShaderKind) -> MetalShader {
@@ -421,16 +416,25 @@ impl Device for MetalDevice {
         Vector2I::new(texture.texture.width() as i32, texture.texture.height() as i32)
     }
 
-    fn upload_to_texture(&self, texture: &MetalTexture, size: Vector2I, data: &[u8]) {
-        assert!(data.len() >= size.x() as usize * size.y() as usize);
-        let format = self.texture_format(&texture.texture).expect("Unexpected texture format!");
-        assert!(format == TextureFormat::R8 || format == TextureFormat::RGBA8);
+    fn upload_to_texture(&self, texture: &MetalTexture, rect: RectI, data: TextureDataRef) {
+        let texture_size = self.texture_size(texture);
+        assert!(rect.size().x() >= 0);
+        assert!(rect.size().y() >= 0);
+        assert!(rect.max_x() <= texture_size.x());
+        assert!(rect.max_y() <= texture_size.y());
 
-        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
-        let size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
+        let format = self.texture_format(&texture.texture).expect("Unexpected texture format!");
+        let data_ptr = data.check_and_extract_data_ptr(rect.size(), format);
+
+        let origin = MTLOrigin { x: rect.origin().x() as u64, y: rect.origin().y() as u64, z: 0 };
+        let size = MTLSize {
+            width: rect.size().x() as u64,
+            height: rect.size().y() as u64,
+            depth: 1,
+        };
         let region = MTLRegion { origin, size };
-        let stride = size.width * format.channels() as u64;
-        texture.texture.replace_region(region, 0, stride, data.as_ptr() as *const _);
+        let stride = format.bytes_per_pixel() as u64 * size.width;
+        texture.texture.replace_region(region, 0, stride, data_ptr);
 
         texture.dirty.set(true);
     }
@@ -454,14 +458,15 @@ impl Device for MetalDevice {
                 texture.get_bytes(pixels.as_mut_ptr() as *mut _, metal_region, 0, stride as u64);
                 TextureData::U8(pixels)
             }
-            TextureFormat::R16F => {
-                let stride = size.x() as usize;
-                let mut pixels = vec![0; stride * size.y() as usize];
+            TextureFormat::R16F | TextureFormat::RGBA16F => {
+                let channels = format.channels();
+                let stride = size.x() as usize * channels;
+                let mut pixels = vec![f16::default(); stride * size.y() as usize];
                 texture.get_bytes(pixels.as_mut_ptr() as *mut _,
                                   metal_region,
                                   0,
                                   stride as u64 * 2);
-                TextureData::U16(pixels)
+                TextureData::F16(pixels)
             }
             TextureFormat::RGBA32F => {
                 let channels = format.channels();

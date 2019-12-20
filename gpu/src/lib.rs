@@ -11,12 +11,14 @@
 //! Minimal abstractions over GPU device capabilities.
 
 use crate::resources::ResourceLoader;
+use half::f16;
 use image::ImageFormat;
 use pathfinder_content::color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_simd::default::{F32x2, F32x4};
+use std::os::raw::c_void;
 use std::time::Duration;
 
 pub mod resources;
@@ -68,7 +70,7 @@ pub trait Device: Sized {
     );
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
+    fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
     fn begin_commands(&self);
     fn end_commands(&self);
@@ -115,6 +117,7 @@ pub enum TextureFormat {
     R8,
     R16F,
     RGBA8,
+    RGBA16F,
     RGBA32F,
 }
 
@@ -304,12 +307,14 @@ impl Default for StencilFunc {
 pub enum TextureData {
     U8(Vec<u8>),
     U16(Vec<u16>),
+    F16(Vec<f16>),
     F32(Vec<f32>),
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum TextureDataRef<'a> {
     U8(&'a [u8]),
+    F16(&'a [f16]),
     F32(&'a [f32]),
 }
 
@@ -343,7 +348,18 @@ impl TextureFormat {
     pub fn channels(self) -> usize {
         match self {
             TextureFormat::R8 | TextureFormat::R16F => 1,
-            TextureFormat::RGBA8 | TextureFormat::RGBA32F => 4,
+            TextureFormat::RGBA8 | TextureFormat::RGBA16F | TextureFormat::RGBA32F => 4,
+        }
+    }
+
+    #[inline]
+    pub fn bytes_per_pixel(self) -> usize {
+        match self {
+            TextureFormat::R8 => 1,
+            TextureFormat::R16F => 2,
+            TextureFormat::RGBA8 => 4,
+            TextureFormat::RGBA16F => 8,
+            TextureFormat::RGBA32F => 16,
         }
     }
 }
@@ -352,5 +368,36 @@ impl ClearOps {
     #[inline]
     pub fn has_ops(&self) -> bool {
         self.color.is_some() || self.depth.is_some() || self.stencil.is_some()
+    }
+}
+
+impl<'a> TextureDataRef<'a> {
+    #[doc(hidden)]
+    pub fn check_and_extract_data_ptr(self, minimum_size: Vector2I, format: TextureFormat)
+                                      -> *const c_void {
+        let channels = match (format, self) {
+            (TextureFormat::R8, TextureDataRef::U8(_)) => 1,
+            (TextureFormat::RGBA8, TextureDataRef::U8(_)) => 4,
+            (TextureFormat::RGBA16F, TextureDataRef::F16(_)) => 4,
+            (TextureFormat::RGBA32F, TextureDataRef::F32(_)) => 4,
+            _ => panic!("Unimplemented texture format!"),
+        };
+
+        let area = minimum_size.x() as usize * minimum_size.y() as usize;
+
+        match self {
+            TextureDataRef::U8(data) => {
+                assert!(data.len() >= area * channels);
+                data.as_ptr() as *const c_void
+            }
+            TextureDataRef::F16(data) => {
+                assert!(data.len() >= area * channels);
+                data.as_ptr() as *const c_void
+            }
+            TextureDataRef::F32(data) => {
+                assert!(data.len() >= area * channels);
+                data.as_ptr() as *const c_void
+            }
+        }
     }
 }

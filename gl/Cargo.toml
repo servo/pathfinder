@@ -9,6 +9,7 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 gl = "0.6"
+half = "1.4"
 
 [dependencies.log]
 version = "0.4"

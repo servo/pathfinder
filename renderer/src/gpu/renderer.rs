@@ -21,8 +21,8 @@ use pathfinder_content::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendFunc, BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureFormat, UniformData};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureDataRef, TextureFormat};
+use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cmp;
 use std::collections::VecDeque;
@@ -378,8 +378,8 @@ where
         }
 
         self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
-                                      paint_data.size,
-                                      &paint_data.texels);
+                                      RectI::new(Vector2I::default(), paint_data.size),
+                                      TextureDataRef::U8(&paint_data.texels));
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {

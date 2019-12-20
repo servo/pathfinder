@@ -11,6 +11,7 @@ block = "0.1"
 cocoa = "0.19"
 core-foundation = "0.6"
 foreign-types = "0.3"
+half = "1.4"
 metal = "0.17"
 objc = "0.2"
 

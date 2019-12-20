@@ -298,7 +298,7 @@ impl<W> DemoApp<W> where W: Window {
         let viewport = RectI::new(Vector2I::default(), drawable_size);
         let pixels = match self.renderer.device.read_pixels(&RenderTarget::Default, viewport) {
             TextureData::U8(pixels) => pixels,
-            TextureData::U16(_) => panic!("Unexpected pixel format for default framebuffer!"),
+            _ => panic!("Unexpected pixel format for default framebuffer!"),
         };
         image::save_buffer(
             path,
