@@ -118,7 +118,7 @@ impl BuiltSVG {
                         &mut self.result_flags,
                     ));
 
-                    let path = UsvgPathToSegments::new(path.segments.iter().cloned());
+                    let path = UsvgPathToSegments::new(path.data.iter().cloned());
                     let path = Transform2FPathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
@@ -140,7 +140,7 @@ impl BuiltSVG {
                                                                  stroke.miterlimit.value() as f32),
                     };
 
-                    let path = UsvgPathToSegments::new(path.segments.iter().cloned());
+                    let path = UsvgPathToSegments::new(path.data.iter().cloned());
                     let outline = Outline::from_segments(path);
 
                     let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);

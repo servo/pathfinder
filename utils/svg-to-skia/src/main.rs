@@ -45,7 +45,7 @@ fn process_node(node: &Node) {
             }
         }
         NodeKind::Path(ref path) => {
-            for segment in path.segments.iter() {
+            for segment in path.data.iter() {
                 match segment {
                     PathSegment::MoveTo { x, y } => println!("    path.moveTo({}, {});", x, y),
                     PathSegment::LineTo { x, y } => println!("    path.lineTo({}, {});", x, y),

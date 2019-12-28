@@ -6,7 +6,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 bitflags = "1.0"
-usvg = "0.7"
+usvg = "0.8"
 
 [dependencies.pathfinder_content]
 path = "../content"
