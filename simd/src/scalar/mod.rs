@@ -700,13 +700,21 @@ impl Shr<I32x4> for I32x4 {
 pub struct U32x2(pub [u32; 2]);
 
 impl U32x2 {
+    /// Returns true if both booleans in this vector are true.
+    ///
+    /// The result is *undefined* if both values in this vector are not booleans. A boolean is a
+    /// value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_ones(&self) -> bool {
+    pub fn all_true(&self) -> bool {
         self[0] == !0 && self[1] == !0
     }
 
+    /// Returns true if both booleans in this vector are false.
+    ///
+    /// The result is *undefined* if both values in this vector are not booleans. A boolean is a
+    /// value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_zeroes(&self) -> bool {
+    pub fn all_false(&self) -> bool {
         self[0] == 0 && self[1] == 0
     }
 }
@@ -725,13 +733,21 @@ impl Index<usize> for U32x2 {
 pub struct U32x4(pub [u32; 4]);
 
 impl U32x4 {
+    /// Returns true if all four booleans in this vector are true.
+    ///
+    /// The result is *undefined* if all four values in this vector are not booleans. A boolean is
+    /// a value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_ones(&self) -> bool {
+    pub fn all_true(&self) -> bool {
         self[0] == !0 && self[1] == !0 && self[2] == !0 && self[3] == !0
     }
 
+    /// Returns true if all four booleans in this vector are false.
+    ///
+    /// The result is *undefined* if all four values in this vector are not booleans. A boolean is
+    /// a value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_zeroes(&self) -> bool {
+    pub fn all_false(&self) -> bool {
         self[0] == 0 && self[1] == 0 && self[2] == 0 && self[3] == 0
     }
 }

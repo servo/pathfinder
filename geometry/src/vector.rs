@@ -148,7 +148,7 @@ impl Vector2F {
 impl PartialEq for Vector2F {
     #[inline]
     fn eq(&self, other: &Vector2F) -> bool {
-        self.0.packed_eq(other.0).is_all_ones()
+        self.0.packed_eq(other.0).all_true()
     }
 }
 
@@ -261,7 +261,7 @@ impl Sub<Vector2I> for Vector2I {
 impl PartialEq for Vector2I {
     #[inline]
     fn eq(&self, other: &Vector2I) -> bool {
-        self.0.packed_eq(other.0).is_all_ones()
+        self.0.packed_eq(other.0).all_true()
     }
 }
 

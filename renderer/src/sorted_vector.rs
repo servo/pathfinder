@@ -10,6 +10,9 @@
 
 //! A vector that maintains sorted order with insertion sort.
 
+use std::cmp::Ordering;
+use std::convert;
+
 #[derive(Clone, Debug)]
 pub struct SortedVector<T>
 where
@@ -29,8 +32,9 @@ where
 
     #[inline]
     pub fn push(&mut self, value: T) {
-        use std::cmp::Ordering;
-        let index = self.array.binary_search_by(|other| other.partial_cmp(&value).unwrap_or(Ordering::Less)).unwrap_or_else(|x| x);
+        let index = self.array.binary_search_by(|other| {
+            other.partial_cmp(&value).unwrap_or(Ordering::Less)
+        }).unwrap_or_else(convert::identity);
         self.array.insert(index, value);
     }
 

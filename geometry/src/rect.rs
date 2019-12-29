@@ -56,16 +56,13 @@ impl RectF {
     pub fn contains_point(&self, point: Vector2F) -> bool {
         // self.origin <= point && point <= self.lower_right
         let point = point.0.to_f32x4();
-        self.0.concat_xy_xy(point).packed_le(point.concat_xy_zw(self.0)).is_all_ones()
+        self.0.concat_xy_xy(point).packed_le(point.concat_xy_zw(self.0)).all_true()
     }
 
     #[inline]
     pub fn contains_rect(&self, other: RectF) -> bool {
         // self.origin <= other.origin && other.lower_right <= self.lower_right
-        self.0
-            .concat_xy_zw(other.0)
-            .packed_le(other.0.concat_xy_zw(self.0))
-            .is_all_ones()
+        self.0.concat_xy_zw(other.0).packed_le(other.0.concat_xy_zw(self.0)).all_true()
     }
 
     #[inline]
@@ -89,10 +86,7 @@ impl RectF {
     #[inline]
     pub fn intersects(&self, other: RectF) -> bool {
         // self.origin < other.lower_right && other.origin < self.lower_right
-        self.0
-            .concat_xy_xy(other.0)
-            .packed_lt(other.0.concat_zw_zw(self.0))
-            .is_all_ones()
+        self.0.concat_xy_xy(other.0).packed_lt(other.0.concat_zw_zw(self.0)).all_true()
     }
 
     #[inline]
@@ -230,7 +224,7 @@ impl RectI {
             .0
             .concat_xy_xy(point.0)
             .packed_le(point.0.concat_xy_xy(lower_right.0))
-            .is_all_ones()
+            .all_true()
     }
 
     #[inline]

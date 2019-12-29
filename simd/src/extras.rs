@@ -49,10 +49,7 @@ impl F32x2 {
 
     #[inline]
     pub fn approx_eq(self, other: F32x2, epsilon: f32) -> bool {
-        (self - other)
-            .abs()
-            .packed_gt(F32x2::splat(epsilon))
-            .is_all_zeroes()
+        (self - other).abs().packed_gt(F32x2::splat(epsilon)).all_false()
     }
 }
 
@@ -143,10 +140,7 @@ impl F32x4 {
 
     #[inline]
     pub fn approx_eq(self, other: F32x4, epsilon: f32) -> bool {
-        (self - other)
-            .abs()
-            .packed_gt(F32x4::splat(epsilon))
-            .is_all_zeroes()
+        (self - other).abs().packed_gt(F32x4::splat(epsilon)).all_false()
     }
 }
 

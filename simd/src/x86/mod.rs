@@ -172,7 +172,7 @@ impl Debug for F32x2 {
 impl PartialEq for F32x2 {
     #[inline]
     fn eq(&self, other: &F32x2) -> bool {
-        self.packed_eq(*other).is_all_ones()
+        self.packed_eq(*other).all_true()
     }
 }
 
@@ -406,7 +406,7 @@ impl Debug for F32x4 {
 impl PartialEq for F32x4 {
     #[inline]
     fn eq(&self, other: &F32x4) -> bool {
-        self.packed_eq(*other).is_all_ones()
+        self.packed_eq(*other).all_true()
     }
 }
 
@@ -563,7 +563,7 @@ impl Debug for I32x2 {
 impl PartialEq for I32x2 {
     #[inline]
     fn eq(&self, other: &I32x2) -> bool {
-        self.packed_eq(*other).is_all_ones()
+        self.packed_eq(*other).all_true()
     }
 }
 
@@ -742,7 +742,7 @@ impl Debug for I32x4 {
 impl PartialEq for I32x4 {
     #[inline]
     fn eq(&self, other: &I32x4) -> bool {
-        self.packed_eq(*other).is_all_ones()
+        self.packed_eq(*other).all_true()
     }
 }
 
@@ -752,13 +752,21 @@ impl PartialEq for I32x4 {
 pub struct U32x2(pub u64);
 
 impl U32x2 {
+    /// Returns true if both booleans in this vector are true.
+    ///
+    /// The result is *undefined* if both values in this vector are not booleans. A boolean is a
+    /// value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_ones(self) -> bool {
+    pub fn all_true(self) -> bool {
         self.0 == !0
     }
 
+    /// Returns true if both booleans in this vector are false.
+    ///
+    /// The result is *undefined* if both values in this vector are not booleans. A boolean is a
+    /// value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_zeroes(self) -> bool {
+    pub fn all_false(self) -> bool {
         self.0 == 0
     }
 }
@@ -786,14 +794,22 @@ impl U32x4 {
 
     // Basic operations
 
+    /// Returns true if all four booleans in this vector are true.
+    ///
+    /// The result is *undefined* if all four values in this vector are not booleans. A boolean is
+    /// a value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_ones(self) -> bool {
-        unsafe { x86_64::_mm_test_all_ones(self.0) != 0 }
+    pub fn all_true(self) -> bool {
+        unsafe { x86_64::_mm_movemask_ps(x86_64::_mm_castsi128_ps(self.0)) == 0x0f }
     }
 
+    /// Returns true if all four booleans in this vector are false.
+    ///
+    /// The result is *undefined* if all four values in this vector are not booleans. A boolean is
+    /// a value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
-    pub fn is_all_zeroes(self) -> bool {
-        unsafe { x86_64::_mm_test_all_zeros(self.0, self.0) != 0 }
+    pub fn all_false(self) -> bool {
+        unsafe { x86_64::_mm_movemask_ps(x86_64::_mm_castsi128_ps(self.0)) == 0x00 }
     }
 
     // Extraction
@@ -829,7 +845,7 @@ impl Index<usize> for U32x4 {
 impl PartialEq for U32x4 {
     #[inline]
     fn eq(&self, other: &U32x4) -> bool {
-        self.packed_eq(*other).is_all_ones()
+        self.packed_eq(*other).all_true()
     }
 }
 
