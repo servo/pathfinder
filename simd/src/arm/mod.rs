@@ -74,11 +74,6 @@ impl F32x2 {
     }
 
     #[inline]
-    pub fn round(self) -> F32x2 {
-        unsafe { F32x2(round_v2f32(self.0)) }
-    }
-
-    #[inline]
     pub fn sqrt(self) -> F32x2 {
         unsafe { F32x2(sqrt_v2f32(self.0)) }
     }
@@ -112,9 +107,10 @@ impl F32x2 {
         self.concat_xy_xy(F32x2::default())
     }
 
+    /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x2(self) -> I32x2 {
-        unsafe { I32x2(simd_cast(self.0)) }
+        unsafe { I32x2(simd_cast(round_v2f32(self.0))) }
     }
 
     #[inline]
@@ -253,11 +249,6 @@ impl F32x4 {
     }
 
     #[inline]
-    pub fn round(self) -> F32x4 {
-        unsafe { F32x4(round_v4f32(self.0)) }
-    }
-
-    #[inline]
     pub fn sqrt(self) -> F32x4 {
         unsafe { F32x4(sqrt_v4f32(self.0)) }
     }
@@ -330,10 +321,10 @@ impl F32x4 {
 
     // Conversions
 
-    // Converts these packed floats to integers.
+    /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        unsafe { I32x4(simd_cast(self.0)) }
+        unsafe { I32x4(round_v4f32(simd_cast(self.0))) }
     }
 }
 

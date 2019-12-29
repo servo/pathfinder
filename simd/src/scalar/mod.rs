@@ -71,11 +71,6 @@ impl F32x2 {
     }
 
     #[inline]
-    pub fn round(self) -> F32x2 {
-        F32x2([self[0].round(), self[1].round()])
-    }
-
-    #[inline]
     pub fn sqrt(self) -> F32x2 {
         F32x2([self[0].sqrt(), self[1].sqrt()])
     }
@@ -121,14 +116,16 @@ impl F32x2 {
         F32x4([self[0] as f32, self[1] as f32, 0.0, 0.0])
     }
 
+    /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x2(self) -> I32x2 {
-        I32x2([self[0] as i32, self[1] as i32])
+        I32x2([self[0].round() as i32, self[1].round() as i32])
     }
 
+    /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        I32x4([self[0] as i32, self[1] as i32, 0, 0])
+        I32x4([self[0].round() as i32, self[1].round() as i32, 0, 0])
     }
 
     // Swizzle
@@ -259,16 +256,6 @@ impl F32x4 {
     }
 
     #[inline]
-    pub fn round(self) -> F32x4 {
-        F32x4([
-            self[0].round(),
-            self[1].round(),
-            self[2].round(),
-            self[3].round(),
-        ])
-    }
-
-    #[inline]
     pub fn sqrt(self) -> F32x4 {
         F32x4([
             self[0].sqrt(),
@@ -320,14 +307,14 @@ impl F32x4 {
         ])
     }
 
-    // Converts these packed floats to integers.
+    /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
         I32x4([
-            self[0] as i32,
-            self[1] as i32,
-            self[2] as i32,
-            self[3] as i32,
+            self[0].round() as i32,
+            self[1].round() as i32,
+            self[2].round() as i32,
+            self[3].round() as i32,
         ])
     }
 

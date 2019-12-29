@@ -96,7 +96,7 @@ impl ColorF {
 
     #[inline]
     pub fn to_u8(&self) -> ColorU {
-        let color = (self.0 * F32x4::splat(255.0)).round().to_i32x4();
+        let color = (self.0 * F32x4::splat(255.0)).to_i32x4();
         ColorU { r: color[0] as u8, g: color[1] as u8, b: color[2] as u8, a: color[3] as u8 }
     }
 
