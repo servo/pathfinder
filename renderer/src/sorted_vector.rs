@@ -29,15 +29,9 @@ where
 
     #[inline]
     pub fn push(&mut self, value: T) {
-        self.array.push(value);
-        let mut index = self.array.len() - 1;
-        while index > 0 {
-            index -= 1;
-            if self.array[index] <= self.array[index + 1] {
-                break;
-            }
-            self.array.swap(index, index + 1);
-        }
+        use std::cmp::Ordering;
+        let index = self.array.binary_search_by(|other| other.partial_cmp(&value).unwrap_or(Ordering::Less)).unwrap_or_else(|x| x);
+        self.array.insert(index, value);
     }
 
     #[inline]
