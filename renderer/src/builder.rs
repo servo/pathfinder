@@ -192,8 +192,8 @@ impl BuiltObject {
         let alpha_tile_index = self.get_or_allocate_alpha_tile_index(builder, tile_coords);
 
         // Pack whole pixels.
-        let mut px = (segment & I32x4::splat(0xf00)) >> I32x4::new(8, 4, 8, 4);
-        px = px | px.yxwz();
+        let px = (segment & I32x4::splat(0xf00)).to_u32x4();
+        let px = (px >> 8).to_i32x4() | (px >> 4).to_i32x4().yxwz();
 
         // Pack instance data.
         debug!("... OK, pushing");

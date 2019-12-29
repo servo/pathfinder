@@ -635,6 +635,14 @@ impl I32x4 {
         unsafe { F32x4(x86_64::_mm_cvtepi32_ps(self.0)) }
     }
 
+    /// Converts these packed signed integers to unsigned integers.
+    ///
+    /// Overflowing values will wrap around.
+    #[inline]
+    pub fn to_u32x4(self) -> U32x4 {
+        U32x4(self.0)
+    }
+
     // Basic operations
 
     #[inline]
@@ -724,14 +732,6 @@ impl BitOr<I32x4> for I32x4 {
     }
 }
 
-impl Shr<I32x4> for I32x4 {
-    type Output = I32x4;
-    #[inline]
-    fn shr(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_srlv_epi32(self.0, other.0)) }
-    }
-}
-
 impl Debug for I32x4 {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
@@ -790,6 +790,16 @@ impl U32x4 {
     #[inline]
     pub fn splat(x: u32) -> U32x4 {
         unsafe { U32x4(x86_64::_mm_set1_epi32(x as i32)) }
+    }
+
+    // Conversions
+
+    /// Converts these packed unsigned integers to signed integers.
+    ///
+    /// Overflowing values will wrap around.
+    #[inline]
+    pub fn to_i32x4(self) -> I32x4 {
+        I32x4(self.0)
     }
 
     // Basic operations
@@ -862,5 +872,13 @@ impl BitXor<U32x4> for U32x4 {
     #[inline]
     fn bitxor(self, other: U32x4) -> U32x4 {
         unsafe { U32x4(x86_64::_mm_xor_si128(self.0, other.0)) }
+    }
+}
+
+impl Shr<u32> for U32x4 {
+    type Output = U32x4;
+    #[inline]
+    fn shr(self, amount: u32) -> U32x4 {
+        unsafe { U32x4(x86_64::_mm_srl_epi32(self.0, U32x4::new(amount, 0, 0, 0).0)) }
     }
 }

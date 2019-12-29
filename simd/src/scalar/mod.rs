@@ -609,6 +609,16 @@ impl I32x4 {
             self[3] as f32,
         ])
     }
+
+    /// Converts these packed signed integers to unsigned integers.
+    ///
+    /// Overflowing values will wrap around.
+    ///
+    /// FIXME(pcwalton): Should they? This will assert on overflow in debug.
+    #[inline]
+    pub fn to_u32x4(self) -> U32x4 {
+        U32x4([self[0] as u32, self[1] as u32, self[2] as u32, self[3] as u32])
+    }
 }
 
 impl Index<usize> for I32x4 {
@@ -733,6 +743,20 @@ impl Index<usize> for U32x2 {
 pub struct U32x4(pub [u32; 4]);
 
 impl U32x4 {
+    // Conversions
+
+    /// Converts these packed unsigned integers to signed integers.
+    ///
+    /// Overflowing values will wrap around.
+    ///
+    /// FIXME(pcwalton): Should they? This will assert on overflow in debug.
+    #[inline]
+    pub fn to_u32x4(self) -> I32x4 {
+        I32x4([self[0] as i32, self[1] as i32, self[2] as i32, self[3] as i32])
+    }
+
+    // Basic operations
+
     /// Returns true if all four booleans in this vector are true.
     ///
     /// The result is *undefined* if all four values in this vector are not booleans. A boolean is
@@ -757,5 +781,13 @@ impl Index<usize> for U32x4 {
     #[inline]
     fn index(&self, index: usize) -> &u32 {
         &self.0[index]
+    }
+}
+
+impl Shr<u32> for U32x4 {
+    type Output = U32x4;
+    #[inline]
+    fn shr(self, amount: u32) -> U32x4 {
+        U32x4([self[0] >> amount, self[1] >> amount, self[2] >> amount, self[3] >> amount])
     }
 }
