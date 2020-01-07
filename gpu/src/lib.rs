@@ -29,6 +29,7 @@ pub trait Device: Sized {
     type Program;
     type Shader;
     type Texture;
+    type TextureDataReceiver;
     type TimerQuery;
     type Uniform;
     type VertexArray;
@@ -71,7 +72,8 @@ pub trait Device: Sized {
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
-    fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
+    fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI)
+                   -> Self::TextureDataReceiver;
     fn begin_commands(&self);
     fn end_commands(&self);
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
@@ -83,7 +85,10 @@ pub trait Device: Sized {
     fn create_timer_query(&self) -> Self::TimerQuery;
     fn begin_timer_query(&self, query: &Self::TimerQuery);
     fn end_timer_query(&self, query: &Self::TimerQuery);
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration>;
+    fn try_recv_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration>;
+    fn recv_timer_query(&self, query: &Self::TimerQuery) -> Duration;
+    fn try_recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> Option<TextureData>;
+    fn recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> TextureData;
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();

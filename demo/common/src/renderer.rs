@@ -296,7 +296,9 @@ impl<W> DemoApp<W> where W: Window {
     pub fn take_raster_screenshot(&mut self, path: PathBuf) {
         let drawable_size = self.window_size.device_size();
         let viewport = RectI::new(Vector2I::default(), drawable_size);
-        let pixels = match self.renderer.device.read_pixels(&RenderTarget::Default, viewport) {
+        let texture_data_receiver =
+            self.renderer.device.read_pixels(&RenderTarget::Default, viewport);
+        let pixels = match self.renderer.device.recv_texture_data(&texture_data_receiver) {
             TextureData::U8(pixels) => pixels,
             _ => panic!("Unexpected pixel format for default framebuffer!"),
         };

@@ -13,13 +13,14 @@
 #[macro_use]
 extern crate log;
 
-use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLsync};
+use gl::types::{GLuint, GLvoid};
 use half::f16;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{RenderTarget, BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode};
-use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};
+use pathfinder_gpu::{BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
+use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderOptions, RenderState, RenderTarget};
 use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
@@ -230,6 +231,7 @@ impl Device for GLDevice {
     type Program = GLProgram;
     type Shader = GLShader;
     type Texture = GLTexture;
+    type TextureDataReceiver = GLTextureDataReceiver;
     type TimerQuery = GLTimerQuery;
     type Uniform = GLUniform;
     type VertexArray = GLVertexArray;
@@ -508,58 +510,33 @@ impl Device for GLDevice {
         self.set_texture_parameters(texture);
     }
 
-    fn read_pixels(&self, render_target: &RenderTarget<GLDevice>, viewport: RectI) -> TextureData {
+    fn read_pixels(&self, render_target: &RenderTarget<GLDevice>, viewport: RectI)
+                   -> GLTextureDataReceiver {
         let (origin, size) = (viewport.origin(), viewport.size());
         let format = self.render_target_format(render_target);
         self.bind_render_target(render_target);
+        let byte_size = size.x() as usize * size.y() as usize * format.bytes_per_pixel() as usize;
 
-        match format {
-            TextureFormat::R8 | TextureFormat::RGBA8 => {
-                let channels = format.channels();
-                let mut pixels = vec![0; size.x() as usize * size.y() as usize * channels];
-                unsafe {
-                    gl::ReadPixels(origin.x(),
-                                   origin.y(),
-                                   size.x() as GLsizei,
-                                   size.y() as GLsizei,
-                                   format.gl_format(),
-                                   format.gl_type(),
-                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
-                }
-                flip_y(&mut pixels, size, channels);
-                TextureData::U8(pixels)
-            }
-            TextureFormat::R16F | TextureFormat::RGBA16F => {
-                let channels = format.channels();
-                let mut pixels =
-                    vec![f16::default(); size.x() as usize * size.y() as usize * channels];
-                unsafe {
-                    gl::ReadPixels(origin.x(),
-                                   origin.y(),
-                                   size.x() as GLsizei,
-                                   size.y() as GLsizei,
-                                   format.gl_format(),
-                                   format.gl_type(),
-                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
-                }
-                flip_y(&mut pixels, size, channels);
-                TextureData::F16(pixels)
-            }
-            TextureFormat::RGBA32F => {
-                let channels = format.channels();
-                let mut pixels = vec![0.0; size.x() as usize * size.y() as usize * channels];
-                unsafe {
-                    gl::ReadPixels(origin.x(),
-                                   origin.y(),
-                                   size.x() as GLsizei,
-                                   size.y() as GLsizei,
-                                   format.gl_format(),
-                                   format.gl_type(),
-                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
-                }
-                flip_y(&mut pixels, size, channels);
-                TextureData::F32(pixels)
-            }
+        unsafe {
+            let mut gl_pixel_buffer = 0;
+            gl::GenBuffers(1, &mut gl_pixel_buffer); ck();
+            gl::BindBuffer(gl::PIXEL_PACK_BUFFER, gl_pixel_buffer); ck();
+            gl::BufferData(gl::PIXEL_PACK_BUFFER,
+                           byte_size as GLsizeiptr,
+                           ptr::null(),
+                           gl::STATIC_READ); ck();
+
+            gl::ReadPixels(origin.x(),
+                           origin.y(),
+                           size.x() as GLsizei,
+                           size.y() as GLsizei,
+                           format.gl_format(),
+                           format.gl_type(),
+                           0 as *mut GLvoid); ck();
+
+            let gl_sync = gl::FenceSync(gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+            GLTextureDataReceiver { gl_pixel_buffer, gl_sync, size, format }
         }
     }
 
@@ -631,17 +608,46 @@ impl Device for GLDevice {
         }
     }
 
-    #[inline]
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration> {
+    fn try_recv_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration> {
         unsafe {
             let mut result = 0;
             gl::GetQueryObjectiv(query.gl_query, gl::QUERY_RESULT_AVAILABLE, &mut result); ck();
             if result == gl::FALSE as GLint {
-                return None;
+                None
+            } else {
+                Some(self.recv_timer_query(query))
             }
+        }
+    }
+
+    fn recv_timer_query(&self, query: &Self::TimerQuery) -> Duration {
+        unsafe {
             let mut result = 0;
             gl::GetQueryObjectui64v(query.gl_query, gl::QUERY_RESULT, &mut result); ck();
-            Some(Duration::from_nanos(result))
+            Duration::from_nanos(result)
+        }
+    }
+
+    fn try_recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> Option<TextureData> {
+        unsafe {
+            let result = gl::ClientWaitSync(receiver.gl_sync,
+                                            gl::SYNC_FLUSH_COMMANDS_BIT,
+                                            0); ck();
+            if result == gl::TIMEOUT_EXPIRED || result == gl::WAIT_FAILED {
+                None
+            } else {
+                Some(self.get_texture_data(receiver))
+            }
+        }
+    }
+
+    fn recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> TextureData {
+        unsafe {
+            let result = gl::ClientWaitSync(receiver.gl_sync,
+                                            gl::SYNC_FLUSH_COMMANDS_BIT,
+                                            !0); ck();
+            debug_assert!(result != gl::TIMEOUT_EXPIRED && result != gl::WAIT_FAILED);
+            self.get_texture_data(receiver)
         }
     }
 
@@ -780,6 +786,52 @@ impl GLDevice {
             RenderTarget::Framebuffer(ref framebuffer) => {
                 self.framebuffer_texture(framebuffer).format
             }
+        }
+    }
+
+    fn get_texture_data(&self, receiver: &GLTextureDataReceiver) -> TextureData {
+        unsafe {
+            let (format, size) = (receiver.format, receiver.size);
+            let channels = format.channels();
+            let (mut texture_data, texture_data_ptr, texture_data_len);
+            match format {
+                TextureFormat::R8 | TextureFormat::RGBA8 => {
+                    let mut pixels: Vec<u8> =
+                        vec![0; size.x() as usize * size.y() as usize * channels];
+                    texture_data_ptr = pixels.as_mut_ptr();
+                    texture_data_len = pixels.len() * mem::size_of::<u8>();
+                    texture_data = TextureData::U8(pixels);
+                }
+                TextureFormat::R16F | TextureFormat::RGBA16F => {
+                    let mut pixels: Vec<f16> =
+                        vec![f16::default(); size.x() as usize * size.y() as usize * channels];
+                    texture_data_ptr = pixels.as_mut_ptr() as *mut u8;
+                    texture_data_len = pixels.len() * mem::size_of::<f16>();
+                    texture_data = TextureData::F16(pixels);
+                }
+                TextureFormat::RGBA32F => {
+                    let mut pixels = vec![0.0; size.x() as usize * size.y() as usize * channels];
+                    texture_data_ptr = pixels.as_mut_ptr() as *mut u8;
+                    texture_data_len = pixels.len() * mem::size_of::<f32>();
+                    texture_data = TextureData::F32(pixels);
+                }
+            }
+
+            gl::BindBuffer(gl::PIXEL_PACK_BUFFER, receiver.gl_pixel_buffer); ck();
+            gl::GetBufferSubData(gl::PIXEL_PACK_BUFFER,
+                                 0,
+                                 texture_data_len as GLsizeiptr,
+                                 texture_data_ptr as *mut GLvoid); ck();
+            gl::BindBuffer(gl::PIXEL_PACK_BUFFER, 0); ck();
+
+            match texture_data {
+                TextureData::U8(ref mut pixels)  => flip_y(pixels, size, channels),
+                TextureData::U16(ref mut pixels) => flip_y(pixels, size, channels),
+                TextureData::F16(ref mut pixels) => flip_y(pixels, size, channels),
+                TextureData::F32(ref mut pixels) => flip_y(pixels, size, channels),
+            }
+
+            texture_data
         }
     }
 }
@@ -1026,6 +1078,22 @@ impl VertexAttrTypeExt for VertexAttrType {
             VertexAttrType::I8  => gl::BYTE,
             VertexAttrType::U16 => gl::UNSIGNED_SHORT,
             VertexAttrType::U8  => gl::UNSIGNED_BYTE,
+        }
+    }
+}
+
+pub struct GLTextureDataReceiver {
+    gl_pixel_buffer: GLuint,
+    gl_sync: GLsync,
+    size: Vector2I,
+    format: TextureFormat,
+}
+
+impl Drop for GLTextureDataReceiver {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &mut self.gl_pixel_buffer); ck();
+            gl::DeleteSync(self.gl_sync); ck();
         }
     }
 }

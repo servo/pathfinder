@@ -296,7 +296,7 @@ where
         // Accumulate stage-0 time.
         let mut total_stage_0_time = Duration::new(0, 0);
         for timer_query in &timers.stage_0 {
-            match self.device.get_timer_query(timer_query) {
+            match self.device.try_recv_timer_query(timer_query) {
                 None => return None,
                 Some(stage_0_time) => total_stage_0_time += stage_0_time,
             }
@@ -305,7 +305,7 @@ where
         // Get stage-1 time.
         let stage_1_time = {
             let stage_1_timer_query = timers.stage_1.as_ref().unwrap();
-            match self.device.get_timer_query(stage_1_timer_query) {
+            match self.device.try_recv_timer_query(stage_1_timer_query) {
                 None => return None,
                 Some(query) => query,
             }

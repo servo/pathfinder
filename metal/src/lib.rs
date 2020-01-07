@@ -54,7 +54,7 @@ use std::mem;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 const FIRST_VERTEX_BUFFER_INDEX: u64 = 1;
@@ -148,10 +148,34 @@ pub struct MetalTexture {
     dirty: Cell<bool>,
 }
 
-pub struct MetalTimerQuery {
+#[derive(Clone)]
+pub struct MetalTextureDataReceiver(Arc<MetalTextureDataReceiverInfo>);
+
+struct MetalTextureDataReceiverInfo {
+    mutex: Mutex<MetalTextureDataReceiverState>,
+    cond: Condvar,
+    texture: Texture,
+    viewport: RectI,
+}
+
+enum MetalTextureDataReceiverState {
+    Pending,
+    Downloaded(TextureData),
+    Finished,
+}
+
+#[derive(Clone)]
+pub struct MetalTimerQuery(Arc<MetalTimerQueryInfo>);
+
+struct MetalTimerQueryInfo {
+    mutex: Mutex<MetalTimerQueryData>,
+    cond: Condvar,
     event_value: u64,
-    start_time: Cell<Option<Instant>>,
-    end_time: Cell<Option<Instant>>,
+}
+
+struct MetalTimerQueryData {
+    start_time: Option<Instant>,
+    end_time: Option<Instant>,
 }
 
 #[derive(Clone)]
@@ -184,7 +208,8 @@ impl Device for MetalDevice {
     type Program = MetalProgram;
     type Shader = MetalShader;
     type Texture = MetalTexture;
-    type TimerQuery = Arc<MetalTimerQuery>;
+    type TextureDataReceiver = MetalTextureDataReceiver;
+    type TimerQuery = MetalTimerQuery;
     type Uniform = MetalUniform;
     type VertexArray = MetalVertexArray;
     type VertexAttr = VertexAttribute;
@@ -439,46 +464,24 @@ impl Device for MetalDevice {
         texture.dirty.set(true);
     }
 
-    fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI) -> TextureData {
+    fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI)
+                   -> MetalTextureDataReceiver {
         let texture = self.render_target_color_texture(target);
-        self.synchronize_texture(&texture);
+        let texture_data_receiver =
+            MetalTextureDataReceiver(Arc::new(MetalTextureDataReceiverInfo {
+                mutex: Mutex::new(MetalTextureDataReceiverState::Pending),
+                cond: Condvar::new(),
+                texture,
+                viewport,
+            }));
 
-        let (origin, size) = (viewport.origin(), viewport.size());
-        let metal_origin = MTLOrigin { x: origin.x() as u64, y: origin.y() as u64, z: 0 };
-        let metal_size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
-        let metal_region = MTLRegion { origin: metal_origin, size: metal_size };
+        let texture_data_receiver_for_block = texture_data_receiver.clone();
+        let block = ConcreteBlock::new(move |_| {
+            texture_data_receiver_for_block.download();
+        });
 
-        let format = self.texture_format(&texture)
-                         .expect("Unexpected framebuffer texture format!");
-        match format {
-            TextureFormat::R8 | TextureFormat::RGBA8 => {
-                let channels = format.channels();
-                let stride = size.x() as usize * channels;
-                let mut pixels = vec![0; stride * size.y() as usize];
-                texture.get_bytes(pixels.as_mut_ptr() as *mut _, metal_region, 0, stride as u64);
-                TextureData::U8(pixels)
-            }
-            TextureFormat::R16F | TextureFormat::RGBA16F => {
-                let channels = format.channels();
-                let stride = size.x() as usize * channels;
-                let mut pixels = vec![f16::default(); stride * size.y() as usize];
-                texture.get_bytes(pixels.as_mut_ptr() as *mut _,
-                                  metal_region,
-                                  0,
-                                  stride as u64 * 2);
-                TextureData::F16(pixels)
-            }
-            TextureFormat::RGBA32F => {
-                let channels = format.channels();
-                let stride = size.x() as usize * channels;
-                let mut pixels = vec![0.0; stride * size.y() as usize];
-                texture.get_bytes(pixels.as_mut_ptr() as *mut _,
-                                  metal_region,
-                                  0,
-                                  stride as u64 * 4);
-                TextureData::F32(pixels)
-            }
-        }
+        self.synchronize_texture(&texture_data_receiver.0.texture, block.copy());
+        texture_data_receiver
     }
 
     fn begin_commands(&self) {
@@ -534,23 +537,26 @@ impl Device for MetalDevice {
         encoder.end_encoding();
     }
 
-    fn create_timer_query(&self) -> Arc<MetalTimerQuery> {
+    fn create_timer_query(&self) -> MetalTimerQuery {
         let event_value = self.next_timer_query_event_value.get();
         self.next_timer_query_event_value.set(event_value + 2);
 
-        let query = Arc::new(MetalTimerQuery {
+        let query = MetalTimerQuery(Arc::new(MetalTimerQueryInfo {
             event_value,
-            start_time: Cell::new(None),
-            end_time: Cell::new(None),
-        });
+            mutex: Mutex::new(MetalTimerQueryData { start_time: None, end_time: None }),
+            cond: Condvar::new(),
+        }));
 
         let captured_query = query.clone();
         let start_block = ConcreteBlock::new(move |_: *mut Object, _: u64| {
-            captured_query.start_time.set(Some(Instant::now()))
+            let mut guard = captured_query.0.mutex.lock().unwrap();
+            guard.start_time = Some(Instant::now());
         });
         let captured_query = query.clone();
         let end_block = ConcreteBlock::new(move |_: *mut Object, _: u64| {
-            captured_query.end_time.set(Some(Instant::now()))
+            let mut guard = captured_query.0.mutex.lock().unwrap();
+            guard.end_time = Some(Instant::now());
+            captured_query.0.cond.notify_all();
         });
         self.shared_event.notify_listener_at_value(&self.shared_event_listener,
                                                    event_value,
@@ -562,26 +568,49 @@ impl Device for MetalDevice {
         query
     }
 
-    fn begin_timer_query(&self, query: &Arc<MetalTimerQuery>) {
+    fn begin_timer_query(&self, query: &MetalTimerQuery) {
         self.command_buffers
             .borrow_mut()
             .last()
             .unwrap()
-            .encode_signal_event(&self.shared_event, query.event_value);
+            .encode_signal_event(&self.shared_event, query.0.event_value);
     }
 
-    fn end_timer_query(&self, query: &Arc<MetalTimerQuery>) {
+    fn end_timer_query(&self, query: &MetalTimerQuery) {
         self.command_buffers
             .borrow_mut()
             .last()
             .unwrap()
-            .encode_signal_event(&self.shared_event, query.event_value + 1);
+            .encode_signal_event(&self.shared_event, query.0.event_value + 1);
     }
 
-    fn get_timer_query(&self, query: &Arc<MetalTimerQuery>) -> Option<Duration> {
-        match (query.start_time.get(), query.end_time.get()) {
-            (Some(start_time), Some(end_time)) => Some(end_time - start_time),
-            _ => None,
+    fn try_recv_timer_query(&self, query: &MetalTimerQuery) -> Option<Duration> {
+        try_recv_timer_query_with_guard(&mut query.0.mutex.lock().unwrap())
+    }
+
+    fn recv_timer_query(&self, query: &MetalTimerQuery) -> Duration {
+        let mut guard = query.0.mutex.lock().unwrap();
+        loop {
+            let duration = try_recv_timer_query_with_guard(&mut guard);
+            if let Some(duration) = duration {
+                return duration
+            }
+            guard = query.0.cond.wait(guard).unwrap();
+        }
+    }
+
+    fn try_recv_texture_data(&self, receiver: &MetalTextureDataReceiver) -> Option<TextureData> {
+        try_recv_texture_data_with_guard(&mut receiver.0.mutex.lock().unwrap())
+    }
+
+    fn recv_texture_data(&self, receiver: &MetalTextureDataReceiver) -> TextureData {
+        let mut guard = receiver.0.mutex.lock().unwrap();
+        loop {
+            let texture_data = try_recv_texture_data_with_guard(&mut guard);
+            if let Some(texture_data) = texture_data {
+                return texture_data
+            }
+            guard = receiver.0.cond.wait(guard).unwrap();
         }
     }
 
@@ -1096,12 +1125,7 @@ impl MetalDevice {
     }
 
     fn texture_format(&self, texture: &Texture) -> Option<TextureFormat> {
-        match texture.pixel_format() {
-            MTLPixelFormat::R8Unorm => Some(TextureFormat::R8),
-            MTLPixelFormat::R16Float => Some(TextureFormat::R16F),
-            MTLPixelFormat::RGBA8Unorm => Some(TextureFormat::RGBA8),
-            _ => None,
-        }
+        TextureFormat::from_metal_pixel_format(texture.pixel_format())
     }
 
     fn set_viewport(&self, encoder: &RenderCommandEncoderRef, viewport: &RectI) {
@@ -1115,11 +1139,13 @@ impl MetalDevice {
         })
     }
 
-    fn synchronize_texture(&self, texture: &Texture) {
-        {
+    fn synchronize_texture(&self, texture: &Texture, block: RcBlock<(*mut Object,), ()>) {
+        unsafe {
             let command_buffers = self.command_buffers.borrow();
-            let encoder = command_buffers.last().unwrap().new_blit_command_encoder();
+            let command_buffer = command_buffers.last().unwrap();
+            let encoder = command_buffer.new_blit_command_encoder();
             encoder.synchronize_resource(&texture);
+            let () = msg_send![*command_buffer, addCompletedHandler:&*block];
             encoder.end_encoding();
         }
 
@@ -1215,6 +1241,98 @@ impl UniformDataExt for UniformData {
                 }
             }
         }
+    }
+}
+
+trait TextureFormatExt: Sized {
+    fn from_metal_pixel_format(metal_pixel_format: MTLPixelFormat) -> Option<Self>;
+}
+
+impl TextureFormatExt for TextureFormat {
+    fn from_metal_pixel_format(metal_pixel_format: MTLPixelFormat) -> Option<TextureFormat> {
+        match metal_pixel_format {
+            MTLPixelFormat::R8Unorm => Some(TextureFormat::R8),
+            MTLPixelFormat::R16Float => Some(TextureFormat::R16F),
+            MTLPixelFormat::RGBA8Unorm => Some(TextureFormat::RGBA8),
+            MTLPixelFormat::BGRA8Unorm => {
+                // FIXME(pcwalton): This is wrong! But it prevents a crash for now.
+                Some(TextureFormat::RGBA8)
+            }
+            _ => None,
+        }
+    }
+}
+
+// Synchronization helpers
+
+fn try_recv_timer_query_with_guard(guard: &mut MutexGuard<MetalTimerQueryData>)
+                                   -> Option<Duration> {
+    match (guard.start_time, guard.end_time) {
+        (Some(start_time), Some(end_time)) => Some(end_time - start_time),
+        _ => None,
+    }
+}
+
+impl MetalTextureDataReceiver {
+    fn download(&self) {
+        let (origin, size) = (self.0.viewport.origin(), self.0.viewport.size());
+        let metal_origin = MTLOrigin { x: origin.x() as u64, y: origin.y() as u64, z: 0 };
+        let metal_size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
+        let metal_region = MTLRegion { origin: metal_origin, size: metal_size };
+
+        let format = TextureFormat::from_metal_pixel_format(self.0.texture.pixel_format());
+        let format = format.expect("Unexpected framebuffer texture format!");
+
+        let texture_data = match format {
+            TextureFormat::R8 | TextureFormat::RGBA8 => {
+                let channels = format.channels();
+                let stride = size.x() as usize * channels;
+                let mut pixels = vec![0; stride * size.y() as usize];
+                self.0.texture.get_bytes(pixels.as_mut_ptr() as *mut _,
+                                         metal_region,
+                                         0,
+                                         stride as u64);
+                TextureData::U8(pixels)
+            }
+            TextureFormat::R16F | TextureFormat::RGBA16F => {
+                let channels = format.channels();
+                let stride = size.x() as usize * channels;
+                let mut pixels = vec![f16::default(); stride * size.y() as usize];
+                self.0.texture.get_bytes(pixels.as_mut_ptr() as *mut _,
+                                         metal_region,
+                                         0,
+                                         stride as u64 * 2);
+                TextureData::F16(pixels)
+            }
+            TextureFormat::RGBA32F => {
+                let channels = format.channels();
+                let stride = size.x() as usize * channels;
+                let mut pixels = vec![0.0; stride * size.y() as usize];
+                self.0.texture.get_bytes(pixels.as_mut_ptr() as *mut _,
+                                         metal_region,
+                                         0,
+                                         stride as u64 * 4);
+                TextureData::F32(pixels)
+            }
+        };
+
+        let mut guard = self.0.mutex.lock().unwrap();
+        *guard = MetalTextureDataReceiverState::Downloaded(texture_data);
+        self.0.cond.notify_all();
+    }
+}
+
+fn try_recv_texture_data_with_guard(guard: &mut MutexGuard<MetalTextureDataReceiverState>)
+                                    -> Option<TextureData> {
+    match **guard {
+        MetalTextureDataReceiverState::Pending | MetalTextureDataReceiverState::Finished => {
+            return None
+        }
+        MetalTextureDataReceiverState::Downloaded(_) => {}
+    }
+    match mem::replace(&mut **guard, MetalTextureDataReceiverState::Finished) {
+        MetalTextureDataReceiverState::Downloaded(texture_data) => Some(texture_data),
+        _ => unreachable!(),
     }
 }
 
