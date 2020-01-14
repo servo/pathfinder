@@ -8,11 +8,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::arch::x86_64::{self, __m128, __m128i};
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Index, IndexMut, Mul, Not, Shr, Sub};
+
+#[cfg(target_pointer_width = "32")]
+use std::arch::x86::{__m128, __m128i};
+#[cfg(target_pointer_width = "32")]
+use std::arch::x86;
+#[cfg(target_pointer_width = "64")]
+use std::arch::x86_64::{__m128, __m128i};
+#[cfg(target_pointer_width = "64")]
+use std::arch::x86_64 as x86;
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
@@ -107,7 +115,11 @@ impl F32x2 {
 
     #[inline]
     pub fn to_f32x4(self) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_castsi128_ps(x86_64::_mm_cvtsi64_si128(self.0 as i64))) }
+        unsafe {
+            let mut result = F32x4::default();
+            *mem::transmute::<&mut __m128, &mut u64>(&mut result.0) = self.0;
+            result
+        }
     }
 
     #[inline]
@@ -207,30 +219,30 @@ impl F32x4 {
     pub fn new(a: f32, b: f32, c: f32, d: f32) -> F32x4 {
         unsafe {
             let vector = [a, b, c, d];
-            F32x4(x86_64::_mm_loadu_ps(vector.as_ptr()))
+            F32x4(x86::_mm_loadu_ps(vector.as_ptr()))
         }
     }
 
     #[inline]
     pub fn splat(x: f32) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_set1_ps(x)) }
+        unsafe { F32x4(x86::_mm_set1_ps(x)) }
     }
 
     // Basic operations
 
     #[inline]
     pub fn approx_recip(self) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_rcp_ps(self.0)) }
+        unsafe { F32x4(x86::_mm_rcp_ps(self.0)) }
     }
 
     #[inline]
     pub fn min(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_min_ps(self.0, other.0)) }
+        unsafe { F32x4(x86::_mm_min_ps(self.0, other.0)) }
     }
 
     #[inline]
     pub fn max(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_max_ps(self.0, other.0)) }
+        unsafe { F32x4(x86::_mm_max_ps(self.0, other.0)) }
     }
 
     #[inline]
@@ -241,24 +253,24 @@ impl F32x4 {
     #[inline]
     pub fn abs(self) -> F32x4 {
         unsafe {
-            let tmp = x86_64::_mm_srli_epi32(I32x4::splat(-1).0, 1);
-            F32x4(x86_64::_mm_and_ps(x86_64::_mm_castsi128_ps(tmp), self.0))
+            let tmp = x86::_mm_srli_epi32(I32x4::splat(-1).0, 1);
+            F32x4(x86::_mm_and_ps(x86::_mm_castsi128_ps(tmp), self.0))
         }
     }
 
     #[inline]
     pub fn floor(self) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_floor_ps(self.0)) }
+        unsafe { F32x4(x86::_mm_floor_ps(self.0)) }
     }
 
     #[inline]
     pub fn ceil(self) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_ceil_ps(self.0)) }
+        unsafe { F32x4(x86::_mm_ceil_ps(self.0)) }
     }
 
     #[inline]
     pub fn sqrt(self) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_sqrt_ps(self.0)) }
+        unsafe { F32x4(x86::_mm_sqrt_ps(self.0)) }
     }
 
     // Packed comparisons
@@ -266,7 +278,7 @@ impl F32x4 {
     #[inline]
     pub fn packed_eq(self, other: F32x4) -> U32x4 {
         unsafe {
-            U32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpeq_ps(
+            U32x4(x86::_mm_castps_si128(x86::_mm_cmpeq_ps(
                 self.0, other.0,
             )))
         }
@@ -275,7 +287,7 @@ impl F32x4 {
     #[inline]
     pub fn packed_gt(self, other: F32x4) -> U32x4 {
         unsafe {
-            U32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpgt_ps(
+            U32x4(x86::_mm_castps_si128(x86::_mm_cmpgt_ps(
                 self.0, other.0,
             )))
         }
@@ -296,34 +308,37 @@ impl F32x4 {
     /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_cvtps_epi32(self.0)) }
+        unsafe { I32x4(x86::_mm_cvtps_epi32(self.0)) }
     }
 
     // Extraction
 
     #[inline]
     pub fn xy(self) -> F32x2 {
-        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.0)) as u64) }
+        unsafe {
+            let swizzled = self.0;
+            F32x2(*mem::transmute::<&__m128, &u64>(&swizzled))
+        }
     }
 
     #[inline]
     pub fn xw(self) -> F32x2 {
-        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.xwyz().0)) as u64) }
+        self.xwyz().xy()
     }
 
     #[inline]
     pub fn yx(self) -> F32x2 {
-        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.yxwz().0)) as u64) }
+        self.yxwz().xy()
     }
 
     #[inline]
     pub fn zy(self) -> F32x2 {
-        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.zyxw().0)) as u64) }
+        self.zyxw().xy()
     }
 
     #[inline]
     pub fn zw(self) -> F32x2 {
-        unsafe { F32x2(x86_64::_mm_cvtsi128_si64(x86_64::_mm_castps_si128(self.zwxy().0)) as u64) }
+        self.zwxy().xy()
     }
 
     // Concatenations
@@ -331,43 +346,43 @@ impl F32x4 {
     #[inline]
     pub fn concat_xy_xy(self, other: F32x4) -> F32x4 {
         unsafe {
-            let this = x86_64::_mm_castps_pd(self.0);
-            let other = x86_64::_mm_castps_pd(other.0);
-            let result = x86_64::_mm_unpacklo_pd(this, other);
-            F32x4(x86_64::_mm_castpd_ps(result))
+            let this = x86::_mm_castps_pd(self.0);
+            let other = x86::_mm_castps_pd(other.0);
+            let result = x86::_mm_unpacklo_pd(this, other);
+            F32x4(x86::_mm_castpd_ps(result))
         }
     }
 
     #[inline]
     pub fn concat_xy_zw(self, other: F32x4) -> F32x4 {
         unsafe {
-            let this = x86_64::_mm_castps_pd(self.0);
-            let other = x86_64::_mm_castps_pd(other.0);
-            let result = x86_64::_mm_shuffle_pd(this, other, 0b10);
-            F32x4(x86_64::_mm_castpd_ps(result))
+            let this = x86::_mm_castps_pd(self.0);
+            let other = x86::_mm_castps_pd(other.0);
+            let result = x86::_mm_shuffle_pd(this, other, 0b10);
+            F32x4(x86::_mm_castpd_ps(result))
         }
     }
 
     #[inline]
     pub fn concat_zw_zw(self, other: F32x4) -> F32x4 {
         unsafe {
-            let this = x86_64::_mm_castps_pd(self.0);
-            let other = x86_64::_mm_castps_pd(other.0);
-            let result = x86_64::_mm_unpackhi_pd(this, other);
-            F32x4(x86_64::_mm_castpd_ps(result))
+            let this = x86::_mm_castps_pd(self.0);
+            let other = x86::_mm_castps_pd(other.0);
+            let result = x86::_mm_unpackhi_pd(this, other);
+            F32x4(x86::_mm_castpd_ps(result))
         }
     }
 
     #[inline]
     pub fn concat_wz_yx(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b0001_1011)) }
+        unsafe { F32x4(x86::_mm_shuffle_ps(self.0, other.0, 0b0001_1011)) }
     }
 }
 
 impl Default for F32x4 {
     #[inline]
     fn default() -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_setzero_ps()) }
+        unsafe { F32x4(x86::_mm_setzero_ps()) }
     }
 }
 
@@ -404,7 +419,7 @@ impl Add<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn add(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_add_ps(self.0, other.0)) }
+        unsafe { F32x4(x86::_mm_add_ps(self.0, other.0)) }
     }
 }
 
@@ -412,7 +427,7 @@ impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn mul(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_mul_ps(self.0, other.0)) }
+        unsafe { F32x4(x86::_mm_mul_ps(self.0, other.0)) }
     }
 }
 
@@ -420,7 +435,7 @@ impl Sub<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn sub(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_sub_ps(self.0, other.0)) }
+        unsafe { F32x4(x86::_mm_sub_ps(self.0, other.0)) }
     }
 }
 
@@ -457,7 +472,11 @@ impl I32x2 {
 
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_cvtsi64_si128(self.0 as i64)) }
+        unsafe {
+            let mut result = I32x4::default();
+            *mem::transmute::<&mut __m128i, &mut u64>(&mut result.0) = self.0;
+            result
+        }
     }
 
     #[inline]
@@ -569,40 +588,43 @@ impl I32x4 {
     pub fn new(a: i32, b: i32, c: i32, d: i32) -> I32x4 {
         unsafe {
             let vector = [a, b, c, d];
-            I32x4(x86_64::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
+            I32x4(x86::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
         }
     }
 
     #[inline]
     pub fn splat(x: i32) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_set1_epi32(x)) }
+        unsafe { I32x4(x86::_mm_set1_epi32(x)) }
     }
 
     // Extraction
 
     #[inline]
     pub fn xy(self) -> I32x2 {
-        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.0) as u64) }
+        unsafe {
+            let swizzled = self.0;
+            I32x2(*mem::transmute::<&__m128i, &u64>(&swizzled))
+        }
     }
 
     #[inline]
     pub fn xw(self) -> I32x2 {
-        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.xwyz().0) as u64) }
+        self.xwyz().xy()
     }
 
     #[inline]
     pub fn yx(self) -> I32x2 {
-        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.yxwz().0) as u64) }
+        self.yxwz().xy()
     }
 
     #[inline]
     pub fn zy(self) -> I32x2 {
-        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.zyxw().0) as u64) }
+        self.zyxw().xy()
     }
 
     #[inline]
     pub fn zw(self) -> I32x2 {
-        unsafe { I32x2(x86_64::_mm_cvtsi128_si64(self.zwxy().0) as u64) }
+        self.zwxy().xy()
     }
 
     // Concatenations
@@ -610,10 +632,10 @@ impl I32x4 {
     #[inline]
     pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
         unsafe {
-            let this = x86_64::_mm_castsi128_pd(self.0);
-            let other = x86_64::_mm_castsi128_pd(other.0);
-            let result = x86_64::_mm_unpacklo_pd(this, other);
-            I32x4(x86_64::_mm_castpd_si128(result))
+            let this = x86::_mm_castsi128_pd(self.0);
+            let other = x86::_mm_castsi128_pd(other.0);
+            let result = x86::_mm_unpacklo_pd(this, other);
+            I32x4(x86::_mm_castpd_si128(result))
         }
     }
 
@@ -622,7 +644,7 @@ impl I32x4 {
     /// Converts these packed integers to floats.
     #[inline]
     pub fn to_f32x4(self) -> F32x4 {
-        unsafe { F32x4(x86_64::_mm_cvtepi32_ps(self.0)) }
+        unsafe { F32x4(x86::_mm_cvtepi32_ps(self.0)) }
     }
 
     /// Converts these packed signed integers to unsigned integers.
@@ -637,21 +659,21 @@ impl I32x4 {
 
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_min_epi32(self.0, other.0)) }
+        unsafe { I32x4(x86::_mm_min_epi32(self.0, other.0)) }
     }
 
     // Packed comparisons
 
     #[inline]
     pub fn packed_eq(self, other: I32x4) -> U32x4 {
-        unsafe { U32x4(x86_64::_mm_cmpeq_epi32(self.0, other.0)) }
+        unsafe { U32x4(x86::_mm_cmpeq_epi32(self.0, other.0)) }
     }
 
     // Comparisons
 
     #[inline]
     pub fn packed_gt(self, other: I32x4) -> U32x4 {
-        unsafe { U32x4(x86_64::_mm_cmpgt_epi32(self.0, other.0)) }
+        unsafe { U32x4(x86::_mm_cmpgt_epi32(self.0, other.0)) }
     }
 
     #[inline]
@@ -663,7 +685,7 @@ impl I32x4 {
 impl Default for I32x4 {
     #[inline]
     fn default() -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_setzero_si128()) }
+        unsafe { I32x4(x86::_mm_setzero_si128()) }
     }
 }
 
@@ -686,7 +708,7 @@ impl Add<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn add(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_add_epi32(self.0, other.0)) }
+        unsafe { I32x4(x86::_mm_add_epi32(self.0, other.0)) }
     }
 }
 
@@ -694,7 +716,7 @@ impl Sub<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn sub(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_sub_epi32(self.0, other.0)) }
+        unsafe { I32x4(x86::_mm_sub_epi32(self.0, other.0)) }
     }
 }
 
@@ -702,7 +724,7 @@ impl Mul<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn mul(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_mullo_epi32(self.0, other.0)) }
+        unsafe { I32x4(x86::_mm_mullo_epi32(self.0, other.0)) }
     }
 }
 
@@ -710,7 +732,7 @@ impl BitAnd<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn bitand(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_and_si128(self.0, other.0)) }
+        unsafe { I32x4(x86::_mm_and_si128(self.0, other.0)) }
     }
 }
 
@@ -718,7 +740,7 @@ impl BitOr<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn bitor(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(x86_64::_mm_or_si128(self.0, other.0)) }
+        unsafe { I32x4(x86::_mm_or_si128(self.0, other.0)) }
     }
 }
 
@@ -773,13 +795,13 @@ impl U32x4 {
     pub fn new(a: u32, b: u32, c: u32, d: u32) -> U32x4 {
         unsafe {
             let vector = [a, b, c, d];
-            U32x4(x86_64::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
+            U32x4(x86::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
         }
     }
 
     #[inline]
     pub fn splat(x: u32) -> U32x4 {
-        unsafe { U32x4(x86_64::_mm_set1_epi32(x as i32)) }
+        unsafe { U32x4(x86::_mm_set1_epi32(x as i32)) }
     }
 
     // Conversions
@@ -800,7 +822,7 @@ impl U32x4 {
     /// a value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
     pub fn all_true(self) -> bool {
-        unsafe { x86_64::_mm_movemask_ps(x86_64::_mm_castsi128_ps(self.0)) == 0x0f }
+        unsafe { x86::_mm_movemask_ps(x86::_mm_castsi128_ps(self.0)) == 0x0f }
     }
 
     /// Returns true if all four booleans in this vector are false.
@@ -809,21 +831,24 @@ impl U32x4 {
     /// a value with all bits set or all bits clear (i.e. !0 or 0).
     #[inline]
     pub fn all_false(self) -> bool {
-        unsafe { x86_64::_mm_movemask_ps(x86_64::_mm_castsi128_ps(self.0)) == 0x00 }
+        unsafe { x86::_mm_movemask_ps(x86::_mm_castsi128_ps(self.0)) == 0x00 }
     }
 
     // Extraction
 
     #[inline]
     pub fn xy(self) -> U32x2 {
-        unsafe { U32x2(x86_64::_mm_cvtsi128_si64(self.0) as u64) }
+        unsafe {
+            let swizzled = self.0;
+            U32x2(*mem::transmute::<&__m128i, &u64>(&swizzled))
+        }
     }
 
     // Packed comparisons
 
     #[inline]
     pub fn packed_eq(self, other: U32x4) -> U32x4 {
-        unsafe { U32x4(x86_64::_mm_cmpeq_epi32(self.0, other.0)) }
+        unsafe { U32x4(x86::_mm_cmpeq_epi32(self.0, other.0)) }
     }
 }
 
@@ -861,7 +886,7 @@ impl BitXor<U32x4> for U32x4 {
     type Output = U32x4;
     #[inline]
     fn bitxor(self, other: U32x4) -> U32x4 {
-        unsafe { U32x4(x86_64::_mm_xor_si128(self.0, other.0)) }
+        unsafe { U32x4(x86::_mm_xor_si128(self.0, other.0)) }
     }
 }
 
@@ -869,6 +894,6 @@ impl Shr<u32> for U32x4 {
     type Output = U32x4;
     #[inline]
     fn shr(self, amount: u32) -> U32x4 {
-        unsafe { U32x4(x86_64::_mm_srl_epi32(self.0, U32x4::new(amount, 0, 0, 0).0)) }
+        unsafe { U32x4(x86::_mm_srl_epi32(self.0, U32x4::new(amount, 0, 0, 0).0)) }
     }
 }
