@@ -510,6 +510,13 @@ impl I32x4 {
         I32x4::new(x, x, x, x)
     }
 
+    // Basic operations
+
+    #[inline]
+    pub fn max(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(simd_fmax(self.0, other.0)) }
+    }
+
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
         unsafe { I32x4(simd_fmin(self.0, other.0)) }
@@ -527,11 +534,21 @@ impl I32x4 {
         unsafe { U32x4(simd_le(self.0, other.0)) }
     }
 
+    #[inline]
+    pub fn packed_lt(self, other: I32x4) -> U32x4 {
+        unsafe { U32x4(simd_lt(self.0, other.0)) }
+    }
+
     // Concatenations
 
     #[inline]
     pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
         unsafe { I32x4(simd_shuffle4(self.0, other.0, [0, 1, 4, 5])) }
+    }
+
+    #[inline]
+    pub fn concat_zw_zw(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(simd_shuffle4(self.0, other.0, [2, 3, 6, 7])) }
     }
 
     // Swizzle conversions

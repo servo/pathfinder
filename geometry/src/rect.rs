@@ -27,56 +27,90 @@ impl RectF {
         RectF(origin.0.concat_xy_xy(lower_right.0))
     }
 
+    // Accessors
+
     #[inline]
-    pub fn origin(&self) -> Vector2F {
+    pub fn origin(self) -> Vector2F {
         Vector2F(self.0.xy())
     }
 
     #[inline]
-    pub fn size(&self) -> Vector2F {
+    pub fn size(self) -> Vector2F {
         Vector2F(self.0.zw() - self.0.xy())
     }
 
     #[inline]
-    pub fn upper_right(&self) -> Vector2F {
+    pub fn origin_x(self) -> f32 {
+        self.0.x()
+    }
+
+    #[inline]
+    pub fn origin_y(self) -> f32 {
+        self.0.y()
+    }
+
+    #[inline]
+    pub fn width(self) -> f32 {
+        self.0.z() - self.0.x()
+    }
+
+    #[inline]
+    pub fn height(self) -> f32 {
+        self.0.w() - self.0.y()
+    }
+
+    #[inline]
+    pub fn upper_right(self) -> Vector2F {
         Vector2F(self.0.zy())
     }
 
     #[inline]
-    pub fn lower_left(&self) -> Vector2F {
+    pub fn lower_left(self) -> Vector2F {
         Vector2F(self.0.xw())
     }
 
     #[inline]
-    pub fn lower_right(&self) -> Vector2F {
+    pub fn lower_right(self) -> Vector2F {
         Vector2F(self.0.zw())
     }
 
+    // Mutators
+
     #[inline]
-    pub fn contains_point(&self, point: Vector2F) -> bool {
+    pub fn set_origin_x(&mut self, x: f32) {
+        self.0.set_x(x)
+    }
+
+    #[inline]
+    pub fn set_origin_y(&mut self, y: f32) {
+        self.0.set_y(y)
+    }
+
+    #[inline]
+    pub fn contains_point(self, point: Vector2F) -> bool {
         // self.origin <= point && point <= self.lower_right
         let point = point.0.to_f32x4();
         self.0.concat_xy_xy(point).packed_le(point.concat_xy_zw(self.0)).all_true()
     }
 
     #[inline]
-    pub fn contains_rect(&self, other: RectF) -> bool {
+    pub fn contains_rect(self, other: RectF) -> bool {
         // self.origin <= other.origin && other.lower_right <= self.lower_right
         self.0.concat_xy_zw(other.0).packed_le(other.0.concat_xy_zw(self.0)).all_true()
     }
 
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub fn is_empty(self) -> bool {
         self.origin() == self.lower_right()
     }
 
     #[inline]
-    pub fn union_point(&self, point: Vector2F) -> RectF {
+    pub fn union_point(self, point: Vector2F) -> RectF {
         RectF::from_points(self.origin().min(point), self.lower_right().max(point))
     }
 
     #[inline]
-    pub fn union_rect(&self, other: RectF) -> RectF {
+    pub fn union_rect(self, other: RectF) -> RectF {
         RectF::from_points(
             self.origin().min(other.origin()),
             self.lower_right().max(other.lower_right()),
@@ -84,13 +118,13 @@ impl RectF {
     }
 
     #[inline]
-    pub fn intersects(&self, other: RectF) -> bool {
+    pub fn intersects(self, other: RectF) -> bool {
         // self.origin < other.lower_right && other.origin < self.lower_right
         self.0.concat_xy_xy(other.0).packed_lt(other.0.concat_zw_zw(self.0)).all_true()
     }
 
     #[inline]
-    pub fn intersection(&self, other: RectF) -> Option<RectF> {
+    pub fn intersection(self, other: RectF) -> Option<RectF> {
         if !self.intersects(other) {
             None
         } else {
@@ -131,6 +165,12 @@ impl RectF {
         RectF(self.0 * factors.0.concat_xy_xy(factors.0))
     }
 
+    /// Rounds all points to the nearest integer.
+    #[inline]
+    pub fn round(self) -> RectF {
+        RectF(self.0.to_i32x4().to_f32x4())
+    }
+
     #[inline]
     pub fn round_out(self) -> RectF {
         RectF::from_points(self.origin().floor(), self.lower_right().ceil())
@@ -147,6 +187,7 @@ impl RectF {
     }
 }
 
+/// NB: The origin is inclusive, while the lower right point is exclusive.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct RectI(pub I32x4);
 
@@ -161,6 +202,8 @@ impl RectI {
         RectI(origin.0.concat_xy_xy(lower_right.0))
     }
 
+    // Accessors
+
     #[inline]
     pub fn origin(&self) -> Vector2I {
         Vector2I(self.0.xy())
@@ -169,6 +212,26 @@ impl RectI {
     #[inline]
     pub fn size(&self) -> Vector2I {
         Vector2I(self.0.zw() - self.0.xy())
+    }
+
+    #[inline]
+    pub fn origin_x(self) -> i32 {
+        self.0.x()
+    }
+
+    #[inline]
+    pub fn origin_y(self) -> i32 {
+        self.0.y()
+    }
+
+    #[inline]
+    pub fn width(self) -> i32 {
+        self.0.z() - self.0.x()
+    }
+
+    #[inline]
+    pub fn height(self) -> i32 {
+        self.0.w() - self.0.y()
     }
 
     #[inline]
@@ -214,6 +277,24 @@ impl RectI {
     #[inline]
     pub fn max_y(self) -> i32 {
         self.0[3]
+    }
+
+    #[inline]
+    pub fn intersects(self, other: RectI) -> bool {
+        // self.origin < other.lower_right && other.origin < self.lower_right
+        self.0.concat_xy_xy(other.0).packed_lt(other.0.concat_zw_zw(self.0)).all_true()
+    }
+
+    #[inline]
+    pub fn intersection(self, other: RectI) -> Option<RectI> {
+        if !self.intersects(other) {
+            None
+        } else {
+            Some(RectI::from_points(
+                self.origin().max(other.origin()),
+                self.lower_right().min(other.lower_right()),
+            ))
+        }
     }
 
     #[inline]

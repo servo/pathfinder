@@ -522,7 +522,8 @@ impl I32x4 {
         I32x4([x; 4])
     }
 
-    #[inline]
+    // Basic operations
+
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
         I32x4([
@@ -530,6 +531,16 @@ impl I32x4 {
             self[1].min(other[1]),
             self[2].min(other[2]),
             self[3].min(other[3]),
+        ])
+    }
+
+    #[inline]
+    pub fn max(self, other: I32x4) -> I32x4 {
+        I32x4([
+            self[0].max(other[0]),
+            self[1].max(other[1]),
+            self[2].max(other[2]),
+            self[3].max(other[3]),
         ])
     }
 
@@ -542,6 +553,16 @@ impl I32x4 {
             if self[1] == other[1] { !0 } else { 0 },
             if self[2] == other[2] { !0 } else { 0 },
             if self[3] == other[3] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_gt(self, other: I32x4) -> U32x4 {
+        U32x4([
+            if self[0] > other[0] { !0 } else { 0 },
+            if self[1] > other[1] { !0 } else { 0 },
+            if self[2] > other[2] { !0 } else { 0 },
+            if self[3] > other[3] { !0 } else { 0 },
         ])
     }
 
@@ -560,6 +581,11 @@ impl I32x4 {
     #[inline]
     pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
         I32x4([self[0], self[1], other[0], other[1]])
+    }
+
+    #[inline]
+    pub fn concat_zw_zw(self, other: I32x4) -> I32x4 {
+        I32x4([self[2], self[3], other[2], other[3]])
     }
 
     // Swizzle conversions

@@ -206,6 +206,30 @@ impl Neg for I32x2 {
 
 // Four 32-bit integers
 
+impl I32x4 {
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> i32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> i32 {
+        self[1]
+    }
+
+    #[inline]
+    pub fn z(self) -> i32 {
+        self[2]
+    }
+
+    #[inline]
+    pub fn w(self) -> i32 {
+        self[3]
+    }
+}
+
 impl AddAssign for I32x4 {
     #[inline]
     fn add_assign(&mut self, other: I32x4) {

@@ -104,6 +104,12 @@ impl Vector2F {
         Vector2F(self.0.ceil())
     }
 
+    /// Rounds both coordinates to the nearest integer.
+    #[inline]
+    pub fn round(self) -> Vector2F {
+        Vector2F(self.0.to_i32x2().to_f32x2())
+    }
+
     /// Treats this point as a vector and calculates its squared length.
     #[inline]
     pub fn square_length(self) -> f32 {
@@ -220,6 +226,16 @@ impl Vector2I {
     }
 
     #[inline]
+    pub fn min(self, other: Vector2I) -> Vector2I {
+        Vector2I(self.0.min(other.0))
+    }
+
+    #[inline]
+    pub fn max(self, other: Vector2I) -> Vector2I {
+        Vector2I(self.0.max(other.0))
+    }
+
+    #[inline]
     pub fn scale(self, factor: i32) -> Vector2I {
         Vector2I(self.0 * I32x2::splat(factor))
     }
@@ -247,6 +263,14 @@ impl AddAssign<Vector2I> for Vector2I {
     #[inline]
     fn add_assign(&mut self, other: Vector2I) {
         self.0 += other.0
+    }
+}
+
+impl Neg for Vector2I {
+    type Output = Vector2I;
+    #[inline]
+    fn neg(self) -> Vector2I {
+        Vector2I(-self.0)
     }
 }
 

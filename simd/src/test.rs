@@ -45,7 +45,7 @@ fn test_f32x4_basic_ops() {
     assert_eq!(c.abs(), F32x4::new(1.0, 1.3, 20.0, 3.6));
     assert_eq!(c.floor(), F32x4::new(-1.0, 1.0, -20.0, 3.0));
     assert_eq!(c.ceil(), F32x4::new(-1.0, 2.0, -20.0, 4.0));
-    assert_eq!(c.round(), F32x4::new(-1.0, 1.0, -20.0, 4.0));
+    assert_eq!(c.to_i32x4().to_f32x4(), F32x4::new(-1.0, 1.0, -20.0, 4.0));
     let d = F32x4::new(1.0, 2.0, 3.0, 4.0);
     assert_eq!(d.sqrt(), F32x4::new(1.0, 1.4142135, 1.7320508, 2.0));
 }
@@ -687,5 +687,5 @@ fn test_f32x4s_basic_ops() {
     assert_eq!(c.abs(), F32x4S::new(1.0, 1.3, 20.0, 3.6));
     assert_eq!(c.floor(), F32x4S::new(-1.0, 1.0, -20.0, 3.0));
     assert_eq!(c.ceil(), F32x4S::new(-1.0, 2.0, -20.0, 4.0));
-    assert_eq!(c.round(), F32x4S::new(-1.0, 1.0, -20.0, 4.0));
+    assert_eq!(c.to_i32x4().to_f32x4(), F32x4S::new(-1.0, 1.0, -20.0, 4.0));
 }

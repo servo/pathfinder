@@ -493,6 +493,11 @@ impl I32x2 {
     // Basic operations
 
     #[inline]
+    pub fn max(self, other: I32x2) -> I32x2 {
+        self.to_i32x4().max(other.to_i32x4()).xy()
+    }
+
+    #[inline]
     pub fn min(self, other: I32x2) -> I32x2 {
         self.to_i32x4().min(other.to_i32x4()).xy()
     }
@@ -639,6 +644,16 @@ impl I32x4 {
         }
     }
 
+    #[inline]
+    pub fn concat_zw_zw(self, other: I32x4) -> I32x4 {
+        unsafe {
+            let this = x86::_mm_castsi128_pd(self.0);
+            let other = x86::_mm_castsi128_pd(other.0);
+            let result = x86::_mm_unpackhi_pd(this, other);
+            I32x4(x86::_mm_castpd_si128(result))
+        }
+    }
+
     // Conversions
 
     /// Converts these packed integers to floats.
@@ -658,6 +673,11 @@ impl I32x4 {
     // Basic operations
 
     #[inline]
+    pub fn max(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(x86::_mm_max_epi32(self.0, other.0)) }
+    }
+
+    #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
         unsafe { I32x4(x86::_mm_min_epi32(self.0, other.0)) }
     }
@@ -674,6 +694,11 @@ impl I32x4 {
     #[inline]
     pub fn packed_gt(self, other: I32x4) -> U32x4 {
         unsafe { U32x4(x86::_mm_cmpgt_epi32(self.0, other.0)) }
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: I32x4) -> U32x4 {
+        other.packed_gt(self)
     }
 
     #[inline]
