@@ -1,6 +1,6 @@
 [package]
 name = "pathfinder_geometry"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 description = "Basic SIMD-accelerated geometry/linear algebra"
@@ -16,4 +16,4 @@ features = ["release_max_level_warn"]
 
 [dependencies.pathfinder_simd]
 path = "../simd"
-version = "0.3"
+version = "0.4"
