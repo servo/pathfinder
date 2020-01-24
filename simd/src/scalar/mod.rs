@@ -458,6 +458,22 @@ impl I32x2 {
         I32x4([self[0], self[1], other[0], other[1]])
     }
 
+    #[inline]
+    pub fn min(self, other: I32x2) -> I32x2 {
+        I32x2([
+            self[0].min(other[0]),
+            self[1].min(other[1]),
+        ])
+    }
+
+    #[inline]
+    pub fn max(self, other: I32x2) -> I32x2 {
+        I32x2([
+            self[0].max(other[0]),
+            self[1].max(other[1]),
+        ])
+    }
+
     // Conversions
 
     /// Converts these packed integers to floats.
@@ -573,6 +589,16 @@ impl I32x4 {
             if self[1] <= other[1] { !0 } else { 0 },
             if self[2] <= other[2] { !0 } else { 0 },
             if self[3] <= other[3] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: I32x4) -> U32x4 {
+        U32x4([
+            if self[0] < other[0] { !0 } else { 0 },
+            if self[1] < other[1] { !0 } else { 0 },
+            if self[2] < other[2] { !0 } else { 0 },
+            if self[3] < other[3] { !0 } else { 0 },
         ])
     }
 
@@ -752,10 +778,14 @@ impl Index<usize> for U32x2 {
 
 // Four 32-bit unsigned integers
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct U32x4(pub [u32; 4]);
 
 impl U32x4 {
+    pub fn new(a: u32, b: u32, c: u32, d: u32) -> U32x4 {
+        U32x4([a, b, c, d])
+    }
+
     // Conversions
 
     /// Converts these packed unsigned integers to signed integers.
@@ -764,7 +794,7 @@ impl U32x4 {
     ///
     /// FIXME(pcwalton): Should they? This will assert on overflow in debug.
     #[inline]
-    pub fn to_u32x4(self) -> I32x4 {
+    pub fn to_i32x4(self) -> I32x4 {
         I32x4([self[0] as i32, self[1] as i32, self[2] as i32, self[3] as i32])
     }
 
