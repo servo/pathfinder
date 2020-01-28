@@ -12,7 +12,6 @@ homepage = "https://github.com/servo/pathfinder"
 
 [dependencies.log]
 version = "0.4"
-features = ["release_max_level_warn"]
 
 [dependencies.pathfinder_simd]
 path = "../simd"
