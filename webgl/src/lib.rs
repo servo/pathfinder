@@ -13,25 +13,16 @@
 #[macro_use]
 extern crate log;
 
-use web_sys::{
-    HtmlCanvasElement,
-    WebGl2RenderingContext,
-};
 use web_sys::WebGl2RenderingContext as WebGl;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{RenderTarget, BlendState, BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{RenderTarget, BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};
 use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
-use pathfinder_simd::default::F32x4;
-use std::ffi::CString;
 use std::mem;
-use std::ptr;
 use std::str;
 use std::time::Duration;
 
@@ -60,6 +51,7 @@ impl WebGlDevice {
                 WebGl::OUT_OF_MEMORY => "OUT_OF_MEMORY",
                 _ => "Unknown"
             });
+            num_errors += 1;
         }
         if num_errors > 0 {
             panic!("aborting due to {} errors", num_errors);
@@ -73,28 +65,26 @@ impl WebGlDevice {
     #[inline]
     fn set_texture_parameters(&self, texture: &WebGlTexture) {
         self.bind_texture(texture, 0);
-        unsafe {
-            self.context.tex_parameteri(
-                WebGl::TEXTURE_2D,
-                WebGl::TEXTURE_MIN_FILTER,
-                WebGl::LINEAR as i32,
-            );
-            self.context.tex_parameteri(
-                WebGl::TEXTURE_2D,
-                WebGl::TEXTURE_MAG_FILTER,
-                WebGl::LINEAR as i32,
-            );
-            self.context.tex_parameteri(
-                WebGl::TEXTURE_2D,
-                WebGl::TEXTURE_WRAP_S,
-                WebGl::CLAMP_TO_EDGE as i32,
-            );
-            self.context.tex_parameteri(
-                WebGl::TEXTURE_2D,
-                WebGl::TEXTURE_WRAP_T,
-                WebGl::CLAMP_TO_EDGE as i32,
-            );
-        }
+        self.context.tex_parameteri(
+            WebGl::TEXTURE_2D,
+            WebGl::TEXTURE_MIN_FILTER,
+            WebGl::LINEAR as i32,
+        );
+        self.context.tex_parameteri(
+            WebGl::TEXTURE_2D,
+            WebGl::TEXTURE_MAG_FILTER,
+            WebGl::LINEAR as i32,
+        );
+        self.context.tex_parameteri(
+            WebGl::TEXTURE_2D,
+            WebGl::TEXTURE_WRAP_S,
+            WebGl::CLAMP_TO_EDGE as i32,
+        );
+        self.context.tex_parameteri(
+            WebGl::TEXTURE_2D,
+            WebGl::TEXTURE_WRAP_T,
+            WebGl::CLAMP_TO_EDGE as i32,
+        );
     }
     #[inline]
     fn bind_texture(&self, texture: &WebGlTexture, unit: u32) {
@@ -438,7 +428,7 @@ impl Device for WebGlDevice {
             format.gl_format(),
             format.gl_type(),
             None,
-        );
+        ).unwrap();
 
         self.set_texture_parameters(&texture);
         texture
@@ -461,7 +451,7 @@ impl Device for WebGlDevice {
             format.gl_format(),
             format.gl_type(),
             Some(data),
-        );
+        ).unwrap();
 
         self.set_texture_parameters(&texture);
         texture
@@ -511,9 +501,6 @@ impl Device for WebGlDevice {
         WebGlProgram {
             context: self.context.clone(),
             gl_program,
-            vertex_shader: vertex_shader.gl_shader,
-            fragment_shader: fragment_shader.gl_shader,
-            name: name.into()
         }
     }
 
@@ -664,7 +651,7 @@ impl Device for WebGlDevice {
                 texture.format.gl_format(),
                 texture.format.gl_type(),
                 Some(data)
-            );
+            ).unwrap();
         } else {
             self.context.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
                 WebGl::TEXTURE_2D,
@@ -676,13 +663,13 @@ impl Device for WebGlDevice {
                 texture.format.gl_format(),
                 texture.format.gl_type(),
                 Some(data)
-            );
+            ).unwrap();
         }
 
         self.set_texture_parameters(texture);
     }
 
-    fn read_pixels(&self, render_target: &RenderTarget<WebGlDevice>, viewport: RectI) -> () {
+    fn read_pixels(&self, _render_target: &RenderTarget<WebGlDevice>, _viewport: RectI) -> () {
         panic!("read_pixels is not supported");
     }
 
@@ -738,7 +725,7 @@ impl Device for WebGlDevice {
     }
 
     #[inline]
-    fn begin_timer_query(&self, query: &Self::TimerQuery) {
+    fn begin_timer_query(&self, _query: &Self::TimerQuery) {
         // FIXME use performance timers
     }
 
@@ -748,18 +735,18 @@ impl Device for WebGlDevice {
     }
 
     #[inline]
-    fn try_recv_timer_query(&self, query: &WebGlTimerQuery) -> Option<Duration> {
+    fn try_recv_timer_query(&self, _query: &WebGlTimerQuery) -> Option<Duration> {
         None
     }
 
     #[inline]
-    fn recv_timer_query(&self, query: &WebGlTimerQuery) -> Duration {
+    fn recv_timer_query(&self, _query: &WebGlTimerQuery) -> Duration {
         Duration::from_millis(0)
     }
-    fn try_recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> Option<TextureData> {
+    fn try_recv_texture_data(&self, _receiver: &Self::TextureDataReceiver) -> Option<TextureData> {
         None
     }
-    fn recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> TextureData {
+    fn recv_texture_data(&self, _receiver: &Self::TextureDataReceiver) -> TextureData {
         unimplemented!()
     }
 
@@ -833,9 +820,6 @@ pub struct WebGlUniform {
 pub struct WebGlProgram {
     context: web_sys::WebGl2RenderingContext,
     pub gl_program: web_sys::WebGlProgram,
-    vertex_shader: web_sys::WebGlShader,
-    fragment_shader: web_sys::WebGlShader,
-    name: String
 }
 
 impl Drop for WebGlProgram {
@@ -986,26 +970,4 @@ pub enum GLVersion {
     GL3 = 0,
     /// OpenGL ES 3.0+.
     GLES3 = 1,
-}
-
-impl GLVersion {
-    fn to_glsl_version_spec(&self) -> &'static str {
-        match *self {
-            GLVersion::GL3 => "330",
-            GLVersion::GLES3 => "300 es",
-        }
-    }
-}
-
-// Utilities
-
-// Flips a buffer of image data upside-down.
-fn flip_y<T>(pixels: &mut [T], size: Vector2I, channels: usize) {
-    let stride = size.x() as usize * channels;
-    for y in 0..(size.y() as usize / 2) {
-        let (index_a, index_b) = (y * stride, (size.y() as usize - y - 1) * stride);
-        for offset in 0..stride {
-            pixels.swap(index_a + offset, index_b + offset);
-        }
-    }
 }
