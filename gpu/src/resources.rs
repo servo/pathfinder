@@ -14,13 +14,14 @@
 
 use std::env;
 use std::fs::File;
-use std::io::{Error as IOError, Read};
+use std::io::{Error as IOError, Read, ErrorKind};
 use std::path::PathBuf;
+use std::borrow::Cow;
 
 pub trait ResourceLoader {
     /// This is deliberately not a `Path`, because these are virtual paths
     /// that do not necessarily correspond to real paths on a filesystem.
-    fn slurp(&self, path: &str) -> Result<Vec<u8>, IOError>;
+    fn slurp(&self, path: &str) -> Result<Cow<'static, [u8]>, IOError>;
 }
 
 pub struct FilesystemResourceLoader {
@@ -56,7 +57,7 @@ impl FilesystemResourceLoader {
 }
 
 impl ResourceLoader for FilesystemResourceLoader {
-    fn slurp(&self, virtual_path: &str) -> Result<Vec<u8>, IOError> {
+    fn slurp(&self, virtual_path: &str) -> Result<Cow<'static, [u8]>, IOError> {
         let mut path = self.directory.clone();
         virtual_path
             .split('/')
@@ -64,6 +65,18 @@ impl ResourceLoader for FilesystemResourceLoader {
 
         let mut data = vec![];
         File::open(&path)?.read_to_end(&mut data)?;
-        Ok(data)
+        Ok(data.into())
+    }
+}
+
+pub struct EmbeddedResourceLoader;
+static RESOURCES: phf::Map<&'static str, &'static [u8]> = include!(concat!(env!("OUT_DIR"), "/", "resources_data.rs"));
+
+impl ResourceLoader for EmbeddedResourceLoader {
+    fn slurp(&self, virtual_path: &str) -> Result<Cow<'static, [u8]>, IOError> {
+        match RESOURCES.get(virtual_path) {
+            Some(&data) => Ok(data.into()),
+            None => Err(ErrorKind::NotFound.into())
+        }
     }
 }

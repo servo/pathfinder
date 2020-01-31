@@ -120,6 +120,17 @@ impl Outline {
         &self.contours
     }
 
+    #[inline]
+    pub fn clear(&mut self) {
+        self.contours.clear();
+        self.bounds = RectF::default();
+    }
+    
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.contours.len()
+    }
+    
     pub fn push_contour(&mut self, contour: Contour) {
         if contour.is_empty() {
             return;
@@ -227,6 +238,16 @@ impl Contour {
         }
     }
 
+    #[inline]
+    pub fn with_capacity(length: usize) -> Contour {
+        Contour {
+            points: Vec::with_capacity(length),
+            flags: Vec::with_capacity(length),
+            bounds: RectF::default(),
+            closed: false,
+        }
+    }
+
     // Replaces this contour with a new one, with arrays preallocated to match `self`.
     #[inline]
     pub(crate) fn take(&mut self) -> Contour {
@@ -306,6 +327,14 @@ impl Contour {
     #[inline]
     pub fn close(&mut self) {
         self.closed = true;
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.points.clear();
+        self.flags.clear();
+        self.bounds = RectF::default();
+        self.closed = false;
     }
 
     // TODO(pcwalton): SIMD.

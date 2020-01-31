@@ -403,6 +403,29 @@ impl Path2D {
         }
     }
 
+    /// Add other path to this path.
+    ///
+    /// note: any non-closed subpaths will be closed
+    pub fn add_path(&mut self, mut other: Path2D) {
+        self.flush_current_contour();
+        other.flush_current_contour();
+        
+        // FIXME(s3bk) should consume segments instead of cloning
+        for contour in other.outline.contours() {
+            self.outline.push_contour(contour.clone());
+        }
+    }
+    
+    /// Transform the path with the given transformation.
+    /// returns the transformed path.
+    ///
+    /// note: any non-closed subpaths will be closed
+    pub fn transform(mut self, transform: &Transform2F) -> Path2D {
+        self.flush_current_contour();
+        self.outline.transform(transform);
+        self
+    }
+    
     fn into_outline(mut self) -> Outline {
         self.flush_current_contour();
         self.outline

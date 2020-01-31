@@ -55,8 +55,8 @@ fn main() {
                                      RendererOptions { background_color: Some(ColorF::white()) });
 
     // Load a font.
-    let font_data = Arc::new(resource_loader.slurp("fonts/overpass-regular.otf").unwrap());
-    let font = Handle::from_memory(font_data, 0);
+    let font_data = resource_loader.slurp("fonts/overpass-regular.otf").unwrap().to_vec();
+    let font = Handle::from_memory(Arc::new(font_data), 0);
     let font_context = CanvasFontContext::from_fonts(iter::once(font));
 
     // Make a canvas.

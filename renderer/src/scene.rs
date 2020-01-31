@@ -163,9 +163,9 @@ impl Scene {
     }
 
     #[inline]
-    pub fn build<E>(&self,
+    pub fn build<E, L: RenderCommandListener>(&self,
                     options: BuildOptions,
-                    listener: Box<dyn RenderCommandListener>,
+                    listener: L,
                     executor: &E)
                     where E: Executor {
         let prepared_options = options.prepare(self.bounds);

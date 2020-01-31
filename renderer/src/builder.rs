@@ -23,24 +23,29 @@ use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
 use std::u16;
 
-pub(crate) struct SceneBuilder<'a> {
+#[cfg(target_arch = "wasm32")]
+use std::time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+pub(crate) struct SceneBuilder<'a, L: RenderCommandListener> {
     scene: &'a Scene,
     built_options: &'a PreparedBuildOptions,
 
     pub(crate) next_alpha_tile_index: AtomicUsize,
     pub(crate) z_buffer: ZBuffer,
-    pub(crate) listener: Box<dyn RenderCommandListener>,
+    pub(crate) listener: L,
 }
 
-impl<'a> SceneBuilder<'a> {
+impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
     pub(crate) fn new(
         scene: &'a Scene,
         built_options: &'a PreparedBuildOptions,
-        listener: Box<dyn RenderCommandListener>,
-    ) -> SceneBuilder<'a> {
+        listener: L,
+    ) -> SceneBuilder<'a, L> {
         let effective_view_box = scene.effective_view_box(built_options);
         SceneBuilder {
             scene,
@@ -53,6 +58,7 @@ impl<'a> SceneBuilder<'a> {
     }
 
     pub fn build<E>(&mut self, executor: &E) where E: Executor {
+        #[cfg(not(target_arch = "wasm32"))]
         let start_time = Instant::now();
 
         let bounding_quad = self.built_options.bounding_quad();
@@ -68,7 +74,12 @@ impl<'a> SceneBuilder<'a> {
 
         self.finish_building(alpha_tiles);
 
+        #[cfg(not(target_arch = "wasm32"))]
         let build_time = Instant::now() - start_time;
+
+        #[cfg(target_arch = "wasm32")]
+        let build_time = Duration::from_millis(0);
+
         self.listener.send(RenderCommand::Finish { build_time });
     }
 
@@ -157,9 +168,9 @@ impl BuiltObject {
         self.tiles.rect
     }
 
-    fn add_fill(
+    fn add_fill<L: RenderCommandListener>(
         &mut self,
-        builder: &SceneBuilder,
+        builder: &SceneBuilder<L>,
         segment: LineSegment2F,
         tile_coords: Vector2I,
     ) {
@@ -209,9 +220,9 @@ impl BuiltObject {
         });
     }
 
-    fn get_or_allocate_alpha_tile_index(
+    fn get_or_allocate_alpha_tile_index<L: RenderCommandListener>(
         &mut self,
-        builder: &SceneBuilder,
+        builder: &SceneBuilder<L>,
         tile_coords: Vector2I,
     ) -> u16 {
         let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
@@ -227,9 +238,9 @@ impl BuiltObject {
         alpha_tile_index
     }
 
-    pub(crate) fn add_active_fill(
+    pub(crate) fn add_active_fill<L: RenderCommandListener>(
         &mut self,
-        builder: &SceneBuilder,
+        builder: &SceneBuilder<L>,
         left: f32,
         right: f32,
         mut winding: i32,
@@ -263,9 +274,9 @@ impl BuiltObject {
         }
     }
 
-    pub(crate) fn generate_fill_primitives_for_line(
+    pub(crate) fn generate_fill_primitives_for_line<L: RenderCommandListener>(
         &mut self,
-        builder: &SceneBuilder,
+        builder: &SceneBuilder<L>,
         mut segment: LineSegment2F,
         tile_y: i32,
     ) {

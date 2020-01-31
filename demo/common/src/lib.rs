@@ -38,8 +38,8 @@ use pathfinder_renderer::post::STEM_DARKENING_FACTORS;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
-use std::fs::File;
-use std::io::{BufWriter, Read};
+use std::fs::{self, File};
+use std::io::{BufWriter};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -757,14 +757,10 @@ pub enum UIVisibility {
 }
 
 fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath) -> BuiltSVG {
-    let mut data;
-    match *input_path {
-        SVGPath::Default => data = resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
-        SVGPath::Resource(ref name) => data = resource_loader.slurp(name).unwrap(),
-        SVGPath::Path(ref path) => {
-            data = vec![];
-            File::open(path).unwrap().read_to_end(&mut data).unwrap();
-        }
+    let data = match *input_path {
+        SVGPath::Default => resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
+        SVGPath::Resource(ref name) => resource_loader.slurp(name).unwrap(),
+        SVGPath::Path(ref path) => fs::read(path).unwrap().into()
     };
 
     BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())

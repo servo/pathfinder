@@ -12,6 +12,7 @@ use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
 use crate::paint::{self, PaintId};
 use crate::sorted_vector::SortedVector;
+use crate::options::RenderCommandListener;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -26,8 +27,8 @@ const FLATTENING_TOLERANCE: f32 = 0.1;
 pub const TILE_WIDTH: u32 = 16;
 pub const TILE_HEIGHT: u32 = 16;
 
-pub(crate) struct Tiler<'a> {
-    builder: &'a SceneBuilder<'a>,
+pub(crate) struct Tiler<'a, L: RenderCommandListener> {
+    builder: &'a SceneBuilder<'a, L>,
     outline: &'a Outline,
     pub built_object: BuiltObject,
     paint_id: PaintId,
@@ -39,16 +40,16 @@ pub(crate) struct Tiler<'a> {
     old_active_edges: Vec<ActiveEdge>,
 }
 
-impl<'a> Tiler<'a> {
+impl<'a, L: RenderCommandListener> Tiler<'a, L> {
     #[allow(clippy::or_fun_call)]
     pub(crate) fn new(
-        builder: &'a SceneBuilder<'a>,
+        builder: &'a SceneBuilder<'a, L>,
         outline: &'a Outline,
         view_box: RectF,
         object_index: u16,
         paint_id: PaintId,
         object_is_opaque: bool,
-    ) -> Tiler<'a> {
+    ) -> Tiler<'a, L> {
         let bounds = outline
             .bounds()
             .intersection(view_box)
@@ -363,11 +364,11 @@ pub fn round_rect_out_to_tile_bounds(rect: RectF) -> RectI {
     .to_i32()
 }
 
-fn process_active_segment(
+fn process_active_segment<L: RenderCommandListener>(
     contour: &Contour,
     from_endpoint_index: u32,
     active_edges: &mut SortedVector<ActiveEdge>,
-    builder: &SceneBuilder,
+    builder: &SceneBuilder<L>,
     built_object: &mut BuiltObject,
     tile_y: i32,
 ) {
@@ -420,7 +421,7 @@ impl ActiveEdge {
         ActiveEdge { segment: *segment, crossing }
     }
 
-    fn process(&mut self, builder: &SceneBuilder, built_object: &mut BuiltObject, tile_y: i32) {
+    fn process<L: RenderCommandListener>(&mut self, builder: &SceneBuilder<L>, built_object: &mut BuiltObject, tile_y: i32) {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         debug!(
             "process_active_edge({:#?}, tile_y={}({}))",
@@ -499,10 +500,10 @@ impl ActiveEdge {
         }
     }
 
-    fn process_line_segment(
+    fn process_line_segment<L: RenderCommandListener>(
         &mut self,
         line_segment: LineSegment2F,
-        builder: &SceneBuilder,
+        builder: &SceneBuilder<L>,
         built_object: &mut BuiltObject,
         tile_y: i32,
     ) -> Option<LineSegment2F> {

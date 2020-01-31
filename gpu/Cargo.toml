@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 half = "1.4"
+phf = "0.8"
 
 [dependencies.image]
 version = "0.21"
@@ -20,3 +21,7 @@ path = "../geometry"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+
+[build-dependencies]
+phf_codegen = "0.7.24"
+half = "1.4"

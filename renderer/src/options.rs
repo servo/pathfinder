@@ -17,6 +17,7 @@ use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::vector::{Vector2F, Vector4F};
 use pathfinder_content::clip::PolygonClipper3D;
 
+// FIXME: Can this use &mut self ? (Sebastian Köln)
 pub trait RenderCommandListener: Send + Sync {
     fn send(&self, command: RenderCommand);
 }
@@ -28,6 +29,12 @@ where
     #[inline]
     fn send(&self, command: RenderCommand) {
         (*self)(command)
+    }
+}
+impl RenderCommandListener for Box<dyn RenderCommandListener> {
+    #[inline]
+    fn send(&self, command: RenderCommand) {
+        (**self).send(command)
     }
 }
 
