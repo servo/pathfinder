@@ -12,6 +12,9 @@ sdl2-sys = "0.32"
 [dependencies.pathfinder_canvas]
 path = "../../canvas"
 
+[dependencies.pathfinder_color]
+path = "../../color"
+
 [dependencies.pathfinder_content]
 path = "../../content"
 

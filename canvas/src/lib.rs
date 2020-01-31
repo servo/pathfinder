@@ -10,7 +10,7 @@
 
 //! A simple API for Pathfinder that mirrors a subset of HTML canvas.
 
-use pathfinder_content::color::ColorU;
+use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};

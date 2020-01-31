@@ -9,10 +9,10 @@
 // except according to those terms.
 
 use std::ops::Add;
-use pathfinder_content::color::{ColorU, ColorF};
+use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::outline::{Outline, Contour};
-use pathfinder_geometry::vector::Vector2F;
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::scene::{PathObject, Scene};
 
 use swf_tree;

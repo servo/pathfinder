@@ -13,7 +13,7 @@
 #[macro_use]
 extern crate bitflags;
 
-use pathfinder_content::color::ColorU;
+use pathfinder_color::ColorU;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
 use pathfinder_content::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};

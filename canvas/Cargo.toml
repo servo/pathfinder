@@ -10,6 +10,9 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 font-kit = { version = "0.4", optional = true }
 
+[dependencies.pathfinder_color]
+path = "../color"
+
 [dependencies.pathfinder_content]
 path = "../content"
 

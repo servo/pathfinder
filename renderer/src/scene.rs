@@ -16,10 +16,10 @@ use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
+use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_content::color::ColorU;
 use pathfinder_content::outline::Outline;
 
 #[derive(Clone)]
@@ -179,10 +179,12 @@ impl Scene {
         }
     }
 }
+
 pub struct PathIter<'a> {
     scene: &'a Scene,
     pos: usize
 }
+
 impl<'a> Iterator for PathIter<'a> {
     type Item = (&'a Paint, &'a Outline, &'a str);
     fn next(&mut self) -> Option<Self::Item> {
@@ -197,6 +199,7 @@ impl<'a> Iterator for PathIter<'a> {
         item
     }
 }
+
 #[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,

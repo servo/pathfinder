@@ -2,6 +2,7 @@
 members = [
     "c",
     "canvas",
+    "color",
     "content",
     "demo/android/rust",
     "demo/common",

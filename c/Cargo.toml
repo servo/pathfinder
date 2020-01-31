@@ -18,6 +18,9 @@ libc = "0.2"
 features = ["pf-text"]
 path = "../canvas"
 
+[dependencies.pathfinder_color]
+path = "../color"
+
 [dependencies.pathfinder_content]
 path = "../content"
 

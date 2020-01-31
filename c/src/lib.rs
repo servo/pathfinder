@@ -15,7 +15,7 @@ use foreign_types::ForeignTypeRef;
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_canvas::{TextAlign, TextMetrics};
-use pathfinder_content::color::{ColorF, ColorU};
+use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::outline::ArcDirection;
 use pathfinder_content::stroke::LineCap;
 use pathfinder_geometry::rect::{RectF, RectI};

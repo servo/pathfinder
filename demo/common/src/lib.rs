@@ -22,7 +22,7 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
-use pathfinder_content::color::ColorU;
+use pathfinder_color::ColorU;
 use pathfinder_export::{Export, FileFormat};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;

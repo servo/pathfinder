@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_content::color::ColorF;
 use pathfinder_gpu::Device;
 
 /// Options that influence rendering.

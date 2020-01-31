@@ -18,7 +18,6 @@ extern crate bitflags;
 extern crate log;
 
 pub mod clip;
-pub mod color;
 pub mod dash;
 pub mod orientation;
 pub mod outline;

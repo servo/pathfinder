@@ -1,9 +1,20 @@
-//! This is a heavily modified version of the pdfpdf crate by Benjamin Kimock <kimockb@gmail.com> (aka. saethlin)
+// pathfinder/export/src/pdf.rs
+//
+// Copyright © 2020 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
-use pathfinder_geometry::vector::Vector2F;
-use pathfinder_content::color::ColorU;
-use std::io::{self, Write};
+//! This is a heavily modified version of the pdfpdf crate by Benjamin Kimock <kimockb@gmail.com>
+//! (aka. saethlin)
+
 use deflate::Compression;
+use pathfinder_color::ColorU;
+use pathfinder_geometry::vector::Vector2F;
+use std::io::{self, Write};
 
 struct Counter<T> {
     inner: T,

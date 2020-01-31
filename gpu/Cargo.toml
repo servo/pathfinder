@@ -12,8 +12,8 @@ version = "0.21"
 default-features = false
 features = ["png_codec"]
 
-[dependencies.pathfinder_content]
-path = "../content"
+[dependencies.pathfinder_color]
+path = "../color"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"

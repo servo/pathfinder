@@ -33,7 +33,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_content::color::ColorF;
+use pathfinder_color::ColorF;
 use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::ClearParams;

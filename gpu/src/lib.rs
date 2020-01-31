@@ -13,7 +13,7 @@
 use crate::resources::ResourceLoader;
 use half::f16;
 use image::ImageFormat;
-use pathfinder_content::color::ColorF;
+use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::Vector2I;

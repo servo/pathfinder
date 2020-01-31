@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
-use pathfinder_content::color::ColorF;
+use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};

@@ -9,8 +9,8 @@
 // except according to those terms.
 
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, Path2D};
+use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use pathfinder_content::color::{ColorF, ColorU};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;

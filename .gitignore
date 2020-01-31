@@ -9,6 +9,8 @@ node_modules
 /shaders/build
 /c/build
 /examples/macos_app/Pathfinder\ Example.xcodeproj/project.xcworkspace/xcuserdata/*
+.project
+.settings
 
 # Editors
 *.swp

@@ -8,25 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_renderer::paint::Paint;
-use pathfinder_content::stroke::{LineJoin, LineCap};
 use crate::{Twips, Point2};
+
+use pathfinder_color::ColorU;
+use pathfinder_content::stroke::{LineJoin, LineCap};
+use pathfinder_renderer::paint::Paint;
 use std::mem;
 use std::cmp::Ordering;
-use swf_tree::{
-    FillStyle,
-    StraightSRgba8,
-    LineStyle,
-    fill_styles,
-    JoinStyle,
-    CapStyle,
-    join_styles,
-    ShapeRecord,
-    shape_records,
-    Vector2D
-};
-use pathfinder_content::color::ColorU;
 use swf_tree::tags::DefineShape;
+use swf_tree::{CapStyle, FillStyle, JoinStyle, LineStyle, ShapeRecord, StraightSRgba8, Vector2D};
+use swf_tree::{fill_styles, join_styles, shape_records};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LineSegment {
