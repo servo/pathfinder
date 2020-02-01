@@ -14,7 +14,7 @@
 
 use std::env;
 use std::fs::File;
-use std::io::{Error as IOError, Read, ErrorKind};
+use std::io::{Error as IOError, Read};
 use std::path::PathBuf;
 use std::borrow::Cow;
 
@@ -69,14 +69,3 @@ impl ResourceLoader for FilesystemResourceLoader {
     }
 }
 
-pub struct EmbeddedResourceLoader;
-static RESOURCES: phf::Map<&'static str, &'static [u8]> = include!(concat!(env!("OUT_DIR"), "/", "resources_data.rs"));
-
-impl ResourceLoader for EmbeddedResourceLoader {
-    fn slurp(&self, virtual_path: &str) -> Result<Cow<'static, [u8]>, IOError> {
-        match RESOURCES.get(virtual_path) {
-            Some(&data) => Ok(data.into()),
-            None => Err(ErrorKind::NotFound.into())
-        }
-    }
-}

@@ -22,6 +22,7 @@ members = [
     "export",
     "metal",
     "renderer",
+    "resources",
     "simd",
     "svg",
     "swf",

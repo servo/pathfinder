@@ -35,6 +35,24 @@ fn main() {
     
     let mut file = File::create(file_path).unwrap();
     let mut map = Map::new();
-    add_dir(&mut map, &resources, None);
+
+    #[cfg(feature="gl3_shaders")]
+    add_dir(&mut map, &resources.join("shaders/gl3"), None);
+
+    #[cfg(feature="metal_shaders")]
+    add_dir(&mut map, &resources.join("shaders/metal"), None);
+
+    #[cfg(feature="fonts")]
+    add_dir(&mut map, &resources.join("fonts"), None);
+
+    #[cfg(feature="debug-fonts")]
+    add_dir(&mut map, &resources.join("debug-fonts"), None);
+
+    #[cfg(feature="svg")]
+    add_dir(&mut map, &resources.join("svg"), None);
+
+    #[cfg(feature="textures")]
+    add_dir(&mut map, &resources.join("textures"), None);
+
     map.build(&mut file).unwrap();
 }
