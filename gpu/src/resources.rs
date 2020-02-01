@@ -13,7 +13,7 @@
 //! We can't always count on a filesystem being present.
 
 use std::env;
-use std::fs::File;
+use std::fs;
 use std::io::{Error as IOError, Read};
 use std::path::PathBuf;
 use std::borrow::Cow;
@@ -63,9 +63,9 @@ impl ResourceLoader for FilesystemResourceLoader {
             .split('/')
             .for_each(|segment| path.push(segment));
 
-        let mut data = vec![];
-        File::open(&path)?.read_to_end(&mut data)?;
-        Ok(data.into())
+        fs::read(&path)
+            .map(|v| v.into())
+            .map_err(|e| IOError::new(e.kind(), format!("trying to read {}", virtual_path)))
     }
 }
 

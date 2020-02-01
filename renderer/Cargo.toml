@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
+[features]
+debug_ui = []
+
 [dependencies]
 bitflags = "1.0"
 byteorder = "1.2"

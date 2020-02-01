@@ -8,7 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[cfg(feature="debug_ui")]
 use crate::gpu::debug::DebugUIPresenter;
+
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
@@ -94,6 +96,8 @@ where
     current_timers: RenderTimers<D>,
     pending_timers: VecDeque<RenderTimers<D>>,
     free_timer_queries: Vec<D::TimerQuery>,
+
+    #[cfg(feature="debug_ui")]
     pub debug_ui_presenter: DebugUIPresenter<D>,
 
     // Extra info
@@ -121,8 +125,8 @@ where
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
 
-        let area_lut_texture = device.create_texture_from_png(resources, "area-lut");
-        let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
+        let area_lut_texture = device.create_texture_from_png(resources, "lut/area");
+        let gamma_lut_texture = device.create_texture_from_png(resources, "lut/gamma");
 
         let quad_vertex_positions_buffer = device.create_buffer();
         device.allocate_buffer(
@@ -190,6 +194,8 @@ where
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
         let window_size = dest_framebuffer.window_size(&device);
+
+        #[cfg(feature="debug_ui")]
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
         Renderer {
@@ -228,6 +234,8 @@ where
             current_timers: RenderTimers::new(),
             pending_timers: VecDeque::new(),
             free_timer_queries: vec![],
+
+            #[cfg(feature="debug_ui")]
             debug_ui_presenter,
 
             framebuffer_flags: FramebufferFlags::empty(),
@@ -286,6 +294,7 @@ where
         self.device.end_commands();
     }
 
+    #[cfg(feature="debug_ui")]
     pub fn draw_debug_ui(&self) {
         self.debug_ui_presenter.draw(&self.device);
     }
@@ -339,6 +348,7 @@ where
 
     #[inline]
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Vector2I) {
+        #[cfg(feature="debug_ui")]
         self.debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
     }
 

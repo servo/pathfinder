@@ -11,7 +11,9 @@ metal_shaders = []
 fonts = []
 debug-fonts = []
 svg = []
-textures = []
+textures_lut = []
+textures_demo = []
+textures_debug = []
 
 [dependencies]
 pathfinder_gpu = { path = "../gpu" }

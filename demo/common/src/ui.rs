@@ -39,14 +39,14 @@ const SCREENSHOT_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 2;
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 
-static EFFECTS_PNG_NAME: &'static str = "demo-effects";
-static OPEN_PNG_NAME: &'static str = "demo-open";
-static ROTATE_PNG_NAME: &'static str = "demo-rotate";
-static ZOOM_IN_PNG_NAME: &'static str = "demo-zoom-in";
-static ZOOM_ACTUAL_SIZE_PNG_NAME: &'static str = "demo-zoom-actual-size";
-static ZOOM_OUT_PNG_NAME: &'static str = "demo-zoom-out";
-static BACKGROUND_PNG_NAME: &'static str = "demo-background";
-static SCREENSHOT_PNG_NAME: &'static str = "demo-screenshot";
+static EFFECTS_PNG_NAME: &'static str = "demo/effects";
+static OPEN_PNG_NAME: &'static str = "demo/open";
+static ROTATE_PNG_NAME: &'static str = "demo/rotate";
+static ZOOM_IN_PNG_NAME: &'static str = "demo/zoom-in";
+static ZOOM_ACTUAL_SIZE_PNG_NAME: &'static str = "demo/zoom-actual-size";
+static ZOOM_OUT_PNG_NAME: &'static str = "demo/zoom-out";
+static BACKGROUND_PNG_NAME: &'static str = "demo/background";
+static SCREENSHOT_PNG_NAME: &'static str = "demo/screenshot";
 
 pub struct DemoUIModel {
     pub mode: Mode,

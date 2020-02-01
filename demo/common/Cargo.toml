@@ -39,6 +39,7 @@ path = "../../gpu"
 
 [dependencies.pathfinder_renderer]
 path = "../../renderer"
+features = ["debug_ui"]
 
 [dependencies.pathfinder_simd]
 path = "../../simd"

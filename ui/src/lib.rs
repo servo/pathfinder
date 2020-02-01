@@ -55,10 +55,10 @@ static OUTLINE_COLOR:     ColorU = ColorU { r: 255, g: 255, b: 255, a: 192 };
 static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
 
 static FONT_JSON_VIRTUAL_PATH: &'static str = "debug-fonts/regular.json";
-static FONT_PNG_NAME: &'static str = "debug-font";
+static FONT_PNG_NAME: &'static str = "debug/font";
 
-static CORNER_FILL_PNG_NAME: &'static str = "debug-corner-fill";
-static CORNER_OUTLINE_PNG_NAME: &'static str = "debug-corner-outline";
+static CORNER_FILL_PNG_NAME: &'static str = "debug/corner-fill";
+static CORNER_OUTLINE_PNG_NAME: &'static str = "debug/corner-outline";
 
 static QUAD_INDICES:              [u32; 6] = [0, 1, 3, 1, 2, 3];
 static RECT_LINE_INDICES:         [u32; 8] = [0, 1, 1, 2, 2, 3, 3, 0];
