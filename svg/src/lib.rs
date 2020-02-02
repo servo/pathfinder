@@ -60,10 +60,10 @@ bitflags! {
 }
 
 impl BuiltSVG {
-    // TODO(pcwalton): Allow a global transform to be set.
     pub fn from_tree(tree: Tree) -> BuiltSVG {
-        let global_transform = Transform2F::default();
-
+        Self::from_tree_with_transformation(tree, Transform2F::default())
+    }
+    pub fn from_tree_with_transformation(tree: Tree, global_transform: Transform2F) -> BuiltSVG {
         let mut built_svg = BuiltSVG {
             scene: Scene::new(),
             result_flags: BuildResultFlags::empty(),
@@ -79,10 +79,6 @@ impl BuiltSVG {
             }
             _ => unreachable!(),
         };
-
-        // FIXME(pcwalton): This is needed to avoid stack exhaustion in debug builds when
-        // recursively dropping reference counts on very large SVGs. :(
-        mem::forget(tree);
 
         built_svg
     }

@@ -11,7 +11,7 @@
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, BitAnd, BitOr, BitXor, Index, IndexMut, Mul, Not, Shr, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Index, IndexMut, Mul, Not, Shr, Sub};
 
 #[cfg(target_pointer_width = "32")]
 use std::arch::x86::{__m128, __m128i};
@@ -188,6 +188,14 @@ impl Add<F32x2> for F32x2 {
     #[inline]
     fn add(self, other: F32x2) -> F32x2 {
         (self.to_f32x4() + other.to_f32x4()).xy()
+    }
+}
+
+impl Div<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn div(self, other: F32x2) -> F32x2 {
+        (self.to_f32x4() / other.to_f32x4()).xy()
     }
 }
 
@@ -420,6 +428,14 @@ impl Add<F32x4> for F32x4 {
     #[inline]
     fn add(self, other: F32x4) -> F32x4 {
         unsafe { F32x4(x86::_mm_add_ps(self.0, other.0)) }
+    }
+}
+
+impl Div<F32x4> for F32x4 {
+    type Output = F32x4;
+    #[inline]
+    fn div(self, other: F32x4) -> F32x4 {
+        unsafe { F32x4(x86::_mm_div_ps(self.0, other.0)) }
     }
 }
 

@@ -11,7 +11,7 @@
 //! A SIMD-optimized point type.
 
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
@@ -179,6 +179,14 @@ impl Mul<Vector2F> for Vector2F {
     #[inline]
     fn mul(self, other: Vector2F) -> Vector2F {
         Vector2F(self.0 * other.0)
+    }
+}
+
+impl Div<Vector2F> for Vector2F {
+    type Output = Vector2F;
+    #[inline]
+    fn div(self, other: Vector2F) -> Vector2F {
+        Vector2F(self.0 / other.0)
     }
 }
 
