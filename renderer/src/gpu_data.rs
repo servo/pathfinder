@@ -13,8 +13,8 @@
 use crate::options::BoundingQuad;
 use crate::tile_map::DenseTileMap;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
 

@@ -47,12 +47,14 @@ impl TextureAllocator {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn free(&mut self, location: TextureLocation) {
         let requested_length = location.rect.width() as u32;
         self.root.free(Vector2I::default(), self.size, location.rect.origin(), requested_length)
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         match self.root {
             TreeNode::EmptyLeaf => true,
@@ -126,6 +128,7 @@ impl TreeNode {
         }
     }
 
+    #[allow(dead_code)]
     fn free(&mut self,
             this_origin: Vector2I,
             this_size: u32,

@@ -10,7 +10,7 @@
 
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
-use crate::paint::{self, PaintId};
+use crate::paint::PaintMetadata;
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
@@ -30,9 +30,8 @@ pub(crate) struct Tiler<'a> {
     builder: &'a SceneBuilder<'a>,
     outline: &'a Outline,
     pub built_object: BuiltObject,
-    paint_id: PaintId,
+    paint_metadata: &'a PaintMetadata,
     object_index: u16,
-    object_is_opaque: bool,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -46,8 +45,7 @@ impl<'a> Tiler<'a> {
         outline: &'a Outline,
         view_box: RectF,
         object_index: u16,
-        paint_id: PaintId,
-        object_is_opaque: bool,
+        paint_metadata: &'a PaintMetadata,
     ) -> Tiler<'a> {
         let bounds = outline
             .bounds()
@@ -60,8 +58,7 @@ impl<'a> Tiler<'a> {
             outline,
             built_object,
             object_index,
-            paint_id,
-            object_is_opaque,
+            paint_metadata,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -122,13 +119,13 @@ impl<'a> Tiler<'a> {
                 }
 
                 // If this is a solid tile, poke it into the Z-buffer and stop here.
-                if self.object_is_opaque {
+                if self.paint_metadata.is_opaque {
                     self.builder.z_buffer.update(tile_coords, self.object_index);
                     continue;
                 }
             }
 
-            let origin_uv = paint::paint_id_to_tex_coords(self.paint_id);
+            let origin_uv = self.paint_metadata.tex_coords.origin();
 
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,
