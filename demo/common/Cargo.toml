@@ -9,12 +9,12 @@ pf-gl = []
 
 [dependencies]
 clap = "2.32"
-gl = "0.6"
+gl = "0.14"
 rayon = "1.0"
-usvg = "0.8"
+usvg = "0.9"
 
 [dependencies.image]
-version = "0.21"
+version = "0.22"
 default-features = false
 features = ["png_codec"]
 

@@ -8,7 +8,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-gl = "0.6"
+gl = "0.14"
 half = "1.4"
 
 [dependencies.log]

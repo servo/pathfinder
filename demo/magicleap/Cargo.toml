@@ -5,14 +5,14 @@ edition = "2018"
 authors = ["Alan Jeffrey <ajeffrey@mozilla.com>"]
 
 [dependencies]
-gl = "0.6"
+gl = "0.14"
 rayon = "1.0"
-usvg = "0.8"
+usvg = "0.9"
 egl = "0.2"
 log = "0.4"
-smallvec = "0.6"
-glutin = { version = "0.19", optional = true }
-crossbeam-channel = "0.3"
+smallvec = "1.2"
+glutin = { version = "0.22", optional = true }
+crossbeam-channel = "0.4"
 
 [lib]
 crate-type = ["cdylib"]

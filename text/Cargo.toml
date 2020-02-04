@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 euclid = "0.20"
-font-kit = "0.4"
+font-kit = "0.5"
 lyon_path = "0.14"
 
 [dependencies.pathfinder_content]
@@ -20,4 +20,4 @@ path = "../renderer"
 
 [dependencies.skribo]
 git = "https://github.com/linebender/skribo.git"
-rev = "03c63ac17bb93e29f82e959dac94027935a21159"
+rev = "f306037c36f596bba45cb9fd698ea53b6ca65e2e"

@@ -5,10 +5,10 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-arrayvec = "0.4"
+arrayvec = "0.5"
 bitflags = "1.0"
 log = "0.4"
-smallvec = "0.6"
+smallvec = "1.2"
 
 [dependencies.pathfinder_color]
 path = "../color"
