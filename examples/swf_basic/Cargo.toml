@@ -9,8 +9,8 @@ gl = "0.6"
 sdl2 = "0.32"
 sdl2-sys = "0.32"
 
-swf-parser = "0.7.0"
-swf-tree = "0.7.0"
+swf-parser = "0.10"
+swf-types = "0.10"
 
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
