@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/tile_solid_multicolor.vs.glsl
+// pathfinder/shaders/tile_solid.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,13 +10,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#extension GL_GOOGLE_include_directive : enable
-
 precision highp float;
 
-#include "tile_solid_vertex.inc.glsl"
-#include "tile_multicolor.inc.glsl"
+uniform mat4 uTransform;
+uniform vec2 uTileSize;
+
+in uvec2 aTessCoord;
+in ivec2 aTileOrigin;
+in vec2 aColorTexCoord;
+
+out vec2 vColorTexCoord;
 
 void main() {
-    computeVaryings();
+    vec2 position = vec2(aTileOrigin + ivec2(aTessCoord)) * uTileSize;
+    vColorTexCoord = aColorTexCoord;
+    gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }

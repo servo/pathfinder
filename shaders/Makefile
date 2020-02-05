@@ -18,20 +18,14 @@ SHADERS=\
 	stencil.fs.glsl \
 	stencil.vs.glsl \
 	tile_alpha.fs.glsl \
-	tile_alpha_monochrome.vs.glsl \
-	tile_alpha_multicolor.vs.glsl \
+	tile_alpha.vs.glsl \
 	tile_solid.fs.glsl \
-	tile_solid_monochrome.vs.glsl \
-	tile_solid_multicolor.vs.glsl \
+	tile_solid.vs.glsl \
 	$(EMPTY)
 
 INCLUDES=\
 	post_convolve.inc.glsl \
-	tile_alpha_vertex.inc.glsl \
-	tile_multicolor.inc.glsl \
 	post_gamma_correct.inc.glsl \
-	tile_monochrome.inc.glsl \
-	tile_solid_vertex.inc.glsl \
 	$(EMPTY)
 
 OUT=\

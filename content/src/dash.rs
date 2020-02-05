@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/dash.rs
+// pathfinder/content/src/dash.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

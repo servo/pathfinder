@@ -10,6 +10,9 @@ bitflags = "1.0"
 log = "0.4"
 smallvec = "0.6"
 
+[dependencies.pathfinder_color]
+path = "../color"
+
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 

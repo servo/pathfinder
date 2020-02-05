@@ -1523,6 +1523,7 @@ dependencies = [
  "arrayvec 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_color 0.1.0",
  "pathfinder_geometry 0.4.0",
  "pathfinder_simd 0.4.0",
  "smallvec 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -12,7 +12,7 @@ use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
 
 // TODO(pcwalton): Maybe this should be a u32?
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct ColorU {
     pub r: u8,
     pub g: u8,
