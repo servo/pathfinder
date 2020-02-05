@@ -13,7 +13,9 @@ use crate::gpu_data::PaintData;
 use crate::scene::Scene;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform2d::{Matrix2x2I, Transform2I};
 use pathfinder_geometry::vector::Vector2I;
+use pathfinder_simd::default::I32x4;
 
 const PAINT_TEXTURE_LENGTH: u32 = 1024;
 const PAINT_TEXTURE_SCALE: u32 = 65536 / PAINT_TEXTURE_LENGTH;
@@ -52,8 +54,8 @@ pub struct PaintInfo {
 
 #[derive(Debug)]
 pub struct PaintMetadata {
-    /// The texture coordinates of each paint, in 24.8 fixed point.
-    pub tex_coords: RectI,
+    /// The transform to apply to the texture coordinates, in 0.16 fixed point.
+    pub tex_transform: Transform2I,
     /// True if this paint is fully opaque.
     pub is_opaque: bool,
 }
@@ -69,11 +71,12 @@ impl Scene {
             // TODO(pcwalton): Handle other paint types.
             let texture_location = solid_color_tile_builder.allocate(&mut allocator);
             put_pixel(&mut texels, texture_location.rect.origin(), paint.color);
-            let tex_coords =
-                RectI::new(texture_location.rect.origin().scale(PAINT_TEXTURE_SCALE as i32) +
-                           Vector2I::splat(PAINT_TEXTURE_SCALE as i32 / 2),
-                           Vector2I::default());
-            metadata.push(PaintMetadata { tex_coords, is_opaque: paint.is_opaque() });
+            let tex_transform = Transform2I {
+                matrix: Matrix2x2I(I32x4::default()),
+                vector: texture_location.rect.origin().scale(PAINT_TEXTURE_SCALE as i32) +
+                    Vector2I::splat(PAINT_TEXTURE_SCALE as i32 / 2),
+            };
+            metadata.push(PaintMetadata { tex_transform, is_opaque: paint.is_opaque() });
         }
 
         let size = Vector2I::splat(PAINT_TEXTURE_LENGTH as i32);

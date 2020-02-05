@@ -40,8 +40,8 @@ const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 12;
-const MASK_TILE_INSTANCE_SIZE: usize = 12;
+const SOLID_TILE_INSTANCE_SIZE: usize = 20;
+const MASK_TILE_INSTANCE_SIZE: usize = 20;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -953,8 +953,10 @@ where
                                   .unwrap();
         let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex")
                                     .unwrap();
-        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                          "ColorTexCoord");
+        let color_tex_matrix_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                           "ColorTexMatrix").unwrap();
+        let color_tex_offset_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                           "ColorTexOffset").unwrap();
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
@@ -996,19 +998,28 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        if let Some(color_tex_coord_attr) = color_tex_coord_attr {
-            device.configure_vertex_attr(&vertex_array,
-                                         &color_tex_coord_attr,
-                                         &VertexAttrDescriptor {
-                                            size: 2,
-                                            class: VertexAttrClass::FloatNorm,
-                                            attr_type: VertexAttrType::U16,
-                                            stride: MASK_TILE_INSTANCE_SIZE,
-                                            offset: 8,
-                                            divisor: 1,
-                                            buffer_index: 1,
-                                         });
-        }
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_matrix_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 4,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: MASK_TILE_INSTANCE_SIZE,
+                                        offset: 8,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_offset_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 2,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: MASK_TILE_INSTANCE_SIZE,
+                                        offset: 16,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
@@ -1039,8 +1050,10 @@ where
                                     .unwrap();
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin")
                                      .unwrap();
-        let color_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                          "ColorTexCoord");
+        let color_tex_matrix_attr = device.get_vertex_attr(&solid_tile_program.program,
+                                                           "ColorTexMatrix").unwrap();
+        let color_tex_offset_attr = device.get_vertex_attr(&solid_tile_program.program,
+                                                           "ColorTexOffset").unwrap();
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
@@ -1064,19 +1077,28 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        if let Some(color_tex_coord_attr) = color_tex_coord_attr {
-            device.configure_vertex_attr(&vertex_array,
-                                         &color_tex_coord_attr,
-                                         &VertexAttrDescriptor {
-                                            size: 2,
-                                            class: VertexAttrClass::FloatNorm,
-                                            attr_type: VertexAttrType::U16,
-                                            stride: SOLID_TILE_INSTANCE_SIZE,
-                                            offset: 4,
-                                            divisor: 1,
-                                            buffer_index: 1,
-                                         });
-        }
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_matrix_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 4,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: SOLID_TILE_INSTANCE_SIZE,
+                                        offset: 4,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_offset_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 2,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: SOLID_TILE_INSTANCE_SIZE,
+                                        offset: 12,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }

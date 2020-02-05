@@ -15,8 +15,9 @@ use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
 use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::transform2d::Transform2I;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::cmp::Ordering;
 use std::mem;
 
@@ -125,14 +126,12 @@ impl<'a> Tiler<'a> {
                 }
             }
 
-            let origin_uv = self.paint_metadata.tex_coords.origin();
-
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,
                 tile.backdrop,
                 self.object_index,
                 tile.alpha_tile_index as u16,
-                origin_uv,
+                self.paint_metadata.tex_transform,
             );
 
             self.built_object.alpha_tiles.push(alpha_tile);
@@ -533,7 +532,7 @@ impl AlphaTileBatchPrimitive {
            backdrop: i8,
            object_index: u16,
            tile_index: u16,
-           origin_uv: Vector2I)
+           tex_transform: Transform2I)
            -> AlphaTileBatchPrimitive {
         AlphaTileBatchPrimitive {
             tile_x_lo: (tile_coords.x() & 0xff) as u8,
@@ -542,8 +541,12 @@ impl AlphaTileBatchPrimitive {
             backdrop,
             object_index,
             tile_index,
-            origin_u: origin_uv.x() as u16,
-            origin_v: origin_uv.y() as u16,
+            texture_m00: tex_transform.matrix.m11() as u16,
+            texture_m10: tex_transform.matrix.m21() as u16,
+            texture_m01: tex_transform.matrix.m12() as u16,
+            texture_m11: tex_transform.matrix.m22() as u16,
+            texture_m02: tex_transform.vector.x() as u16,
+            texture_m12: tex_transform.vector.y() as u16,
         }
     }
 

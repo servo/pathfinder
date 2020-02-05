@@ -15,8 +15,9 @@ use crate::paint::PaintMetadata;
 use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2I;
+use pathfinder_geometry::vector::Vector2I;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -75,11 +76,11 @@ impl ZBuffer {
             }
 
             let paint_id = paths[object_index as usize].paint();
-            let origin_uv = paint_metadata[paint_id.0 as usize].tex_coords.origin();
+            let tex_transform = paint_metadata[paint_id.0 as usize].tex_transform;
 
             solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords + self.buffer.rect.origin(),
                                                           object_index as u16,
-                                                          origin_uv));
+                                                          tex_transform));
         }
 
         solid_tiles
@@ -87,14 +88,18 @@ impl ZBuffer {
 }
 
 impl SolidTileBatchPrimitive {
-    fn new(tile_coords: Vector2I, object_index: u16, origin_uv: Vector2I)
+    fn new(tile_coords: Vector2I, object_index: u16, tex_transform: Transform2I)
            -> SolidTileBatchPrimitive {
         SolidTileBatchPrimitive {
             tile_x: tile_coords.x() as i16,
             tile_y: tile_coords.y() as i16,
             object_index: object_index,
-            origin_u: origin_uv.x() as u16,
-            origin_v: origin_uv.y() as u16,
+            texture_m00: tex_transform.matrix.m11() as u16,
+            texture_m10: tex_transform.matrix.m21() as u16,
+            texture_m01: tex_transform.matrix.m12() as u16,
+            texture_m11: tex_transform.matrix.m22() as u16,
+            texture_m02: tex_transform.vector.x() as u16,
+            texture_m12: tex_transform.vector.y() as u16,
             pad: 0,
         }
     }

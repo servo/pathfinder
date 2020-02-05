@@ -72,8 +72,12 @@ pub struct FillBatchPrimitive {
 pub struct SolidTileBatchPrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub origin_u: u16,
-    pub origin_v: u16,
+    pub texture_m00: u16,
+    pub texture_m10: u16,
+    pub texture_m01: u16,
+    pub texture_m11: u16,
+    pub texture_m02: u16,
+    pub texture_m12: u16,
     pub object_index: u16,
     pub pad: u16,
 }
@@ -87,8 +91,12 @@ pub struct AlphaTileBatchPrimitive {
     pub backdrop: i8,
     pub object_index: u16,
     pub tile_index: u16,
-    pub origin_u: u16,
-    pub origin_v: u16,
+    pub texture_m00: u16,
+    pub texture_m10: u16,
+    pub texture_m01: u16,
+    pub texture_m11: u16,
+    pub texture_m02: u16,
+    pub texture_m12: u16,
 }
 
 impl Debug for RenderCommand {

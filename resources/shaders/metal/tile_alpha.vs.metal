@@ -25,9 +25,10 @@ struct main0_in
 {
     uint2 aTessCoord [[attribute(0)]];
     uint3 aTileOrigin [[attribute(1)]];
-    float2 aColorTexCoord [[attribute(2)]];
-    int aBackdrop [[attribute(3)]];
-    int aTileIndex [[attribute(4)]];
+    float4 aColorTexMatrix [[attribute(2)]];
+    float2 aColorTexOffset [[attribute(3)]];
+    int aBackdrop [[attribute(4)]];
+    int aTileIndex [[attribute(5)]];
 };
 
 float2 computeTileOffset(thread const uint& tileIndex, thread const float& stencilTextureWidth, thread float2 uTileSize)
@@ -40,14 +41,15 @@ float2 computeTileOffset(thread const uint& tileIndex, thread const float& stenc
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
+    float2 tileOffset = float2(in.aTessCoord) * (*spvDescriptorSet0.uTileSize);
     float2 origin = float2(in.aTileOrigin.xy) + (float2(float(in.aTileOrigin.z & 15u), float(in.aTileOrigin.z >> 4u)) * 256.0);
-    float2 position = (origin + float2(in.aTessCoord)) * (*spvDescriptorSet0.uTileSize);
+    float2 position = (origin * (*spvDescriptorSet0.uTileSize)) + tileOffset;
     uint param = uint(in.aTileIndex);
     float param_1 = (*spvDescriptorSet0.uStencilTextureSize).x;
     float2 maskTexCoordOrigin = computeTileOffset(param, param_1, (*spvDescriptorSet0.uTileSize));
-    float2 maskTexCoord = maskTexCoordOrigin + (float2(in.aTessCoord) * (*spvDescriptorSet0.uTileSize));
+    float2 maskTexCoord = maskTexCoordOrigin + tileOffset;
     out.vMaskTexCoord = maskTexCoord / (*spvDescriptorSet0.uStencilTextureSize);
-    out.vColorTexCoord = in.aColorTexCoord;
+    out.vColorTexCoord = (float2x2(float2(in.aColorTexMatrix.xy), float2(in.aColorTexMatrix.zw)) * tileOffset) + in.aColorTexOffset;
     out.vBackdrop = float(in.aBackdrop);
     out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(position, 0.0, 1.0);
     return out;
