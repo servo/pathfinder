@@ -18,3 +18,6 @@ path = "../geometry"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+
+[dev-dependencies]
+quickcheck = "0.9"
