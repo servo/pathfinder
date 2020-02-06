@@ -9,9 +9,9 @@ build = "build.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-font-kit = "0.4"
-foreign-types = "0.3"
-gl = "0.6"
+font-kit = "0.5"
+foreign-types = "0.5"
+gl = "0.14"
 libc = "0.2"
 
 [dependencies.pathfinder_canvas]
@@ -46,4 +46,4 @@ metal = "0.17"
 path = "../metal"
 
 [build-dependencies]
-cbindgen = "0.8"
+cbindgen = "0.13"

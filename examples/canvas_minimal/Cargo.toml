@@ -5,9 +5,9 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-gl = "0.6"
-sdl2 = "0.32"
-sdl2-sys = "0.32"
+gl = "0.14"
+sdl2 = "0.33"
+sdl2-sys = "0.33"
 
 [dependencies.pathfinder_canvas]
 path = "../../canvas"

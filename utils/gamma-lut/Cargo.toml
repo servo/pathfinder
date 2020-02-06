@@ -5,5 +5,5 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 clap = "2.27"
-image = "0.19"
-log = "0.3"
+log = "0.4"
+image = "0.22"

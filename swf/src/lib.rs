@@ -15,9 +15,8 @@ use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::scene::{PathObject, Scene};
 
-use swf_tree;
-use swf_tree::tags::SetBackgroundColor;
-use swf_tree::{Tag, SRgb8, Movie};
+use swf_types::tags::SetBackgroundColor;
+use swf_types::{Tag, SRgb8, Movie};
 
 use crate::shapes::{GraphicLayers, PaintOrLine};
 
@@ -138,7 +137,7 @@ pub fn process_swf_tags(movie: &Movie) -> (SymbolLibrary, Stage) {
                 stage.background_color = *color;
             },
             Tag::DefineShape(shape) => {
-                symbol_library.add_symbol(Symbol::Graphic(shapes::decode_shape(&shape)));
+                symbol_library.add_symbol(Symbol::Graphic(shapes::decode_shape(shape)));
                 // We will assume that symbol ids just go up, and are 1 based.
                 let symbol_id: SymbolId = shape.id;
                 debug_assert!(symbol_id as usize == symbol_library.0.len());

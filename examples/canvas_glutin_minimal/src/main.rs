@@ -11,8 +11,10 @@
 //! Demonstrates how to use the Pathfinder canvas API with `glutin`.
 
 use glutin::dpi::PhysicalSize;
-use glutin::{ContextBuilder, ControlFlow, Event, EventsLoop, GlProfile, GlRequest, KeyboardInput};
-use glutin::{VirtualKeyCode, WindowBuilder, WindowEvent};
+use glutin::{ContextBuilder, GlProfile, GlRequest};
+use glutin::event_loop::{ControlFlow, EventLoop};
+use glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
+use glutin::window::WindowBuilder;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
@@ -27,15 +29,13 @@ use pathfinder_renderer::options::BuildOptions;
 
 fn main() {
     // Calculate the right logical size of the window.
-    let mut event_loop = EventsLoop::new();
-    let hidpi_factor = event_loop.get_primary_monitor().get_hidpi_factor();
+    let event_loop = EventLoop::new();
     let window_size = Vector2I::new(640, 480);
     let physical_window_size = PhysicalSize::new(window_size.x() as f64, window_size.y() as f64);
-    let logical_window_size = physical_window_size.to_logical(hidpi_factor);
 
     // Open a window.
     let window_builder = WindowBuilder::new().with_title("Minimal example")
-                                             .with_dimensions(logical_window_size);
+                                             .with_inner_size(physical_window_size);
 
     // Create an OpenGL 3.x context for Pathfinder to use.
     let gl_context = ContextBuilder::new().with_gl(GlRequest::Latest)
@@ -80,7 +80,7 @@ fn main() {
     gl_context.swap_buffers().unwrap();
 
     // Wait for a keypress.
-    event_loop.run_forever(|event| {
+    event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
             Event::WindowEvent {
@@ -89,8 +89,12 @@ fn main() {
                     ..
                 },
                 ..
-            } => ControlFlow::Break,
-            _ => ControlFlow::Continue,
-        }
+            } => {
+                *control_flow = ControlFlow::Exit;
+            },
+            _ => {
+                *control_flow = ControlFlow::Wait;
+            },
+        };
     })
 }

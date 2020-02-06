@@ -5,8 +5,8 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-gl = "0.6"
-glutin = "0.21"
+gl = "0.14"
+glutin = "0.22"
 
 [dependencies.pathfinder_canvas]
 path = "../../canvas"
