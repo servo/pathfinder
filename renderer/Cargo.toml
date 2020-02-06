@@ -7,11 +7,11 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 bitflags = "1.0"
 byteorder = "1.2"
-hashbrown = "0.1"
+hashbrown = "0.7"
 rayon = "1.0"
 serde = "1.0"
 serde_json = "1.0"
-smallvec = "0.6"
+smallvec = "1.2"
 
 [dependencies.log]
 version = "0.4"
@@ -36,4 +36,4 @@ path = "../simd"
 path = "../ui"
 
 [dev-dependencies]
-quickcheck = "0.8"
+quickcheck = "0.9"

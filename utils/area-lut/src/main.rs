@@ -5,7 +5,7 @@ extern crate euclid;
 extern crate image;
 
 use clap::{App, Arg};
-use euclid::Point2D;
+use euclid::default::Point2D;
 use image::{ImageBuffer, Luma};
 use std::f32;
 use std::path::Path;

@@ -15,9 +15,9 @@ use pathfinder_content::stroke::{LineJoin, LineCap};
 use pathfinder_renderer::paint::Paint;
 use std::cmp::Ordering;
 use std::mem;
-use swf_tree::tags::DefineShape;
-use swf_tree::{CapStyle, FillStyle, JoinStyle, LineStyle, ShapeRecord, StraightSRgba8, Vector2D};
-use swf_tree::{fill_styles, join_styles, shape_records};
+use swf_types::tags::DefineShape;
+use swf_types::{CapStyle, FillStyle, JoinStyle, LineStyle, ShapeRecord, StraightSRgba8, Vector2D};
+use swf_types::{fill_styles, join_styles, shape_records};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LineSegment {

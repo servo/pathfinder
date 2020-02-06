@@ -8,7 +8,7 @@ edition = "2018"
 half = "1.4"
 
 [dependencies.image]
-version = "0.21"
+version = "0.22"
 default-features = false
 features = ["png_codec"]
 

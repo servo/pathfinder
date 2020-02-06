@@ -63,7 +63,7 @@ fn main() {
         swf_bytes = Vec::from(&default_tiger[..]);
     }
 
-    let (_, movie): (_, swf_tree::Movie) = swf_parser::parsers::movie::parse_movie(&swf_bytes[..]).unwrap();
+    let (_, movie): (_, swf_types::Movie) = swf_parser::streaming::movie::parse_movie(&swf_bytes[..]).unwrap();
 
     // Set up SDL2.
     let sdl_context = sdl2::init().unwrap();
