@@ -13,7 +13,6 @@ half = "1.4"
 
 [dependencies.log]
 version = "0.4"
-features = ["release_max_level_warn"]
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"

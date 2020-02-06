@@ -15,7 +15,6 @@ smallvec = "1.2"
 
 [dependencies.log]
 version = "0.4"
-features = ["release_max_level_warn"]
 
 [dependencies.pathfinder_color]
 path = "../color"
