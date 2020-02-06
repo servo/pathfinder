@@ -12,6 +12,7 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
+use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
@@ -21,6 +22,7 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
+use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
 use std::mem;
@@ -129,19 +131,19 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
-        self.current_state.fill_paint = new_fill_style.to_paint();
+        self.current_state.fill_paint = new_fill_style.into_paint();
     }
 
     #[inline]
     pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
-        self.current_state.stroke_paint = new_stroke_style.to_paint();
+        self.current_state.stroke_paint = new_stroke_style.into_paint();
     }
 
     // Shadows
 
     #[inline]
     pub fn set_shadow_color(&mut self, new_shadow_color: ColorU) {
-        self.current_state.shadow_paint = Paint { color: new_shadow_color };
+        self.current_state.shadow_paint = Paint::Color(new_shadow_color);
     }
 
     #[inline]
@@ -156,7 +158,7 @@ impl CanvasRenderingContext2D {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
-        let paint = self.current_state.resolve_paint(self.current_state.fill_paint);
+        let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
         let paint_id = self.scene.push_paint(&paint);
 
         self.push_path(outline, paint_id);
@@ -164,7 +166,7 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint = self.current_state.resolve_paint(self.current_state.stroke_paint);
+        let paint = self.current_state.resolve_paint(&self.current_state.stroke_paint);
         let paint_id = self.scene.push_paint(&paint);
 
         let mut stroke_style = self.current_state.resolve_stroke_style();
@@ -195,7 +197,7 @@ impl CanvasRenderingContext2D {
 
     fn push_path(&mut self, outline: Outline, paint_id: PaintId) {
         if !self.current_state.shadow_paint.is_fully_transparent() {
-            let paint = self.current_state.resolve_paint(self.current_state.shadow_paint);
+            let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
             let paint_id = self.scene.push_paint(&paint);
 
             let mut outline = outline.clone();
@@ -281,18 +283,23 @@ impl State {
             miter_limit: 10.0,
             line_dash: vec![],
             line_dash_offset: 0.0,
-            fill_paint: Paint { color: ColorU::black() },
-            stroke_paint: Paint { color: ColorU::black() },
-            shadow_paint: Paint { color: ColorU::transparent_black() },
+            fill_paint: Paint::black(),
+            stroke_paint: Paint::black(),
+            shadow_paint: Paint::transparent_black(),
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
             global_alpha: 1.0,
         }
     }
 
-    fn resolve_paint(&self, mut paint: Paint) -> Paint {
-        paint.color.a = (paint.color.a as f32 * self.global_alpha).round() as u8;
-        paint
+    fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
+        if self.global_alpha == 1.0 {
+            return Cow::Borrowed(paint);
+        }
+
+        let mut paint = (*paint).clone();
+        paint.set_opacity(self.global_alpha);
+        Cow::Owned(paint)
     }
 
     fn resolve_stroke_style(&self) -> StrokeStyle {
@@ -415,16 +422,18 @@ impl Path2D {
     }
 }
 
-// TODO(pcwalton): Gradients.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum FillStyle {
     Color(ColorU),
+    Gradient(Gradient),
 }
 
 impl FillStyle {
-    #[inline]
-    fn to_paint(&self) -> Paint {
-        match *self { FillStyle::Color(color) => Paint { color } }
+    fn into_paint(self) -> Paint {
+        match self {
+            FillStyle::Color(color) => Paint::Color(color),
+            FillStyle::Gradient(gradient) => Paint::Gradient(gradient),
+        }
     }
 }
 

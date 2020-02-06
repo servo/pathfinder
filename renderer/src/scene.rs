@@ -14,8 +14,7 @@ use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
-use crate::paint::{Paint, PaintId};
-use hashbrown::HashMap;
+use crate::paint::{Paint, PaintId, PaintInfo, Palette};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
@@ -25,8 +24,7 @@ use pathfinder_content::outline::Outline;
 #[derive(Clone)]
 pub struct Scene {
     pub(crate) paths: Vec<PathObject>,
-    pub(crate) paints: Vec<Paint>,
-    paint_cache: HashMap<Paint, PaintId>,
+    palette: Palette,
     bounds: RectF,
     view_box: RectF,
 }
@@ -36,8 +34,7 @@ impl Scene {
     pub fn new() -> Scene {
         Scene {
             paths: vec![],
-            paints: vec![],
-            paint_cache: HashMap::new(),
+            palette: Palette::new(),
             bounds: RectF::default(),
             view_box: RectF::default(),
         }
@@ -48,16 +45,14 @@ impl Scene {
         self.paths.push(path);
     }
 
+    #[inline]
+    pub fn build_paint_info(&self) -> PaintInfo {
+        self.palette.build_paint_info()
+    }
+
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
-        if let Some(paint_id) = self.paint_cache.get(paint) {
-            return *paint_id;
-        }
-
-        let paint_id = PaintId(self.paints.len() as u16);
-        self.paint_cache.insert(*paint, paint_id);
-        self.paints.push(*paint);
-        paint_id
+        self.palette.push_paint(paint)
     }
 
     #[inline]
@@ -150,7 +145,11 @@ impl Scene {
             .any(|path_object| path_object.paint != first_paint_id) {
             return None;
         }
-        Some(self.paints[first_paint_id.0 as usize].color)
+
+        match self.palette.paints[first_paint_id.0 as usize] {
+            Paint::Color(color) => Some(color),
+            Paint::Gradient(_) => None,
+        }
     }
 
     #[inline]
@@ -190,7 +189,7 @@ impl<'a> Iterator for PathIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.scene.paths.get(self.pos).map(|path_object| {
             (
-                self.scene.paints.get(path_object.paint.0 as usize).unwrap(),
+                self.scene.palette.paints.get(path_object.paint.0 as usize).unwrap(),
                 &path_object.outline,
                 &*path_object.name
             )

@@ -53,6 +53,11 @@ impl ColorU {
     }
 
     #[inline]
+    pub fn is_opaque(&self) -> bool {
+        self.a == !0
+    }
+
+    #[inline]
     pub fn is_fully_transparent(&self) -> bool {
         self.a == 0
     }

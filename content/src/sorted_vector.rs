@@ -13,7 +13,7 @@
 use std::cmp::Ordering;
 use std::convert;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct SortedVector<T>
 where
     T: PartialOrd,
@@ -32,7 +32,7 @@ where
 
     #[inline]
     pub fn push(&mut self, value: T) {
-        let index = self.array.binary_search_by(|other| {
+        let index = self.binary_search_by(|other| {
             other.partial_cmp(&value).unwrap_or(Ordering::Less)
         }).unwrap_or_else(convert::identity);
         self.array.insert(index, value);
@@ -57,6 +57,17 @@ where
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.array.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.array.len()
+    }
+
+    #[inline]
+    pub fn binary_search_by<'a, F>(&'a self, f: F) -> Result<usize, usize>
+                                   where F: FnMut(&'a T) -> Ordering {
+        self.array.binary_search_by(f)
     }
 }
 

@@ -9,10 +9,11 @@
 // except according to those terms.
 
 use pathfinder_content::segment::SegmentKind;
+use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_geometry::vector::Vector2F;
-use std::io::{self, Write};
 use std::fmt;
+use std::io::{self, Write};
 
 mod pdf;
 use pdf::Pdf;
@@ -57,11 +58,7 @@ fn export_svg<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         if !name.is_empty() {
             write!(writer, " id=\"{}\"", name)?;
         }
-        writeln!(
-            writer,
-            " fill=\"{:?}\" d=\"{:?}\" />",
-            paint.color, outline
-        )?;
+        writeln!(writer, " fill=\"{:?}\" d=\"{:?}\" />", paint, outline)?;
     }
     writeln!(writer, "</svg>")?;
     Ok(())
@@ -79,7 +76,12 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     };
     
     for (paint, outline, _) in scene.paths() {
-        pdf.set_fill_color(paint.color);
+        match paint {
+            Paint::Color(color) => pdf.set_fill_color(*color),
+            Paint::Gradient(_) => {
+                // TODO(pcwalton): Gradients.
+            }
+        }
         
         for contour in outline.contours() {
             for (segment_index, segment) in contour.iter().enumerate() {
@@ -140,7 +142,7 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         } else {
             writeln!(writer, "newpath")?;
         }
-        let color = paint.color.to_f32();
+
         for contour in outline.contours() {
             for (segment_index, segment) in contour.iter().enumerate() {
                 if segment_index == 0 {
@@ -174,7 +176,16 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
                 writeln!(writer, "closepath")?;
             }
         }
-        writeln!(writer, "{} {} {} setrgbcolor", color.r(), color.g(), color.b())?;
+
+        match paint {
+            Paint::Color(color) => {
+                writeln!(writer, "{} {} {} setrgbcolor", color.r, color.g, color.b)?;
+            }
+            Paint::Gradient(_) => {
+                // TODO(pcwalton): Gradients.
+            }
+        }
+
         writeln!(writer, "fill")?;
     }
     writeln!(writer, "showpage")?;

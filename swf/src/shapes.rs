@@ -13,8 +13,8 @@ use crate::{Twips, Point2};
 use pathfinder_color::ColorU;
 use pathfinder_content::stroke::{LineJoin, LineCap};
 use pathfinder_renderer::paint::Paint;
-use std::mem;
 use std::cmp::Ordering;
+use std::mem;
 use swf_tree::tags::DefineShape;
 use swf_tree::{CapStyle, FillStyle, JoinStyle, LineStyle, ShapeRecord, StraightSRgba8, Vector2D};
 use swf_tree::{fill_styles, join_styles, shape_records};
@@ -149,10 +149,10 @@ impl StyleLayer {
         }
     }
 
-    pub(crate) fn fill(&self) -> Paint {
+    pub(crate) fn fill(&self) -> &Paint {
         match &self.fill {
-            PaintOrLine::Paint(paint) => *paint,
-            PaintOrLine::Line(line) => line.color,
+            PaintOrLine::Paint(ref paint) => paint,
+            PaintOrLine::Line(line) => &line.color,
         }
     }
 
@@ -253,16 +253,7 @@ fn get_new_styles<'a>(
                         a
                     }
                 }
-            ) =>  {
-                Some(PaintOrLine::Paint(Paint {
-                    color: ColorU {
-                        r: *r,
-                        g: *g,
-                        b: *b,
-                        a: *a
-                    }
-                }))
-            },
+            ) => Some(PaintOrLine::Paint(Paint::Color(ColorU { r: *r, g: *g, b: *b, a: *a }))),
             _ => unimplemented!("Unimplemented fill style")
         }
     }).chain(
@@ -295,7 +286,7 @@ fn get_new_styles<'a>(
                 // assert_eq!(start_cap, end_cap);
                 Some(PaintOrLine::Line(SwfLineStyle {
                     width: Twips(*width as i32),
-                    color: Paint { color: ColorU { r: *r, g: *g, b: *b, a: *a } },
+                    color: Paint::Color(ColorU { r: *r, g: *g, b: *b, a: *a }),
                     join: match join {
                         JoinStyle::Bevel => LineJoin::Bevel,
                         JoinStyle::Round => LineJoin::Round,
