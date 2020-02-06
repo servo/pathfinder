@@ -19,9 +19,11 @@ extern crate log;
 
 pub mod clip;
 pub mod dash;
+pub mod gradient;
 pub mod orientation;
 pub mod outline;
 pub mod segment;
+pub mod sorted_vector;
 pub mod stroke;
 pub mod transform;
 

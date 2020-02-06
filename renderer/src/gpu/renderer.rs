@@ -42,8 +42,8 @@ const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 12;
-const MASK_TILE_INSTANCE_SIZE: usize = 12;
+const SOLID_TILE_INSTANCE_SIZE: usize = 20;
+const MASK_TILE_INSTANCE_SIZE: usize = 20;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -58,14 +58,10 @@ where
     dest_framebuffer: DestFramebuffer<D>,
     options: RendererOptions,
     fill_program: FillProgram<D>,
-    solid_multicolor_tile_program: SolidTileMulticolorProgram<D>,
-    alpha_multicolor_tile_program: AlphaTileMulticolorProgram<D>,
-    solid_monochrome_tile_program: SolidTileMonochromeProgram<D>,
-    alpha_monochrome_tile_program: AlphaTileMonochromeProgram<D>,
-    solid_multicolor_tile_vertex_array: SolidTileVertexArray<D>,
-    alpha_multicolor_tile_vertex_array: AlphaTileVertexArray<D>,
-    solid_monochrome_tile_vertex_array: SolidTileVertexArray<D>,
-    alpha_monochrome_tile_vertex_array: AlphaTileVertexArray<D>,
+    solid_tile_program: SolidTileProgram<D>,
+    alpha_tile_program: AlphaTileProgram<D>,
+    solid_tile_vertex_array: SolidTileVertexArray<D>,
+    alpha_tile_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
     quad_vertex_positions_buffer: D::Buffer,
     quad_vertex_indices_buffer: D::Buffer,
@@ -101,7 +97,7 @@ where
     pub debug_ui_presenter: DebugUIPresenter<D>,
 
     // Extra info
-    render_mode: RenderMode,
+    postprocess_options: Option<PostprocessOptions>,
     use_depth: bool,
 }
 
@@ -116,10 +112,8 @@ where
                -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
 
-        let solid_multicolor_tile_program = SolidTileMulticolorProgram::new(&device, resources);
-        let alpha_multicolor_tile_program = AlphaTileMulticolorProgram::new(&device, resources);
-        let solid_monochrome_tile_program = SolidTileMonochromeProgram::new(&device, resources);
-        let alpha_monochrome_tile_program = AlphaTileMonochromeProgram::new(&device, resources);
+        let solid_tile_program = SolidTileProgram::new(&device, resources);
+        let alpha_tile_program = AlphaTileProgram::new(&device, resources);
 
         let postprocess_program = PostprocessProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
@@ -149,27 +143,15 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
-        let alpha_multicolor_tile_vertex_array = AlphaTileVertexArray::new(
+        let alpha_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
-            &alpha_multicolor_tile_program.alpha_tile_program,
+            &alpha_tile_program,
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
-        let solid_multicolor_tile_vertex_array = SolidTileVertexArray::new(
+        let solid_tile_vertex_array = SolidTileVertexArray::new(
             &device,
-            &solid_multicolor_tile_program.solid_tile_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
-        );
-        let alpha_monochrome_tile_vertex_array = AlphaTileVertexArray::new(
-            &device,
-            &alpha_monochrome_tile_program.alpha_tile_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
-        );
-        let solid_monochrome_tile_vertex_array = SolidTileVertexArray::new(
-            &device,
-            &solid_monochrome_tile_program.solid_tile_program,
+            &solid_tile_program,
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
@@ -204,14 +186,10 @@ where
             dest_framebuffer,
             options,
             fill_program,
-            solid_monochrome_tile_program,
-            alpha_monochrome_tile_program,
-            solid_multicolor_tile_program,
-            alpha_multicolor_tile_program,
-            solid_monochrome_tile_vertex_array,
-            alpha_monochrome_tile_vertex_array,
-            solid_multicolor_tile_vertex_array,
-            alpha_multicolor_tile_vertex_array,
+            solid_tile_program,
+            alpha_tile_program,
+            solid_tile_vertex_array,
+            alpha_tile_vertex_array,
             area_lut_texture,
             quad_vertex_positions_buffer,
             quad_vertex_indices_buffer,
@@ -241,7 +219,7 @@ where
             framebuffer_flags: FramebufferFlags::empty(),
             buffered_fills: vec![],
 
-            render_mode: RenderMode::default(),
+            postprocess_options: None,
             use_depth: false,
         }
     }
@@ -284,7 +262,7 @@ where
     }
 
     pub fn end_scene(&mut self) {
-        if self.postprocessing_needed() {
+        if self.postprocess_options.is_some() {
             self.postprocess();
         }
 
@@ -353,8 +331,8 @@ where
     }
 
     #[inline]
-    pub fn set_render_mode(&mut self, mode: RenderMode) {
-        self.render_mode = mode;
+    pub fn set_postprocess_options(&mut self, new_options: Option<PostprocessOptions>) {
+        self.postprocess_options = new_options;
     }
 
     #[inline]
@@ -378,23 +356,33 @@ where
     }
 
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
+        // FIXME(pcwalton): This is a hack. We shouldn't be generating paint data at all on the
+        // renderer side.
+        let (paint_size, paint_texels): (Vector2I, &[u8]);
+        if self.postprocess_options.is_some() {
+            paint_size = Vector2I::splat(1);
+            paint_texels = &[255; 4];
+        } else {
+            paint_size = paint_data.size;
+            paint_texels = &paint_data.texels;
+        };
+
         match self.paint_texture {
-            Some(ref paint_texture) if
-                self.device.texture_size(paint_texture) == paint_data.size => {}
+            Some(ref paint_texture) if self.device.texture_size(paint_texture) == paint_size => {}
             _ => {
-                let texture = self.device.create_texture(TextureFormat::RGBA8, paint_data.size);
+                let texture = self.device.create_texture(TextureFormat::RGBA8, paint_size);
                 self.paint_texture = Some(texture)
             }
         }
 
         self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
-                                      RectI::new(Vector2I::default(), paint_data.size),
-                                      TextureDataRef::U8(&paint_data.texels));
+                                      RectI::new(Vector2I::default(), paint_size),
+                                      TextureDataRef::U8(paint_texels));
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
         self.device.allocate_buffer(
-            &self.solid_tile_vertex_array().vertex_buffer,
+            &self.solid_tile_vertex_array.vertex_buffer,
             BufferData::Memory(&solid_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
@@ -403,7 +391,7 @@ where
 
     fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
         self.device.allocate_buffer(
-            &self.alpha_tile_vertex_array().vertex_buffer,
+            &self.alpha_tile_vertex_array.vertex_buffer,
             BufferData::Memory(&alpha_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
@@ -490,47 +478,32 @@ where
     fn draw_alpha_tiles(&mut self, count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
-        let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
-        let alpha_tile_program = self.alpha_tile_program();
-
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
         let mut uniforms = vec![
-            (&alpha_tile_program.transform_uniform,
+            (&self.alpha_tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
-            (&alpha_tile_program.tile_size_uniform,
+            (&self.alpha_tile_program.tile_size_uniform,
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
-            (&alpha_tile_program.stencil_texture_uniform, UniformData::TextureUnit(0)),
-            (&alpha_tile_program.stencil_texture_size_uniform,
+            (&self.alpha_tile_program.stencil_texture_uniform, UniformData::TextureUnit(0)),
+            (&self.alpha_tile_program.stencil_texture_size_uniform,
              UniformData::Vec2(F32x2::new(MASK_FRAMEBUFFER_WIDTH as f32,
                                           MASK_FRAMEBUFFER_HEIGHT as f32))),
         ];
 
-        match self.render_mode {
-            RenderMode::Multicolor => {
-                let paint_texture = self.paint_texture.as_ref().unwrap();
-                textures.push(paint_texture);
-                uniforms.push((&self.alpha_multicolor_tile_program.paint_texture_uniform,
-                               UniformData::TextureUnit(1)));
-                uniforms.push((&self.alpha_multicolor_tile_program.paint_texture_size_uniform,
-                               UniformData::Vec2(self.device
-                                                     .texture_size(paint_texture)
-                                                     .0
-                                                     .to_f32x2())));
-            }
-            RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
-                uniforms.push((&self.alpha_monochrome_tile_program.color_uniform,
-                               UniformData::Vec4(F32x4::splat(1.0))));
-            }
-            RenderMode::Monochrome { fg_color, .. } => {
-                uniforms.push((&self.alpha_monochrome_tile_program.color_uniform,
-                               UniformData::Vec4(fg_color.0)));
-            }
-        }
+        let paint_texture = self.paint_texture.as_ref().unwrap();
+        textures.push(paint_texture);
+        uniforms.push((&self.alpha_tile_program.paint_texture_uniform,
+                        UniformData::TextureUnit(1)));
+        uniforms.push((&self.alpha_tile_program.paint_texture_size_uniform,
+                        UniformData::Vec2(self.device
+                                              .texture_size(paint_texture)
+                                              .0
+                                              .to_f32x2())));
 
         self.device.draw_elements_instanced(6, count, &RenderState {
             target: &self.draw_render_target(),
-            program: &alpha_tile_program.program,
-            vertex_array: &alpha_tile_vertex_array.vertex_array,
+            program: &self.alpha_tile_program.program,
+            vertex_array: &self.alpha_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
@@ -552,43 +525,25 @@ where
     fn draw_solid_tiles(&mut self, count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
-        let solid_tile_vertex_array = self.solid_tile_vertex_array();
-        let solid_tile_program = self.solid_tile_program();
-
         let mut textures = vec![];
         let mut uniforms = vec![
-            (&solid_tile_program.transform_uniform,
+            (&self.solid_tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
-            (&solid_tile_program.tile_size_uniform,
+            (&self.solid_tile_program.tile_size_uniform,
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
 
-        match self.render_mode {
-            RenderMode::Multicolor => {
-                let paint_texture = self.paint_texture.as_ref().unwrap();
-                textures.push(paint_texture);
-                uniforms.push((&self.solid_multicolor_tile_program.paint_texture_uniform,
-                               UniformData::TextureUnit(0)));
-                uniforms.push((&self.solid_multicolor_tile_program.paint_texture_size_uniform,
-                               UniformData::Vec2(self.device
-                                                     .texture_size(paint_texture)
-                                                     .0
-                                                     .to_f32x2())));
-            }
-            RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
-                uniforms.push((&self.solid_monochrome_tile_program.color_uniform,
-                               UniformData::Vec4(F32x4::splat(1.0))));
-            }
-            RenderMode::Monochrome { fg_color, .. } => {
-                uniforms.push((&self.solid_monochrome_tile_program.color_uniform,
-                               UniformData::Vec4(fg_color.0)));
-            }
-        }
+        let paint_texture = self.paint_texture.as_ref().unwrap();
+        textures.push(paint_texture);
+        uniforms.push((&self.solid_tile_program.paint_texture_uniform,
+                        UniformData::TextureUnit(0)));
+        uniforms.push((&self.solid_tile_program.paint_texture_size_uniform,
+                        UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x2())));
 
         self.device.draw_elements_instanced(6, count, &RenderState {
             target: &self.draw_render_target(),
-            program: &solid_tile_program.program,
-            vertex_array: &solid_tile_vertex_array.vertex_array,
+            program: &self.solid_tile_program.program,
+            vertex_array: &self.solid_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
@@ -610,21 +565,10 @@ where
             clear_color = self.options.background_color;
         }
 
-        let (fg_color, bg_color, defringing_kernel, gamma_correction_enabled);
-        match self.render_mode {
-            RenderMode::Multicolor => return,
-            RenderMode::Monochrome {
-                fg_color: fg,
-                bg_color: bg,
-                defringing_kernel: kernel,
-                gamma_correction,
-            } => {
-                fg_color = fg;
-                bg_color = bg;
-                defringing_kernel = kernel;
-                gamma_correction_enabled = gamma_correction;
-            }
-        }
+        let postprocess_options = match self.postprocess_options {
+            None => return,
+            Some(ref options) => options,
+        };
 
         let postprocess_source_framebuffer = self.postprocess_source_framebuffer.as_ref().unwrap();
         let source_texture = self
@@ -640,13 +584,15 @@ where
             (&self.postprocess_program.source_size_uniform,
              UniformData::Vec2(source_texture_size.0.to_f32x2())),
             (&self.postprocess_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
-            (&self.postprocess_program.fg_color_uniform, UniformData::Vec4(fg_color.0)),
-            (&self.postprocess_program.bg_color_uniform, UniformData::Vec4(bg_color.0)),
+            (&self.postprocess_program.fg_color_uniform,
+             UniformData::Vec4(postprocess_options.fg_color.0)),
+            (&self.postprocess_program.bg_color_uniform,
+             UniformData::Vec4(postprocess_options.bg_color.0)),
             (&self.postprocess_program.gamma_correction_enabled_uniform,
-             UniformData::Int(gamma_correction_enabled as i32)),
+             UniformData::Int(postprocess_options.gamma_correction as i32)),
         ];
 
-        match defringing_kernel {
+        match postprocess_options.defringing_kernel {
             Some(ref kernel) => {
                 uniforms.push((&self.postprocess_program.kernel_uniform,
                                UniformData::Vec4(F32x4::from_slice(&kernel.0))));
@@ -672,34 +618,6 @@ where
         });
 
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS);
-    }
-
-    fn solid_tile_program(&self) -> &SolidTileProgram<D> {
-        match self.render_mode {
-            RenderMode::Monochrome { .. } => &self.solid_monochrome_tile_program.solid_tile_program,
-            RenderMode::Multicolor => &self.solid_multicolor_tile_program.solid_tile_program,
-        }
-    }
-
-    fn alpha_tile_program(&self) -> &AlphaTileProgram<D> {
-        match self.render_mode {
-            RenderMode::Monochrome { .. } => &self.alpha_monochrome_tile_program.alpha_tile_program,
-            RenderMode::Multicolor => &self.alpha_multicolor_tile_program.alpha_tile_program,
-        }
-    }
-
-    fn solid_tile_vertex_array(&self) -> &SolidTileVertexArray<D> {
-        match self.render_mode {
-            RenderMode::Monochrome { .. } => &self.solid_monochrome_tile_vertex_array,
-            RenderMode::Multicolor => &self.solid_multicolor_tile_vertex_array,
-        }
-    }
-
-    fn alpha_tile_vertex_array(&self) -> &AlphaTileVertexArray<D> {
-        match self.render_mode {
-            RenderMode::Monochrome { .. } => &self.alpha_monochrome_tile_vertex_array,
-            RenderMode::Multicolor => &self.alpha_multicolor_tile_vertex_array,
-        }
     }
 
     fn draw_stencil(&mut self, quad_positions: &[Vector4F]) {
@@ -784,7 +702,7 @@ where
     }
 
     pub fn draw_render_target(&self) -> RenderTarget<D> {
-        if self.postprocessing_needed() {
+        if self.postprocess_options.is_some() {
             RenderTarget::Framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap())
         } else {
             self.dest_render_target()
@@ -799,7 +717,7 @@ where
     }
 
     fn init_postprocessing_framebuffer(&mut self) {
-        if !self.postprocessing_needed() {
+        if !self.postprocess_options.is_some() {
             self.postprocess_source_framebuffer = None;
             return;
         }
@@ -832,17 +750,6 @@ where
         */
     }
 
-    fn postprocessing_needed(&self) -> bool {
-        match self.render_mode {
-            RenderMode::Monochrome {
-                ref defringing_kernel,
-                gamma_correction,
-                ..
-            } => defringing_kernel.is_some() || gamma_correction,
-            _ => false,
-        }
-    }
-
     fn stencil_state(&self) -> Option<StencilState> {
         if !self.use_depth {
             return None;
@@ -857,7 +764,7 @@ where
     }
 
     fn clear_color_for_draw_operation(&mut self) -> Option<ColorF> {
-        let postprocessing_needed = self.postprocessing_needed();
+        let postprocessing_needed = self.postprocess_options.is_some();
         let flag = if postprocessing_needed {
             FramebufferFlags::MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS
         } else {
@@ -874,7 +781,7 @@ where
     }
 
     fn preserve_draw_framebuffer(&mut self) {
-        let flag = if self.postprocessing_needed() {
+        let flag = if self.postprocess_options.is_some() {
             FramebufferFlags::MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS
         } else {
             FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS
@@ -884,13 +791,9 @@ where
 
     pub fn draw_viewport(&self) -> RectI {
         let main_viewport = self.main_viewport();
-        match self.render_mode {
-            RenderMode::Monochrome {
-                defringing_kernel: Some(..),
-                ..
-            } => {
-                let scale = Vector2I::new(3, 1);
-                RectI::new(Vector2I::default(), main_viewport.size().scale_xy(scale))
+        match self.postprocess_options {
+            Some(PostprocessOptions { defringing_kernel: Some(_), .. }) => {
+                RectI::new(Vector2I::default(), main_viewport.size().scale_xy(Vector2I::new(3, 1)))
             }
             _ => main_viewport,
         }
@@ -1060,8 +963,10 @@ where
                                   .unwrap();
         let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex")
                                     .unwrap();
-        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                          "ColorTexCoord");
+        let color_tex_matrix_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                           "ColorTexMatrix").unwrap();
+        let color_tex_offset_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                           "ColorTexOffset").unwrap();
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
@@ -1103,19 +1008,28 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        if let Some(color_tex_coord_attr) = color_tex_coord_attr {
-            device.configure_vertex_attr(&vertex_array,
-                                         &color_tex_coord_attr,
-                                         &VertexAttrDescriptor {
-                                            size: 2,
-                                            class: VertexAttrClass::FloatNorm,
-                                            attr_type: VertexAttrType::U16,
-                                            stride: MASK_TILE_INSTANCE_SIZE,
-                                            offset: 8,
-                                            divisor: 1,
-                                            buffer_index: 1,
-                                         });
-        }
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_matrix_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 4,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: MASK_TILE_INSTANCE_SIZE,
+                                        offset: 8,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_offset_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 2,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: MASK_TILE_INSTANCE_SIZE,
+                                        offset: 16,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
@@ -1146,8 +1060,10 @@ where
                                     .unwrap();
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin")
                                      .unwrap();
-        let color_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                          "ColorTexCoord");
+        let color_tex_matrix_attr = device.get_vertex_attr(&solid_tile_program.program,
+                                                           "ColorTexMatrix").unwrap();
+        let color_tex_offset_attr = device.get_vertex_attr(&solid_tile_program.program,
+                                                           "ColorTexOffset").unwrap();
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
@@ -1171,19 +1087,28 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        if let Some(color_tex_coord_attr) = color_tex_coord_attr {
-            device.configure_vertex_attr(&vertex_array,
-                                         &color_tex_coord_attr,
-                                         &VertexAttrDescriptor {
-                                            size: 2,
-                                            class: VertexAttrClass::FloatNorm,
-                                            attr_type: VertexAttrType::U16,
-                                            stride: SOLID_TILE_INSTANCE_SIZE,
-                                            offset: 4,
-                                            divisor: 1,
-                                            buffer_index: 1,
-                                         });
-        }
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_matrix_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 4,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: SOLID_TILE_INSTANCE_SIZE,
+                                        offset: 4,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_tex_offset_attr,
+                                     &VertexAttrDescriptor {
+                                        size: 2,
+                                        class: VertexAttrClass::FloatNorm,
+                                        attr_type: VertexAttrType::U16,
+                                        stride: SOLID_TILE_INSTANCE_SIZE,
+                                        offset: 12,
+                                        divisor: 1,
+                                        buffer_index: 1,
+                                     });
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
@@ -1218,162 +1143,58 @@ where
     }
 }
 
-struct SolidTileProgram<D>
-where
-    D: Device,
-{
+struct SolidTileProgram<D> where D: Device {
     program: D::Program,
     transform_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
-}
-
-impl<D> SolidTileProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, program_name: &str, resources: &dyn ResourceLoader) -> SolidTileProgram<D> {
-        let program = device.create_program_from_shader_names(
-            resources,
-            program_name,
-            program_name,
-            "tile_solid",
-        );
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        SolidTileProgram { program, transform_uniform, tile_size_uniform }
-    }
-}
-
-struct SolidTileMulticolorProgram<D>
-where
-    D: Device,
-{
-    solid_tile_program: SolidTileProgram<D>,
     paint_texture_uniform: D::Uniform,
     paint_texture_size_uniform: D::Uniform,
 }
 
-impl<D> SolidTileMulticolorProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMulticolorProgram<D> {
-        let solid_tile_program = SolidTileProgram::new(device, "tile_solid_multicolor", resources);
-        let paint_texture_uniform = device.get_uniform(&solid_tile_program.program,
-                                                       "PaintTexture");
-        let paint_texture_size_uniform = device.get_uniform(&solid_tile_program.program,
-                                                            "PaintTextureSize");
-        SolidTileMulticolorProgram {
-            solid_tile_program,
+impl<D> SolidTileProgram<D> where D: Device {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileProgram<D> {
+        let program = device.create_program(resources, "tile_solid");
+        let transform_uniform = device.get_uniform(&program, "Transform");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
+        let paint_texture_size_uniform = device.get_uniform(&program, "PaintTextureSize");
+        SolidTileProgram {
+            program,
+            transform_uniform,
+            tile_size_uniform,
             paint_texture_uniform,
             paint_texture_size_uniform,
         }
     }
 }
 
-struct SolidTileMonochromeProgram<D>
-where
-    D: Device,
-{
-    solid_tile_program: SolidTileProgram<D>,
-    color_uniform: D::Uniform,
-}
-
-impl<D> SolidTileMonochromeProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMonochromeProgram<D> {
-        let solid_tile_program = SolidTileProgram::new(device, "tile_solid_monochrome", resources);
-        let color_uniform = device.get_uniform(&solid_tile_program.program, "Color");
-        SolidTileMonochromeProgram {
-            solid_tile_program,
-            color_uniform,
-        }
-    }
-}
-
-struct AlphaTileProgram<D>
-where
-    D: Device,
-{
+struct AlphaTileProgram<D> where D: Device {
     program: D::Program,
     transform_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
     stencil_texture_uniform: D::Uniform,
     stencil_texture_size_uniform: D::Uniform,
+    paint_texture_uniform: D::Uniform,
+    paint_texture_size_uniform: D::Uniform,
 }
 
-impl<D> AlphaTileProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, program_name: &str, resources: &dyn ResourceLoader) -> AlphaTileProgram<D> {
-        let program = device.create_program_from_shader_names(
-            resources,
-            program_name,
-            program_name,
-            "tile_alpha",
-        );
+impl<D> AlphaTileProgram<D> where D: Device {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileProgram<D> {
+        let program = device.create_program(resources, "tile_alpha");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
         let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
+        let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
+        let paint_texture_size_uniform = device.get_uniform(&program, "PaintTextureSize");
         AlphaTileProgram {
             program,
             transform_uniform,
             tile_size_uniform,
             stencil_texture_uniform,
             stencil_texture_size_uniform,
-        }
-    }
-}
-
-struct AlphaTileMulticolorProgram<D>
-where
-    D: Device,
-{
-    alpha_tile_program: AlphaTileProgram<D>,
-    paint_texture_uniform: D::Uniform,
-    paint_texture_size_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileMulticolorProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMulticolorProgram<D> {
-        let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_multicolor", resources);
-        let paint_texture_uniform =
-            device.get_uniform(&alpha_tile_program.program, "PaintTexture");
-        let paint_texture_size_uniform =
-            device.get_uniform(&alpha_tile_program.program, "PaintTextureSize");
-        AlphaTileMulticolorProgram {
-            alpha_tile_program,
             paint_texture_uniform,
             paint_texture_size_uniform,
-        }
-    }
-}
-
-struct AlphaTileMonochromeProgram<D>
-where
-    D: Device,
-{
-    alpha_tile_program: AlphaTileProgram<D>,
-    color_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileMonochromeProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMonochromeProgram<D> {
-        let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_monochrome", resources);
-        let color_uniform = device.get_uniform(&alpha_tile_program.program, "Color");
-        AlphaTileMonochromeProgram {
-            alpha_tile_program,
-            color_uniform,
         }
     }
 }
@@ -1577,22 +1398,12 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum RenderMode {
-    Multicolor,
-    Monochrome {
-        fg_color: ColorF,
-        bg_color: ColorF,
-        defringing_kernel: Option<DefringingKernel>,
-        gamma_correction: bool,
-    },
-}
-
-impl Default for RenderMode {
-    #[inline]
-    fn default() -> RenderMode {
-        RenderMode::Multicolor
-    }
+#[derive(Clone, Copy, Default)]
+pub struct PostprocessOptions {
+    pub fg_color: ColorF,
+    pub bg_color: ColorF,
+    pub defringing_kernel: Option<DefringingKernel>,
+    pub gamma_correction: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

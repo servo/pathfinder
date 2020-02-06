@@ -358,13 +358,15 @@ pub unsafe extern "C" fn PFCanvasSetTextAlign(canvas: PFCanvasRef, new_text_alig
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetFillStyle(canvas: PFCanvasRef, fill_style: PFFillStyleRef) {
-    (*canvas).set_fill_style(*fill_style)
+    // FIXME(pcwalton): Avoid the copy?
+    (*canvas).set_fill_style((*fill_style).clone())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetStrokeStyle(canvas: PFCanvasRef,
                                                 stroke_style: PFFillStyleRef) {
-    (*canvas).set_stroke_style(*stroke_style)
+    // FIXME(pcwalton): Avoid the copy?
+    (*canvas).set_stroke_style((*stroke_style).clone())
 }
 
 /// This function automatically destroys the path. If you wish to use the path again, clone it

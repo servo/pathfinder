@@ -8,6 +8,8 @@ struct spvDescriptorSetBuffer0
 {
     texture2d<float> uStencilTexture [[id(0)]];
     sampler uStencilTextureSmplr [[id(1)]];
+    texture2d<float> uPaintTexture [[id(2)]];
+    sampler uPaintTextureSmplr [[id(3)]];
 };
 
 struct main0_out
@@ -17,16 +19,17 @@ struct main0_out
 
 struct main0_in
 {
-    float2 vTexCoord [[user(locn0)]];
-    float vBackdrop [[user(locn1)]];
-    float4 vColor [[user(locn2)]];
+    float2 vMaskTexCoord [[user(locn0)]];
+    float2 vColorTexCoord [[user(locn1)]];
+    float vBackdrop [[user(locn2)]];
 };
 
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float coverage = abs(spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vTexCoord).x + in.vBackdrop);
-    out.oFragColor = float4(in.vColor.xyz, in.vColor.w * coverage);
+    float coverage = abs(spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord).x + in.vBackdrop);
+    float4 color = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    out.oFragColor = float4(color.xyz, color.w * coverage);
     return out;
 }
 

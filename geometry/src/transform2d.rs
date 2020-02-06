@@ -11,11 +11,11 @@
 //! 2D affine transforms.
 
 use crate::line_segment::LineSegment2F;
-use crate::vector::Vector2F;
 use crate::rect::RectF;
 use crate::transform3d::Transform4F;
 use crate::unit_vector::UnitVector;
-use pathfinder_simd::default::F32x4;
+use crate::vector::{Vector2F, Vector2I};
+use pathfinder_simd::default::{F32x4, I32x4};
 use std::ops::{Mul, MulAssign, Sub};
 
 /// A 2x2 matrix, optimized with SIMD, in column-major order.
@@ -113,10 +113,32 @@ impl Mul<Vector2F> for Matrix2x2F {
     }
 }
 
+/// A 2x2 integer matrix, optimized with SIMD, in column-major order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Matrix2x2I(pub I32x4);
+
+impl Matrix2x2I {
+    #[inline]
+    pub fn m11(&self) -> i32 {
+        self.0[0]
+    }
+    #[inline]
+    pub fn m21(&self) -> i32 {
+        self.0[1]
+    }
+    #[inline]
+    pub fn m12(&self) -> i32 {
+        self.0[2]
+    }
+    #[inline]
+    pub fn m22(&self) -> i32 {
+        self.0[3]
+    }
+}
+
 /// An affine transform, optimized with SIMD.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transform2F {
-    // Row-major order.
     pub matrix: Matrix2x2F,
     pub vector: Vector2F,
 }
@@ -323,4 +345,11 @@ impl MulAssign for Transform2F {
     fn mul_assign(&mut self, other: Transform2F) {
         *self = *self * other
     }
+}
+
+/// An affine integer transform, optimized with SIMD.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Transform2I {
+    pub matrix: Matrix2x2I,
+    pub vector: Vector2I,
 }

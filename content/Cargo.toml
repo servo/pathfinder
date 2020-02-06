@@ -10,8 +10,14 @@ bitflags = "1.0"
 log = "0.4"
 smallvec = "0.6"
 
+[dependencies.pathfinder_color]
+path = "../color"
+
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+
+[dev-dependencies]
+quickcheck = "0.9"

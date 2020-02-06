@@ -14,7 +14,7 @@
 
 use std::env;
 use std::fs;
-use std::io::{Error as IOError, Read};
+use std::io::Error as IOError;
 use std::path::PathBuf;
 use std::borrow::Cow;
 

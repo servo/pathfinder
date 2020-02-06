@@ -10,14 +10,23 @@
 
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
+/*
 use crate::paint::{self, PaintId};
 use crate::sorted_vector::SortedVector;
-use crate::options::RenderCommandListener;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
+*/
+use crate::options::RenderCommandListener;
+use crate::paint::PaintMetadata;
+
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
+use pathfinder_content::sorted_vector::SortedVector;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::transform2d::Transform2I;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::cmp::Ordering;
 use std::mem;
 
@@ -31,9 +40,8 @@ pub(crate) struct Tiler<'a, L: RenderCommandListener> {
     builder: &'a SceneBuilder<'a, L>,
     outline: &'a Outline,
     pub built_object: BuiltObject,
-    paint_id: PaintId,
+    paint_metadata: &'a PaintMetadata,
     object_index: u16,
-    object_is_opaque: bool,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -47,8 +55,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
         outline: &'a Outline,
         view_box: RectF,
         object_index: u16,
-        paint_id: PaintId,
-        object_is_opaque: bool,
+        paint_metadata: &'a PaintMetadata,
     ) -> Tiler<'a, L> {
         let bounds = outline
             .bounds()
@@ -61,8 +68,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
             outline,
             built_object,
             object_index,
-            paint_id,
-            object_is_opaque,
+            paint_metadata,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -123,20 +129,18 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 }
 
                 // If this is a solid tile, poke it into the Z-buffer and stop here.
-                if self.object_is_opaque {
+                if self.paint_metadata.is_opaque {
                     self.builder.z_buffer.update(tile_coords, self.object_index);
                     continue;
                 }
             }
-
-            let origin_uv = paint::paint_id_to_tex_coords(self.paint_id);
 
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,
                 tile.backdrop,
                 self.object_index,
                 tile.alpha_tile_index as u16,
-                origin_uv,
+                self.paint_metadata.tex_transform,
             );
 
             self.built_object.alpha_tiles.push(alpha_tile);
@@ -537,7 +541,7 @@ impl AlphaTileBatchPrimitive {
            backdrop: i8,
            object_index: u16,
            tile_index: u16,
-           origin_uv: Vector2I)
+           tex_transform: Transform2I)
            -> AlphaTileBatchPrimitive {
         AlphaTileBatchPrimitive {
             tile_x_lo: (tile_coords.x() & 0xff) as u8,
@@ -546,8 +550,12 @@ impl AlphaTileBatchPrimitive {
             backdrop,
             object_index,
             tile_index,
-            origin_u: origin_uv.x() as u16,
-            origin_v: origin_uv.y() as u16,
+            texture_m00: tex_transform.matrix.m11() as u16,
+            texture_m10: tex_transform.matrix.m21() as u16,
+            texture_m01: tex_transform.matrix.m12() as u16,
+            texture_m11: tex_transform.matrix.m22() as u16,
+            texture_m02: tex_transform.vector.x() as u16,
+            texture_m12: tex_transform.vector.y() as u16,
         }
     }
 

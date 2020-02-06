@@ -21,7 +21,7 @@ use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
-use pathfinder_renderer::gpu::renderer::RenderMode;
+use pathfinder_renderer::gpu::renderer::PostprocessOptions;
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
 use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
@@ -252,9 +252,9 @@ impl<W> DemoApp<W> where W: Window {
 
     fn render_vector_scene(&mut self) {
         match self.scene_metadata.monochrome_color {
-            None => self.renderer.set_render_mode(RenderMode::Multicolor),
+            None => self.renderer.set_postprocess_options(None),
             Some(fg_color) => {
-                self.renderer.set_render_mode(RenderMode::Monochrome {
+                self.renderer.set_postprocess_options(Some(PostprocessOptions {
                     fg_color: fg_color.to_f32(),
                     bg_color: self.background_color().to_f32(),
                     gamma_correction: self.ui_model.gamma_correction_effect_enabled,
@@ -264,7 +264,7 @@ impl<W> DemoApp<W> where W: Window {
                     } else {
                         None
                     },
-                })
+                }))
             }
         }
 
