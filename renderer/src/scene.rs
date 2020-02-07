@@ -47,7 +47,7 @@ impl Scene {
 
     #[inline]
     pub fn build_paint_info(&self) -> PaintInfo {
-        self.palette.build_paint_info()
+        self.palette.build_paint_info(self.view_box.size().to_i32())
     }
 
     #[allow(clippy::trivially_copy_pass_by_ref)]

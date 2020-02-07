@@ -22,6 +22,11 @@ pub struct ColorU {
 
 impl ColorU {
     #[inline]
+    pub fn new(r: u8, g: u8, b: u8, a: u8) -> ColorU {
+        ColorU { r, g, b, a }
+    }
+
+    #[inline]
     pub fn transparent_black() -> ColorU {
         ColorU::from_u32(0)
     }

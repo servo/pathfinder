@@ -2,7 +2,7 @@
 
 // pathfinder/shaders/tile_alpha.fs.glsl
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -16,8 +16,8 @@ uniform sampler2D uStencilTexture;
 uniform sampler2D uPaintTexture;
 uniform vec2 uPaintTextureSize;
 
-in vec2 vMaskTexCoord;
 in vec2 vColorTexCoord;
+in vec2 vMaskTexCoord;
 in float vBackdrop;
 in vec4 vColor;
 

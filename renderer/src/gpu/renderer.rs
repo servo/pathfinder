@@ -10,8 +10,7 @@
 
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
-use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, PaintData, RenderCommand, SolidTileVertex};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::ColorF;
@@ -34,14 +33,17 @@ use std::u32;
 static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
+pub(crate) const MASK_TILES_ACROSS: u32 = 256;
+pub(crate) const MASK_TILES_DOWN: u32 = 256;
+
 // FIXME(pcwalton): Shrink this again!
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * MASK_TILES_ACROSS as i32;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * MASK_TILES_DOWN as i32;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 20;
-const MASK_TILE_INSTANCE_SIZE: usize = 20;
+const SOLID_TILE_VERTEX_SIZE: usize = 12;
+const MASK_TILE_VERTEX_SIZE: usize = 16;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -63,6 +65,8 @@ where
     area_lut_texture: D::Texture,
     quad_vertex_positions_buffer: D::Buffer,
     quad_vertex_indices_buffer: D::Buffer,
+    quads_vertex_indices_buffer: D::Buffer,
+    quads_vertex_indices_length: usize,
     fill_vertex_array: FillVertexArray<D>,
     mask_framebuffer: D::Framebuffer,
     paint_texture: Option<D::Texture>,
@@ -132,6 +136,7 @@ where
             BufferTarget::Index,
             BufferUploadMode::Static,
         );
+        let quads_vertex_indices_buffer = device.create_buffer();
 
         let fill_vertex_array = FillVertexArray::new(
             &device,
@@ -142,14 +147,12 @@ where
         let alpha_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_tile_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &quads_vertex_indices_buffer,
         );
         let solid_tile_vertex_array = SolidTileVertexArray::new(
             &device,
             &solid_tile_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &quads_vertex_indices_buffer,
         );
         let postprocess_vertex_array = PostprocessVertexArray::new(
             &device,
@@ -187,6 +190,8 @@ where
             area_lut_texture,
             quad_vertex_positions_buffer,
             quad_vertex_indices_buffer,
+            quads_vertex_indices_buffer,
+            quads_vertex_indices_length: 0,
             fill_vertex_array,
             mask_framebuffer,
             paint_texture: None,
@@ -237,10 +242,10 @@ where
                 self.draw_buffered_fills();
                 self.begin_composite_timer_query();
             }
-            RenderCommand::SolidTile(ref solid_tiles) => {
-                let count = solid_tiles.len();
+            RenderCommand::SolidTile(ref solid_tile_vertices) => {
+                let count = solid_tile_vertices.len() / 4;
                 self.stats.solid_tile_count += count;
-                self.upload_solid_tiles(solid_tiles);
+                self.upload_solid_tiles(solid_tile_vertices);
                 self.draw_solid_tiles(count as u32);
             }
             RenderCommand::AlphaTile(ref alpha_tiles) => {
@@ -370,22 +375,49 @@ where
                                       TextureDataRef::U8(paint_texels));
     }
 
-    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
+    fn upload_solid_tiles(&mut self, solid_tile_vertices: &[SolidTileVertex]) {
         self.device.allocate_buffer(
             &self.solid_tile_vertex_array.vertex_buffer,
-            BufferData::Memory(&solid_tiles),
+            BufferData::Memory(&solid_tile_vertices),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+        self.ensure_index_buffer(solid_tile_vertices.len() / 4);
     }
 
-    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
+    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTile]) {
         self.device.allocate_buffer(
             &self.alpha_tile_vertex_array.vertex_buffer,
             BufferData::Memory(&alpha_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+        self.ensure_index_buffer(alpha_tiles.len());
+    }
+
+    fn ensure_index_buffer(&mut self, mut length: usize) {
+        length = length.next_power_of_two();
+        if self.quads_vertex_indices_length >= length {
+            return;
+        }
+
+        // TODO(pcwalton): Generate these with SIMD.
+        let mut indices: Vec<u32> = Vec::with_capacity(length * 6);
+        for index in 0..(length as u32) {
+            indices.extend_from_slice(&[
+                index * 4 + 0, index * 4 + 1, index * 4 + 2,
+                index * 4 + 1, index * 4 + 3, index * 4 + 2,
+            ]);
+        }
+
+        self.device.allocate_buffer(
+            &self.quads_vertex_indices_buffer,
+            BufferData::Memory(&indices),
+            BufferTarget::Index,
+            BufferUploadMode::Static,
+        );
+
+        self.quads_vertex_indices_length = length;
     }
 
     fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
@@ -465,7 +497,7 @@ where
         Transform4F::from_scale(scale).translate(Vector4F::new(-1.0, 1.0, 0.0, 1.0))
     }
 
-    fn draw_alpha_tiles(&mut self, count: u32) {
+    fn draw_alpha_tiles(&mut self, tile_count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
@@ -490,7 +522,7 @@ where
                                               .0
                                               .to_f32x2())));
 
-        self.device.draw_elements_instanced(6, count, &RenderState {
+        self.device.draw_elements(tile_count * 6, &RenderState {
             target: &self.draw_render_target(),
             program: &self.alpha_tile_program.program,
             vertex_array: &self.alpha_tile_vertex_array.vertex_array,
@@ -512,7 +544,7 @@ where
         self.preserve_draw_framebuffer();
     }
 
-    fn draw_solid_tiles(&mut self, count: u32) {
+    fn draw_solid_tiles(&mut self, tile_count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![];
@@ -530,7 +562,7 @@ where
         uniforms.push((&self.solid_tile_program.paint_texture_size_uniform,
                         UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x2())));
 
-        self.device.draw_elements_instanced(6, count, &RenderState {
+        self.device.draw_elements(6 * tile_count, &RenderState {
             target: &self.draw_render_target(),
             program: &self.solid_tile_program.program,
             vertex_array: &self.solid_tile_vertex_array.vertex_array,
@@ -940,87 +972,57 @@ where
     fn new(
         device: &D,
         alpha_tile_program: &AlphaTileProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
+        quads_vertex_indices_buffer: &D::Buffer,
     ) -> AlphaTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-        let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord")
-                                    .unwrap();
-        let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin")
-                                     .unwrap();
+        let tile_position_attr =
+            device.get_vertex_attr(&alpha_tile_program.program, "TilePosition").unwrap();
+        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                          "ColorTexCoord").unwrap();
+        let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                         "MaskTexCoord").unwrap();
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop")
                                   .unwrap();
-        let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex")
-                                    .unwrap();
-        let color_tex_matrix_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                           "ColorTexMatrix").unwrap();
-        let color_tex_offset_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                           "ColorTexOffset").unwrap();
 
-        // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
-        // driver bug.
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: 4,
+            attr_type: VertexAttrType::I16,
+            stride: MASK_TILE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
-            size: 3,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
+        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
+            stride: MASK_TILE_VERTEX_SIZE,
+            offset: 4,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &mask_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
+            stride: MASK_TILE_VERTEX_SIZE,
+            offset: 8,
+            divisor: 0,
+            buffer_index: 0,
         });
         device.configure_vertex_attr(&vertex_array, &backdrop_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I8,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 3,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 6,
-            divisor: 1,
-            buffer_index: 1,
+            stride: MASK_TILE_VERTEX_SIZE,
+            offset: 12,
+            divisor: 0,
+            buffer_index: 0,
         });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_matrix_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 4,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: MASK_TILE_INSTANCE_SIZE,
-                                        offset: 8,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_offset_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 2,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: MASK_TILE_INSTANCE_SIZE,
-                                        offset: 16,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1041,65 +1043,39 @@ where
     fn new(
         device: &D,
         solid_tile_program: &SolidTileProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
+        quads_vertex_indices_buffer: &D::Buffer,
     ) -> SolidTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-        let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord")
-                                    .unwrap();
-        let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin")
-                                     .unwrap();
-        let color_tex_matrix_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                           "ColorTexMatrix").unwrap();
-        let color_tex_offset_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                           "ColorTexOffset").unwrap();
+        let tile_position_attr =
+            device.get_vertex_attr(&solid_tile_program.program, "TilePosition").unwrap();
+        let color_tex_coord_attr =
+            device.get_vertex_attr(&solid_tile_program.program, "ColorTexCoord").unwrap();
 
-        // NB: The object must be of type short, not unsigned short, to work around a macOS
+        // NB: The tile origin must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: 4,
+            attr_type: VertexAttrType::I16,
+            stride: SOLID_TILE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: SOLID_TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
         device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_matrix_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 4,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: SOLID_TILE_INSTANCE_SIZE,
-                                        offset: 4,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_offset_attr,
+                                     &color_tex_coord_attr,
                                      &VertexAttrDescriptor {
                                         size: 2,
                                         class: VertexAttrClass::FloatNorm,
                                         attr_type: VertexAttrType::U16,
-                                        stride: SOLID_TILE_INSTANCE_SIZE,
-                                        offset: 12,
-                                        divisor: 1,
-                                        buffer_index: 1,
+                                        stride: SOLID_TILE_VERTEX_SIZE,
+                                        offset: 4,
+                                        divisor: 0,
+                                        buffer_index: 0,
                                      });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
     }

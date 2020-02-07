@@ -19,8 +19,8 @@ struct main0_out
 
 struct main0_in
 {
-    float2 vMaskTexCoord [[user(locn0)]];
-    float2 vColorTexCoord [[user(locn1)]];
+    float2 vColorTexCoord [[user(locn0)]];
+    float2 vMaskTexCoord [[user(locn1)]];
     float vBackdrop [[user(locn2)]];
 };
 

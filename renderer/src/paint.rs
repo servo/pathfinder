@@ -1,6 +1,6 @@
 // pathfinder/renderer/src/paint.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -10,17 +10,25 @@
 
 use crate::allocator::{TextureAllocator, TextureLocation};
 use crate::gpu_data::PaintData;
+use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::gradient::Gradient;
-use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::transform2d::{Matrix2x2I, Transform2I};
-use pathfinder_geometry::vector::Vector2I;
-use pathfinder_simd::default::I32x4;
+use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
+use pathfinder_geometry::util;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
 
 const PAINT_TEXTURE_LENGTH: u32 = 1024;
-const PAINT_TEXTURE_SCALE: u32 = 65536 / PAINT_TEXTURE_LENGTH;
+const PAINT_TEXTURE_SCALE: f32 = 1.0 / PAINT_TEXTURE_LENGTH as f32;
+
+// The size of a gradient tile.
+//
+// TODO(pcwalton): Choose this size dynamically!
+const GRADIENT_TILE_LENGTH: u32 = 256;
+const GRADIENT_TILE_SCALE: f32 = GRADIENT_TILE_LENGTH as f32 * PAINT_TEXTURE_SCALE;
 
 const SOLID_COLOR_TILE_LENGTH: u32 = 16;
 const MAX_SOLID_COLORS_PER_TILE: u32 = SOLID_COLOR_TILE_LENGTH * SOLID_COLOR_TILE_LENGTH;
@@ -112,10 +120,13 @@ pub struct PaintInfo {
     pub metadata: Vec<PaintMetadata>,
 }
 
+// TODO(pcwalton): Add clamp/repeat options.
 #[derive(Debug)]
 pub struct PaintMetadata {
-    /// The transform to apply to the texture coordinates, in 0.16 fixed point.
-    pub tex_transform: Transform2I,
+    /// The rectangle within the texture atlas.
+    pub tex_rect: RectI,
+    /// The transform to apply to screen coordinates to translate them into UVs.
+    pub tex_transform: Transform2F,
     /// True if this paint is fully opaque.
     pub is_opaque: bool,
 }
@@ -133,29 +144,61 @@ impl Palette {
         paint_id
     }
 
-    pub fn build_paint_info(&self) -> PaintInfo {
+    pub fn build_paint_info(&self, view_box_size: Vector2I) -> PaintInfo {
         let mut allocator = TextureAllocator::new(PAINT_TEXTURE_LENGTH);
         let area = PAINT_TEXTURE_LENGTH as usize * PAINT_TEXTURE_LENGTH as usize;
         let (mut texels, mut metadata) = (vec![0; area * 4], vec![]);
+
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
 
         for paint in &self.paints {
-            let tex_transform;
+            let (texture_location, tex_transform);
             match paint {
                 Paint::Color(color) => {
-                    // TODO(pcwalton): Handle other paint types.
-                    let texture_location = solid_color_tile_builder.allocate(&mut allocator);
+                    texture_location = solid_color_tile_builder.allocate(&mut allocator);
+                    let vector = rect_to_inset_uv(texture_location.rect).origin();
+                    tex_transform = Transform2F { matrix: Matrix2x2F(F32x4::default()), vector };
                     put_pixel(&mut texels, texture_location.rect.origin(), *color);
-                    tex_transform = Transform2I {
-                        matrix: Matrix2x2I(I32x4::default()),
-                        vector: texture_location.rect.origin().scale(PAINT_TEXTURE_SCALE as i32) +
-                            Vector2I::splat(PAINT_TEXTURE_SCALE as i32 / 2),
-                    };
                 }
-                Paint::Gradient(_) => unimplemented!(),
+                Paint::Gradient(ref gradient) => {
+                    // TODO(pcwalton): Optimize this:
+                    // 1. Use repeating/clamp on the sides.
+                    // 2. Choose an optimal size for the gradient that minimizes memory usage while
+                    //    retaining quality.
+                    texture_location =
+                        allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32))
+                                 .expect("Failed to allocate space for the gradient!");
+
+                    tex_transform =
+                        Transform2F::from_translation(rect_to_uv(texture_location.rect).origin()) *
+                        Transform2F::from_scale(Vector2F::splat(GRADIENT_TILE_SCALE) /
+                                                view_box_size.to_f32());
+
+                    let gradient_line = tex_transform * gradient.line();
+
+                    // TODO(pcwalton): Optimize this:
+                    // 1. Calculate ∇t up front and use differencing in the inner loop.
+                    // 2. Go four pixels at a time with SIMD.
+                    for y in 0..(GRADIENT_TILE_LENGTH as i32) {
+                        for x in 0..(GRADIENT_TILE_LENGTH as i32) {
+                            let point = texture_location.rect.origin() + Vector2I::new(x, y);
+                            let vector = point.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32) -
+                                gradient_line.from();
+
+                            let mut t = gradient_line.vector().projection_coefficient(vector);
+                            t = util::clamp(t, 0.0, 1.0);
+
+                            put_pixel(&mut texels, point, gradient.sample(t));
+                        }
+                    }
+                }
             }
 
-            metadata.push(PaintMetadata { tex_transform, is_opaque: paint.is_opaque() });
+            metadata.push(PaintMetadata {
+                tex_rect: texture_location.rect,
+                tex_transform,
+                is_opaque: paint.is_opaque(),
+            });
         }
 
         let size = Vector2I::splat(PAINT_TEXTURE_LENGTH as i32);
@@ -169,8 +212,27 @@ impl Palette {
             texels[index + 2] = color.b;
             texels[index + 3] = color.a;
         }
+
+        fn rect_to_uv(rect: RectI) -> RectF {
+            rect.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32)
+        }
+
+        fn rect_to_inset_uv(rect: RectI) -> RectF {
+            rect_to_uv(rect).contract(Vector2F::splat(0.5 / PAINT_TEXTURE_LENGTH as f32))
+        }
     }
 }
+
+impl PaintMetadata {
+    // TODO(pcwalton): Apply clamp/repeat to tile rect.
+    pub(crate) fn calculate_tex_coords(&self, tile_position: Vector2I) -> Vector2F {
+        let tile_size = Vector2I::new(TILE_WIDTH as i32, TILE_HEIGHT as i32);
+        let tex_coords = self.tex_transform * tile_position.scale_xy(tile_size).to_f32();
+        tex_coords
+    }
+}
+
+// Solid color allocation
 
 struct SolidColorTileBuilder(Option<SolidColorTileBuilderData>);
 

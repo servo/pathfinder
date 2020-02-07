@@ -9,14 +9,14 @@
 // except according to those terms.
 
 use crate::builder::SceneBuilder;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
+use crate::gpu::renderer::MASK_TILES_ACROSS;
+use crate::gpu_data::{AlphaTile, AlphaTileVertex, BuiltObject, TileObjectPrimitive};
 use crate::paint::PaintMetadata;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
 use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::Transform2I;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::cmp::Ordering;
 use std::mem;
@@ -126,15 +126,32 @@ impl<'a> Tiler<'a> {
                 }
             }
 
-            let alpha_tile = AlphaTileBatchPrimitive::new(
-                tile_coords,
-                tile.backdrop,
-                self.object_index,
-                tile.alpha_tile_index as u16,
-                self.paint_metadata.tex_transform,
-            );
-
-            self.built_object.alpha_tiles.push(alpha_tile);
+            self.built_object.alpha_tiles.push(AlphaTile {
+                upper_left: AlphaTileVertex::new(tile_coords,
+                                                 tile.alpha_tile_index as u16,
+                                                 Vector2I::default(),
+                                                 self.object_index,
+                                                 tile.backdrop as i16,
+                                                 &self.paint_metadata),
+                upper_right: AlphaTileVertex::new(tile_coords,
+                                                  tile.alpha_tile_index as u16,
+                                                 Vector2I::new(1, 0),
+                                                  self.object_index,
+                                                  tile.backdrop as i16,
+                                                  &self.paint_metadata),
+                lower_left: AlphaTileVertex::new(tile_coords,
+                                                 tile.alpha_tile_index as u16,
+                                                 Vector2I::new(0, 1),
+                                                 self.object_index,
+                                                 tile.backdrop as i16,
+                                                 &self.paint_metadata),
+                lower_right: AlphaTileVertex::new(tile_coords,
+                                                  tile.alpha_tile_index as u16,
+                                                  Vector2I::splat(1),
+                                                  self.object_index,
+                                                  tile.backdrop as i16,
+                                                  &self.paint_metadata),
+            });
         }
     }
 
@@ -526,36 +543,39 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
     }
 }
 
-impl AlphaTileBatchPrimitive {
+impl AlphaTileVertex {
     #[inline]
-    fn new(tile_coords: Vector2I,
-           backdrop: i8,
-           object_index: u16,
+    fn new(tile_origin: Vector2I,
            tile_index: u16,
-           tex_transform: Transform2I)
-           -> AlphaTileBatchPrimitive {
-        AlphaTileBatchPrimitive {
-            tile_x_lo: (tile_coords.x() & 0xff) as u8,
-            tile_y_lo: (tile_coords.y() & 0xff) as u8,
-            tile_hi: (((tile_coords.x() >> 8) & 0x0f) | ((tile_coords.y() >> 4) & 0xf0)) as u8,
-            backdrop,
+           tile_offset: Vector2I,
+           object_index: u16,
+           backdrop: i16,
+           paint_metadata: &PaintMetadata)
+           -> AlphaTileVertex {
+        let tile_position = tile_origin + tile_offset;
+        let color_uv = paint_metadata.calculate_tex_coords(tile_position).scale(65535.0).to_i32();
+
+        let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
+        let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
+        let mask_scale = 65535.0 / MASK_TILES_ACROSS as f32;
+        let mask_uv = Vector2I::new(mask_u, mask_v) + tile_offset;
+        let mask_uv = mask_uv.to_f32().scale(mask_scale).to_i32();
+
+        AlphaTileVertex {
+            tile_x: tile_position.x() as i16,
+            tile_y: tile_position.y() as i16,
+            color_u: color_uv.x() as u16,
+            color_v: color_uv.y() as u16,
+            mask_u: mask_uv.x() as u16,
+            mask_v: mask_uv.y() as u16,
             object_index,
-            tile_index,
-            texture_m00: tex_transform.matrix.m11() as u16,
-            texture_m10: tex_transform.matrix.m21() as u16,
-            texture_m01: tex_transform.matrix.m12() as u16,
-            texture_m11: tex_transform.matrix.m22() as u16,
-            texture_m02: tex_transform.vector.x() as u16,
-            texture_m12: tex_transform.vector.y() as u16,
+            backdrop,
         }
     }
 
     #[inline]
-    pub fn tile_coords(&self) -> Vector2I {
-        Vector2I::new(
-            (self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
-            (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4),
-        )
+    pub fn tile_position(&self) -> Vector2I {
+        Vector2I::new(self.tile_x as i32, self.tile_y as i32)
     }
 }
 

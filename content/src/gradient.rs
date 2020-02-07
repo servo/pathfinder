@@ -12,7 +12,7 @@ use crate::sorted_vector::SortedVector;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_simd::default::F32x4;
-use std::cmp::{self, Ordering, PartialOrd};
+use std::cmp::{Ordering, PartialOrd};
 use std::convert;
 use std::hash::{Hash, Hasher};
 use std::mem;
@@ -25,8 +25,8 @@ pub struct Gradient {
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
 pub struct ColorStop {
-    pub color: ColorU,
     pub offset: f32,
+    pub color: ColorU,
 }
 
 impl Eq for Gradient {}
@@ -79,10 +79,11 @@ impl Gradient {
             return ColorU::transparent_black();
         }
 
-        let lower_index = self.stops.binary_search_by(|stop| {
+        let last_index = self.stops.len() - 1;
+        let upper_index = self.stops.binary_search_by(|stop| {
             stop.offset.partial_cmp(&t).unwrap_or(Ordering::Less)
-        }).unwrap_or_else(convert::identity);
-        let upper_index = cmp::min(lower_index + 1, self.stops.len() - 1);
+        }).unwrap_or_else(convert::identity).min(last_index);
+        let lower_index = if upper_index > 0 { upper_index - 1 } else { upper_index };
 
         let lower_stop = &self.stops.array[lower_index];
         let upper_stop = &self.stops.array[upper_index];
@@ -102,5 +103,12 @@ impl Gradient {
         for stop in &mut self.stops.array {
             stop.color.a = (stop.color.a as f32 * alpha).round() as u8;
         }
+    }
+}
+
+impl ColorStop {
+    #[inline]
+    pub fn new(color: ColorU, offset: f32) -> ColorStop {
+        ColorStop { color, offset }
     }
 }

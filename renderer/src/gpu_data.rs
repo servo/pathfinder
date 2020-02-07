@@ -22,7 +22,7 @@ use std::time::Duration;
 pub(crate) struct BuiltObject {
     pub bounds: RectF,
     pub fills: Vec<FillBatchPrimitive>,
-    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
+    pub alpha_tiles: Vec<AlphaTile>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
 }
 
@@ -31,8 +31,8 @@ pub enum RenderCommand {
     AddPaintData(PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
-    AlphaTile(Vec<AlphaTileBatchPrimitive>),
-    SolidTile(Vec<SolidTileBatchPrimitive>),
+    AlphaTile(Vec<AlphaTile>),
+    SolidTile(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
 }
 
@@ -69,34 +69,35 @@ pub struct FillBatchPrimitive {
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
-pub struct SolidTileBatchPrimitive {
+pub struct SolidTileVertex {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub texture_m00: u16,
-    pub texture_m10: u16,
-    pub texture_m01: u16,
-    pub texture_m11: u16,
-    pub texture_m02: u16,
-    pub texture_m12: u16,
+    pub color_u: u16,
+    pub color_v: u16,
     pub object_index: u16,
     pub pad: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
-pub struct AlphaTileBatchPrimitive {
-    pub tile_x_lo: u8,
-    pub tile_y_lo: u8,
-    pub tile_hi: u8,
-    pub backdrop: i8,
+pub struct AlphaTile {
+    pub upper_left: AlphaTileVertex,
+    pub upper_right: AlphaTileVertex,
+    pub lower_left: AlphaTileVertex,
+    pub lower_right: AlphaTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct AlphaTileVertex {
+    pub tile_x: i16,
+    pub tile_y: i16,
+    pub color_u: u16,
+    pub color_v: u16,
+    pub mask_u: u16,
+    pub mask_v: u16,
+    pub backdrop: i16,
     pub object_index: u16,
-    pub tile_index: u16,
-    pub texture_m00: u16,
-    pub texture_m10: u16,
-    pub texture_m01: u16,
-    pub texture_m11: u16,
-    pub texture_m02: u16,
-    pub texture_m12: u16,
 }
 
 impl Debug for RenderCommand {

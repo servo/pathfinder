@@ -32,7 +32,7 @@ path = "../../gpu"
 path = "../../simd"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-foreign-types = "0.5"
+foreign-types = "0.3"
 metal = "0.17"
 
 [target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]

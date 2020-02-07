@@ -18,8 +18,8 @@ uniform sampler2D uStencilTexture;
 uniform sampler2D uPaintTexture;
 uniform vec2 uPaintTextureSize;
 
-in vec2 vMaskTexCoord;
 in vec2 vColorTexCoord;
+in vec2 vMaskTexCoord;
 in float vBackdrop;
 in vec4 vColor;
 

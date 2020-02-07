@@ -179,6 +179,14 @@ impl Add<F32x2> for F32x2 {
     }
 }
 
+impl Div<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn div(self, other: F32x2) -> F32x2 {
+        unsafe { F32x2(simd_div(self.0, other.0)) }
+    }
+}
+
 impl Mul<F32x2> for F32x2 {
     type Output = F32x2;
     #[inline]
@@ -380,6 +388,14 @@ impl Add<F32x4> for F32x4 {
     }
 }
 
+impl Div<F32x4> for F32x4 {
+    type Output = F32x4;
+    #[inline]
+    fn div(self, other: F32x4) -> F32x4 {
+        unsafe { F32x4(simd_div(self.0, other.0)) }
+    }
+}
+
 impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
@@ -410,6 +426,18 @@ impl I32x2 {
     #[inline]
     pub fn splat(x: i32) -> I32x2 {
         I32x2::new(x, x)
+    }
+
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> i32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> i32 {
+        self[1]
     }
 
     #[inline]
@@ -750,6 +778,7 @@ impl Index<usize> for U32x4 {
 
 extern "platform-intrinsic" {
     fn simd_add<T>(x: T, y: T) -> T;
+    fn simd_div<T>(x: T, y: T) -> T;
     fn simd_mul<T>(x: T, y: T) -> T;
     fn simd_sub<T>(x: T, y: T) -> T;
 

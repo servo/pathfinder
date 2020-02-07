@@ -10,7 +10,7 @@
 
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
-use std::ops::{Add, BitAnd, BitOr, Index, IndexMut, Mul, Shr, Sub};
+use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Shr, Sub};
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
@@ -163,6 +163,14 @@ impl Add<F32x2> for F32x2 {
     #[inline]
     fn add(self, other: F32x2) -> F32x2 {
         F32x2([self[0] + other[0], self[1] + other[1]])
+    }
+}
+
+impl Div<F32x2> for F32x2 {
+    type Output = F32x2;
+    #[inline]
+    fn div(self, other: F32x2) -> F32x2 {
+        F32x2([self[0] / other[0], self[1] / other[1]])
     }
 }
 
@@ -403,6 +411,19 @@ impl Add<F32x4> for F32x4 {
     }
 }
 
+impl Div<F32x4> for F32x4 {
+    type Output = F32x4;
+    #[inline]
+    fn div(self, other: F32x4) -> F32x4 {
+        F32x4([
+            self[0] / other[0],
+            self[1] / other[1],
+            self[2] / other[2],
+            self[3] / other[3],
+        ])
+    }
+}
+
 impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
@@ -443,6 +464,18 @@ impl I32x2 {
     #[inline]
     pub fn splat(x: i32) -> I32x2 {
         I32x2([x, x])
+    }
+
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> i32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> i32 {
+        self[1]
     }
 
     #[inline]

@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
+use crate::gpu_data::{AlphaTile, BuiltObject, FillBatchPrimitive, RenderCommand};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::Scene;
@@ -23,6 +23,7 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::i16;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use std::u16;
@@ -88,7 +89,7 @@ impl<'a> SceneBuilder<'a> {
         built_options: &PreparedBuildOptions,
         scene: &Scene,
         paint_metadata: &[PaintMetadata],
-    ) -> Vec<AlphaTileBatchPrimitive> {
+    ) -> Vec<AlphaTile> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
         let paint_id = path_object.paint();
@@ -105,26 +106,29 @@ impl<'a> SceneBuilder<'a> {
         tiler.built_object.alpha_tiles
     }
 
-    fn cull_alpha_tiles(&self, alpha_tiles: &mut Vec<AlphaTileBatchPrimitive>) {
+    fn cull_alpha_tiles(&self, alpha_tiles: &mut Vec<AlphaTile>) {
         for alpha_tile in alpha_tiles {
-            let alpha_tile_coords = alpha_tile.tile_coords();
+            let alpha_tile_coords = alpha_tile.upper_left.tile_position();
             if self
                 .z_buffer
-                .test(alpha_tile_coords, alpha_tile.object_index as u32)
+                .test(alpha_tile_coords, alpha_tile.upper_left.object_index as u32)
             {
                 continue;
             }
 
             // FIXME(pcwalton): Clean this up.
-            alpha_tile.tile_x_lo = 0xff;
-            alpha_tile.tile_y_lo = 0xff;
-            alpha_tile.tile_hi = 0xff;
+            alpha_tile.upper_left.tile_x  = i16::MIN;
+            alpha_tile.upper_left.tile_y  = i16::MIN;
+            alpha_tile.upper_right.tile_x = i16::MIN;
+            alpha_tile.upper_right.tile_y = i16::MIN;
+            alpha_tile.lower_left.tile_x  = i16::MIN;
+            alpha_tile.lower_left.tile_y  = i16::MIN;
+            alpha_tile.lower_right.tile_x = i16::MIN;
+            alpha_tile.lower_right.tile_y = i16::MIN;
         }
     }
 
-    fn pack_alpha_tiles(&mut self,
-                        paint_metadata: &[PaintMetadata],
-                        alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
+    fn pack_alpha_tiles(&mut self, paint_metadata: &[PaintMetadata], alpha_tiles: Vec<AlphaTile>) {
         let path_count = self.scene.paths.len() as u32;
         let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
                                                           paint_metadata,
@@ -139,7 +143,7 @@ impl<'a> SceneBuilder<'a> {
 
     fn finish_building(&mut self,
                        paint_metadata: &[PaintMetadata],
-                       mut alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
+                       mut alpha_tiles: Vec<AlphaTile>) {
         self.listener.send(RenderCommand::FlushFills);
         self.cull_alpha_tiles(&mut alpha_tiles);
         self.pack_alpha_tiles(paint_metadata, alpha_tiles);

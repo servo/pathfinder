@@ -28,6 +28,7 @@ use std::f32::consts::PI;
 use std::mem;
 use std::sync::Arc;
 use text::FontCollection;
+
 #[cfg(feature = "pf-text")]
 pub use text::TextMetrics;
 pub use text::CanvasFontContext;
