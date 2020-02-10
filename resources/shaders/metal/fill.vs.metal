@@ -29,6 +29,7 @@ struct main0_in
     uint aTileIndex [[attribute(5)]];
 };
 
+static inline __attribute__((always_inline))
 float2 computeTileOffset(thread const uint& tileIndex, thread const float& stencilTextureWidth, thread float2 uTileSize)
 {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);

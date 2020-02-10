@@ -29,11 +29,13 @@ struct main0_in
     float2 vTexCoord [[user(locn0)]];
 };
 
+static inline __attribute__((always_inline))
 float sample1Tap(thread const float& offset, thread texture2d<float> uSource, thread const sampler uSourceSmplr, thread float2& vTexCoord)
 {
     return uSource.sample(uSourceSmplr, float2(vTexCoord.x + offset, vTexCoord.y)).x;
 }
 
+static inline __attribute__((always_inline))
 void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, thread float4& outAlphaRight, thread const float& onePixel, thread float4 uKernel, thread texture2d<float> uSource, thread const sampler uSourceSmplr, thread float2& vTexCoord)
 {
     float _89;
@@ -53,11 +55,8 @@ void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, threa
     float param_4 = 0.0;
     outAlphaCenter = sample1Tap(param_4, uSource, uSourceSmplr, vTexCoord);
     float param_5 = 1.0 * onePixel;
-    float _120 = sample1Tap(param_5, uSource, uSourceSmplr, vTexCoord);
     float param_6 = 2.0 * onePixel;
-    float _125 = sample1Tap(param_6, uSource, uSourceSmplr, vTexCoord);
     float param_7 = 3.0 * onePixel;
-    float _130 = sample1Tap(param_7, uSource, uSourceSmplr, vTexCoord);
     float _134;
     if (uKernel.x > 0.0)
     {
@@ -68,19 +67,22 @@ void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, threa
     {
         _134 = 0.0;
     }
-    outAlphaRight = float4(_120, _125, _130, _134);
+    outAlphaRight = float4(sample1Tap(param_5, uSource, uSourceSmplr, vTexCoord), sample1Tap(param_6, uSource, uSourceSmplr, vTexCoord), sample1Tap(param_7, uSource, uSourceSmplr, vTexCoord), _134);
 }
 
+static inline __attribute__((always_inline))
 float convolve7Tap(thread const float4& alpha0, thread const float3& alpha1, thread float4 uKernel)
 {
     return dot(alpha0, uKernel) + dot(alpha1, uKernel.zyx);
 }
 
+static inline __attribute__((always_inline))
 float gammaCorrectChannel(thread const float& bgColor, thread const float& fgColor, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr)
 {
     return uGammaLUT.sample(uGammaLUTSmplr, float2(fgColor, 1.0 - bgColor)).x;
 }
 
+static inline __attribute__((always_inline))
 float3 gammaCorrect(thread const float3& bgColor, thread const float3& fgColor, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr)
 {
     float param = bgColor.x;

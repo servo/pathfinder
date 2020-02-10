@@ -53,6 +53,9 @@ all:	$(OUT)
 clean:
 	rm -f $(OUT)
 
+test:
+	echo $(GLSL_SED_ARGS) 
+	
 build/metal/%.fs.spv:	%.fs.glsl $(INCLUDES)
 	mkdir -p build/metal && glslangValidator $(GLSLANGFLAGS_METAL) -G$(GLSL_VERSION) -S frag -o $@ $<
 
@@ -66,4 +69,4 @@ $(TARGET_DIR)/gl3/%.vs.glsl:	%.vs.glsl $(INCLUDES)
 	mkdir -p $(TARGET_DIR)/gl3 && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( glslangValidator $(GLSLANGFLAGS) -S vert -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
 
 $(TARGET_DIR)/metal/%.metal:	build/metal/%.spv
-	mkdir -p $(TARGET_DIR)/metal && echo $(HEADER) > $@ && ( $(SPIRVCROSS) $(SPIRVCROSSFLAGS) $< | sed $(METAL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
+	mkdir -p $(TARGET_DIR)/metal && echo $(HEADER) > $@ && ( $(SPIRVCROSS) $(SPIRVCROSSFLAGS) $< >> $@ ) || ( rm $@ && exit 1 )

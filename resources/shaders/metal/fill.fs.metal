@@ -26,10 +26,8 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     main0_out out = {};
     float2 from = in.vFrom;
     float2 to = in.vTo;
-    bool2 _29 = bool2(from.x < to.x);
-    float2 left = float2(_29.x ? from.x : to.x, _29.y ? from.y : to.y);
-    bool2 _39 = bool2(from.x < to.x);
-    float2 right = float2(_39.x ? to.x : from.x, _39.y ? to.y : from.y);
+    float2 left = select(to, from, bool2(from.x < to.x));
+    float2 right = select(from, to, bool2(from.x < to.x));
     float2 window = fast::clamp(float2(from.x, to.x), float2(-0.5), float2(0.5));
     float offset = mix(window.x, window.y, 0.5) - left.x;
     float t = offset / (right.x - left.x);
