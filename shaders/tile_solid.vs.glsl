@@ -24,7 +24,7 @@ out vec2 vColorTexCoord;
 
 void main() {
     vec2 tileOffset = vec2(aTessCoord) * uTileSize;
-    vec2 position = aTileOrigin * uTileSize + tileOffset;
+    vec2 position = vec2(aTileOrigin) * uTileSize + tileOffset;
     vColorTexCoord = mat2(aColorTexMatrix) * tileOffset + aColorTexOffset;
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
