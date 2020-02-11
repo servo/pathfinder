@@ -13,7 +13,7 @@ use crate::gpu_data::PaintData;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
-use pathfinder_content::gradient::Gradient;
+use pathfinder_content::gradient::{Gradient, GradientGeometry};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::util;
@@ -174,23 +174,10 @@ impl Palette {
                         Transform2F::from_scale(Vector2F::splat(GRADIENT_TILE_SCALE) /
                                                 view_box_size.to_f32());
 
-                    let gradient_line = tex_transform * gradient.line();
-
-                    // TODO(pcwalton): Optimize this:
-                    // 1. Calculate ∇t up front and use differencing in the inner loop.
-                    // 2. Go four pixels at a time with SIMD.
-                    for y in 0..(GRADIENT_TILE_LENGTH as i32) {
-                        for x in 0..(GRADIENT_TILE_LENGTH as i32) {
-                            let point = texture_location.rect.origin() + Vector2I::new(x, y);
-                            let vector = point.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32) -
-                                gradient_line.from();
-
-                            let mut t = gradient_line.vector().projection_coefficient(vector);
-                            t = util::clamp(t, 0.0, 1.0);
-
-                            put_pixel(&mut texels, point, gradient.sample(t));
-                        }
-                    }
+                    self.build_paint_info_for_gradient(gradient,
+                                                       texture_location,
+                                                       &tex_transform,
+                                                       &mut texels);
                 }
             }
 
@@ -204,21 +191,58 @@ impl Palette {
         let size = Vector2I::splat(PAINT_TEXTURE_LENGTH as i32);
         return PaintInfo { data: PaintData { size, texels }, metadata };
 
-        fn put_pixel(texels: &mut [u8], position: Vector2I, color: ColorU) {
-            let index = (position.y() as usize * PAINT_TEXTURE_LENGTH as usize +
-                         position.x() as usize) * 4;
-            texels[index + 0] = color.r;
-            texels[index + 1] = color.g;
-            texels[index + 2] = color.b;
-            texels[index + 3] = color.a;
-        }
+    }
 
-        fn rect_to_uv(rect: RectI) -> RectF {
-            rect.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32)
-        }
+    fn build_paint_info_for_gradient(&self,
+                                     gradient: &Gradient,
+                                     texture_location: TextureLocation,
+                                     tex_transform: &Transform2F,
+                                     texels: &mut [u8]) {
+        match *gradient.geometry() {
+            GradientGeometry::Linear(gradient_line) => {
+                // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
+                let gradient_line = *tex_transform * gradient_line;
 
-        fn rect_to_inset_uv(rect: RectI) -> RectF {
-            rect_to_uv(rect).contract(Vector2F::splat(0.5 / PAINT_TEXTURE_LENGTH as f32))
+                // TODO(pcwalton): Optimize this:
+                // 1. Calculate ∇t up front and use differencing in the inner loop.
+                // 2. Go four pixels at a time with SIMD.
+                for y in 0..(GRADIENT_TILE_LENGTH as i32) {
+                    for x in 0..(GRADIENT_TILE_LENGTH as i32) {
+                        let point = texture_location.rect.origin() + Vector2I::new(x, y);
+                        let vector = point.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32) -
+                            gradient_line.from();
+
+                        let mut t = gradient_line.vector().projection_coefficient(vector);
+                        t = util::clamp(t, 0.0, 1.0);
+
+                        put_pixel(texels, point, gradient.sample(t));
+                    }
+                }
+            }
+            GradientGeometry::Radial { line: gradient_line, start_radius, end_radius } => {
+                // FIXME(pcwalton): Paint transparent if line has zero size and radii are equal,
+                // per spec.
+                let tex_transform_inv = tex_transform.inverse();
+
+                // FIXME(pcwalton): This is not correct. Follow the spec.
+                let center = gradient_line.midpoint();
+
+                // TODO(pcwalton): Optimize this:
+                // 1. Calculate ∇t up front and use differencing in the inner loop, if possible.
+                // 2. Go four pixels at a time with SIMD.
+                for y in 0..(GRADIENT_TILE_LENGTH as i32) {
+                    for x in 0..(GRADIENT_TILE_LENGTH as i32) {
+                        let point = texture_location.rect.origin() + Vector2I::new(x, y);
+                        let vector = tex_transform_inv *
+                            point.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32);
+
+                        let t = util::clamp((vector - center).length(), start_radius, end_radius) /
+                            (end_radius - start_radius);
+
+                        put_pixel(texels, point, gradient.sample(t));
+                    }
+                }
+            }
         }
     }
 }
@@ -230,6 +254,23 @@ impl PaintMetadata {
         let tex_coords = self.tex_transform * tile_position.scale_xy(tile_size).to_f32();
         tex_coords
     }
+}
+
+fn put_pixel(texels: &mut [u8], position: Vector2I, color: ColorU) {
+    let index = (position.y() as usize * PAINT_TEXTURE_LENGTH as usize +
+                 position.x() as usize) * 4;
+    texels[index + 0] = color.r;
+    texels[index + 1] = color.g;
+    texels[index + 2] = color.b;
+    texels[index + 3] = color.a;
+}
+
+fn rect_to_uv(rect: RectI) -> RectF {
+    rect.to_f32().scale(1.0 / PAINT_TEXTURE_LENGTH as f32)
+}
+
+fn rect_to_inset_uv(rect: RectI) -> RectF {
+    rect_to_uv(rect).contract(Vector2F::splat(0.5 / PAINT_TEXTURE_LENGTH as f32))
 }
 
 // Solid color allocation
