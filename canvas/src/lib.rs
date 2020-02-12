@@ -14,6 +14,7 @@ use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
+use pathfinder_content::pattern::Pattern;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -427,6 +428,7 @@ impl Path2D {
 pub enum FillStyle {
     Color(ColorU),
     Gradient(Gradient),
+    Pattern(Pattern),
 }
 
 impl FillStyle {
@@ -434,6 +436,7 @@ impl FillStyle {
         match self {
             FillStyle::Color(color) => Paint::Color(color),
             FillStyle::Gradient(gradient) => Paint::Gradient(gradient),
+            FillStyle::Pattern(pattern) => Paint::Pattern(pattern),
         }
     }
 }
@@ -456,4 +459,3 @@ pub enum LineJoin {
     Bevel,
     Round,
 }
-

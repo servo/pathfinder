@@ -42,7 +42,8 @@ impl TextureAllocator {
 
     #[inline]
     pub fn allocate(&mut self, requested_size: Vector2I) -> Option<TextureLocation> {
-        let requested_length = requested_size.x().max(requested_size.y()) as u32;
+        let requested_length =
+            (requested_size.x().max(requested_size.y()) as u32).next_power_of_two();
         self.root.allocate(Vector2I::default(), self.size, requested_length)
     }
 

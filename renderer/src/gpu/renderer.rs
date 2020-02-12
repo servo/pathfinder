@@ -13,7 +13,7 @@ use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, PaintData, RenderCommand, SolidTileVertex};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_color::ColorF;
+use pathfinder_color::{self as color, ColorF, ColorU};
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
@@ -353,10 +353,11 @@ where
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
         // FIXME(pcwalton): This is a hack. We shouldn't be generating paint data at all on the
         // renderer side.
-        let (paint_size, paint_texels): (Vector2I, &[u8]);
+        let (paint_size, paint_texels): (Vector2I, &[ColorU]);
+        let dummy_paint = [ColorU::white(); 1];
         if self.postprocess_options.is_some() {
             paint_size = Vector2I::splat(1);
-            paint_texels = &[255; 4];
+            paint_texels = &dummy_paint;
         } else {
             paint_size = paint_data.size;
             paint_texels = &paint_data.texels;
@@ -370,9 +371,10 @@ where
             }
         }
 
+        let texels = color::color_slice_to_u8_slice(paint_texels);
         self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
                                       RectI::new(Vector2I::default(), paint_size),
-                                      TextureDataRef::U8(paint_texels));
+                                      TextureDataRef::U8(texels));
     }
 
     fn upload_solid_tiles(&mut self, solid_tile_vertices: &[SolidTileVertex]) {

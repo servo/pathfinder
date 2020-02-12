@@ -149,6 +149,7 @@ impl Scene {
         match self.palette.paints[first_paint_id.0 as usize] {
             Paint::Color(color) => Some(color),
             Paint::Gradient(_) => None,
+            Paint::Pattern(_) => None,
         }
     }
 

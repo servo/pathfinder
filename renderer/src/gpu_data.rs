@@ -12,6 +12,7 @@
 
 use crate::options::BoundingQuad;
 use crate::tile_map::DenseTileMap;
+use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2I;
@@ -39,7 +40,7 @@ pub enum RenderCommand {
 #[derive(Clone, Debug)]
 pub struct PaintData {
     pub size: Vector2I,
-    pub texels: Vec<u8>,
+    pub texels: Vec<ColorU>,
 }
 
 #[derive(Clone, Copy, Debug)]

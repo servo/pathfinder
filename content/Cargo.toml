@@ -10,6 +10,16 @@ bitflags = "1.0"
 log = "0.4"
 smallvec = "1.2"
 
+[dependencies.image]
+version = "0.23"
+default-features = false
+features = []
+optional = true
+
+[features]
+default = ["pf-image"]
+pf-image = ["image"]
+
 [dependencies.pathfinder_color]
 path = "../color"
 

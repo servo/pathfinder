@@ -10,9 +10,11 @@
 
 use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
+use std::slice;
 
-// TODO(pcwalton): Maybe this should be a u32?
+// TODO(pcwalton): Maybe this should be a u32? Need to be aware of endianness issues if we do that.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(C)]
 pub struct ColorU {
     pub r: u8,
     pub g: u8,
@@ -47,6 +49,16 @@ impl ColorU {
             r: 0,
             g: 0,
             b: 0,
+            a: 255,
+        }
+    }
+
+    #[inline]
+    pub fn white() -> ColorU {
+        ColorU {
+            r: 255,
+            g: 255,
+            b: 255,
             a: 255,
         }
     }
@@ -147,4 +159,25 @@ impl Debug for ColorF {
             self.a()
         )
     }
+}
+
+#[inline]
+pub fn color_slice_to_u8_slice(slice: &[ColorU]) -> &[u8] {
+    unsafe {
+        slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * 4)
+    }
+}
+
+#[inline]
+pub fn u8_slice_to_color_slice(slice: &[u8]) -> &[ColorU] {
+    unsafe {
+        assert_eq!(slice.len() % 4, 0);
+        slice::from_raw_parts(slice.as_ptr() as *const ColorU, slice.len() / 4)
+    }
+}
+
+// TODO(pcwalton): Do this without a copy?
+#[inline]
+pub fn u8_vec_to_color_vec(buffer: Vec<u8>) -> Vec<ColorU> {
+    u8_slice_to_color_slice(&buffer).to_vec()
 }

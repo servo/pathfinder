@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/gradient.rs
+// pathfinder/content/src/gradient.rs
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -55,6 +55,7 @@ impl Hash for Gradient {
                 hash_f32(end_radius, state);
             }
         }
+
         self.stops.hash(state);
 
         fn hash_line_segment<H>(line_segment: LineSegment2F, state: &mut H) where H: Hasher {

@@ -11,6 +11,7 @@
 //! A SIMD-optimized point type.
 
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
@@ -303,6 +304,16 @@ impl PartialEq for Vector2I {
     #[inline]
     fn eq(&self, other: &Vector2I) -> bool {
         self.0.packed_eq(other.0).all_true()
+    }
+}
+
+impl Eq for Vector2I {}
+
+impl Hash for Vector2I {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.x().hash(state);
+        self.y().hash(state);
     }
 }
 
