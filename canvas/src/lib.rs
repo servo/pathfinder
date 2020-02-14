@@ -173,9 +173,11 @@ impl CanvasRenderingContext2D {
 
         let mut stroke_style = self.current_state.resolve_stroke_style();
         
-        // the smaller scale is relevant here, as we multiply by it and want to ensure it is always bigger than HAIRLINE_STROKE_WIDTH
-        let transform_scale = f32::min(self.current_state.transform.m11(), self.current_state.transform.m22());
-        // avoid the division in the normal case of sufficient thickness
+        // The smaller scale is relevant here, as we multiply by it and want to ensure it is always
+        // bigger than `HAIRLINE_STROKE_WIDTH`.
+        let transform_scale = f32::min(self.current_state.transform.m11(),
+                                       self.current_state.transform.m22());
+        // Avoid the division in the normal case of sufficient thickness.
         if stroke_style.line_width * transform_scale < HAIRLINE_STROKE_WIDTH {
             stroke_style.line_width = HAIRLINE_STROKE_WIDTH / transform_scale;
         }

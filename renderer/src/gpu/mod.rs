@@ -13,3 +13,5 @@
 pub mod debug;
 pub mod options;
 pub mod renderer;
+
+pub(crate) mod shaders;

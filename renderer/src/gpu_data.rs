@@ -93,10 +93,10 @@ pub struct AlphaTile {
 pub struct AlphaTileVertex {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub color_u: u16,
-    pub color_v: u16,
     pub mask_u: u16,
     pub mask_v: u16,
+    pub color_u: u16,
+    pub color_v: u16,
     pub backdrop: i16,
     pub object_index: u16,
 }

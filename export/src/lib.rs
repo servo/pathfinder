@@ -81,6 +81,9 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
             Paint::Gradient(_) => {
                 // TODO(pcwalton): Gradients.
             }
+            Paint::Pattern(_) => {
+                // TODO(pcwalton): Patterns.
+            }
         }
         
         for contour in outline.contours() {
@@ -183,6 +186,9 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
             }
             Paint::Gradient(_) => {
                 // TODO(pcwalton): Gradients.
+            }
+            Paint::Pattern(_) => {
+                // TODO(pcwalton): Patterns.
             }
         }
 
