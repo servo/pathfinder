@@ -11,21 +11,11 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::options::BoundingQuad;
-use crate::tile_map::DenseTileMap;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
-
-#[derive(Debug)]
-pub(crate) struct BuiltObject {
-    pub bounds: RectF,
-    pub fills: Vec<FillBatchPrimitive>,
-    pub alpha_tiles: Vec<AlphaTile>,
-    pub tiles: DenseTileMap<TileObjectPrimitive>,
-}
 
 pub enum RenderCommand {
     Start { path_count: usize, bounding_quad: BoundingQuad },

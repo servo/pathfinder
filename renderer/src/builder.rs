@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu_data::{AlphaTile, BuiltObject, FillBatchPrimitive, RenderCommand};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, RenderCommand, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::Scene;
@@ -23,7 +23,6 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
-use std::i16;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use std::u16;
@@ -68,7 +67,7 @@ impl<'a> SceneBuilder<'a> {
         self.listener.send(RenderCommand::AddPaintData(paint_data));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
-        let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
+        let built_objects = executor.build_vector(path_count, |path_index| {
             self.build_path(path_index,
                             effective_view_box,
                             &self.built_options,
@@ -76,7 +75,7 @@ impl<'a> SceneBuilder<'a> {
                             &paint_metadata)
         });
 
-        self.finish_building(&paint_metadata, alpha_tiles);
+        self.finish_building(&paint_metadata, built_objects);
 
         let build_time = Instant::now() - start_time;
         self.listener.send(RenderCommand::Finish { build_time });
@@ -89,7 +88,7 @@ impl<'a> SceneBuilder<'a> {
         built_options: &PreparedBuildOptions,
         scene: &Scene,
         paint_metadata: &[PaintMetadata],
-    ) -> Vec<AlphaTile> {
+    ) -> BuiltObject {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
         let paint_id = path_object.paint();
@@ -102,33 +101,27 @@ impl<'a> SceneBuilder<'a> {
 
         tiler.generate_tiles();
 
-        self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
-        tiler.built_object.alpha_tiles
+        self.listener.send(RenderCommand::AddFills(tiler.object_builder.fills));
+        tiler.object_builder.built_object
     }
 
-    fn cull_alpha_tiles(&self, alpha_tiles: &mut Vec<AlphaTile>) {
-        for alpha_tile in alpha_tiles {
-            let alpha_tile_coords = alpha_tile.upper_left.tile_position();
-            if self
-                .z_buffer
-                .test(alpha_tile_coords, alpha_tile.upper_left.object_index as u32)
-            {
-                continue;
+    fn cull_tiles(&self, built_objects: Vec<BuiltObject>) -> CulledTiles {
+        let mut culled_tiles = CulledTiles { alpha_tiles: vec![] };
+
+        for built_object in built_objects {
+            for alpha_tile in built_object.alpha_tiles {
+                let alpha_tile_coords = alpha_tile.upper_left.tile_position();
+                if self.z_buffer.test(alpha_tile_coords,
+                                      alpha_tile.upper_left.object_index as u32) {
+                    culled_tiles.alpha_tiles.push(alpha_tile);
+                }
             }
-
-            // FIXME(pcwalton): Clean this up.
-            alpha_tile.upper_left.tile_x  = i16::MIN;
-            alpha_tile.upper_left.tile_y  = i16::MIN;
-            alpha_tile.upper_right.tile_x = i16::MIN;
-            alpha_tile.upper_right.tile_y = i16::MIN;
-            alpha_tile.lower_left.tile_x  = i16::MIN;
-            alpha_tile.lower_left.tile_y  = i16::MIN;
-            alpha_tile.lower_right.tile_x = i16::MIN;
-            alpha_tile.lower_right.tile_y = i16::MIN;
         }
+
+        culled_tiles
     }
 
-    fn pack_alpha_tiles(&mut self, paint_metadata: &[PaintMetadata], alpha_tiles: Vec<AlphaTile>) {
+    fn pack_tiles(&mut self, paint_metadata: &[PaintMetadata], culled_tiles: CulledTiles) {
         let path_count = self.scene.paths.len() as u32;
         let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
                                                           paint_metadata,
@@ -136,17 +129,17 @@ impl<'a> SceneBuilder<'a> {
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::SolidTile(solid_tiles));
         }
-        if !alpha_tiles.is_empty() {
-            self.listener.send(RenderCommand::AlphaTile(alpha_tiles));
+        if !culled_tiles.alpha_tiles.is_empty() {
+            self.listener.send(RenderCommand::AlphaTile(culled_tiles.alpha_tiles));
         }
     }
 
     fn finish_building(&mut self,
                        paint_metadata: &[PaintMetadata],
-                       mut alpha_tiles: Vec<AlphaTile>) {
+                       built_objects: Vec<BuiltObject>) {
         self.listener.send(RenderCommand::FlushFills);
-        self.cull_alpha_tiles(&mut alpha_tiles);
-        self.pack_alpha_tiles(paint_metadata, alpha_tiles);
+        let culled_tiles = self.cull_tiles(built_objects);
+        self.pack_tiles(paint_metadata, culled_tiles);
     }
 }
 
@@ -158,14 +151,14 @@ pub struct TileStats {
 
 // Utilities for built objects
 
-impl BuiltObject {
-    pub(crate) fn new(bounds: RectF) -> BuiltObject {
+impl ObjectBuilder {
+    pub(crate) fn new(bounds: RectF) -> ObjectBuilder {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
         let tiles = DenseTileMap::new(tile_rect);
-        BuiltObject {
+        ObjectBuilder {
+            built_object: BuiltObject { alpha_tiles: vec![] },
             bounds,
             fills: vec![],
-            alpha_tiles: vec![],
             tiles,
         }
     }
@@ -177,7 +170,7 @@ impl BuiltObject {
 
     fn add_fill(
         &mut self,
-        builder: &SceneBuilder,
+        scene_builder: &SceneBuilder,
         segment: LineSegment2F,
         tile_coords: Vector2I,
     ) {
@@ -207,7 +200,7 @@ impl BuiltObject {
         }
 
         // Allocate global tile if necessary.
-        let alpha_tile_index = self.get_or_allocate_alpha_tile_index(builder, tile_coords);
+        let alpha_tile_index = self.get_or_allocate_alpha_tile_index(scene_builder, tile_coords);
 
         // Pack whole pixels.
         let px = (segment & I32x4::splat(0xf00)).to_u32x4();
@@ -229,7 +222,7 @@ impl BuiltObject {
 
     fn get_or_allocate_alpha_tile_index(
         &mut self,
-        builder: &SceneBuilder,
+        scene_builder: &SceneBuilder,
         tile_coords: Vector2I,
     ) -> u16 {
         let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
@@ -238,7 +231,7 @@ impl BuiltObject {
             return alpha_tile_index;
         }
 
-        let alpha_tile_index = builder
+        let alpha_tile_index = scene_builder
             .next_alpha_tile_index
             .fetch_add(1, Ordering::Relaxed) as u16;
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
@@ -247,7 +240,7 @@ impl BuiltObject {
 
     pub(crate) fn add_active_fill(
         &mut self,
-        builder: &SceneBuilder,
+        scene_builder: &SceneBuilder,
         left: f32,
         right: f32,
         mut winding: i32,
@@ -272,7 +265,7 @@ impl BuiltObject {
         );
 
         while winding != 0 {
-            self.add_fill(builder, segment, tile_coords);
+            self.add_fill(scene_builder, segment, tile_coords);
             if winding < 0 {
                 winding += 1
             } else {
@@ -283,7 +276,7 @@ impl BuiltObject {
 
     pub(crate) fn generate_fill_primitives_for_line(
         &mut self,
-        builder: &SceneBuilder,
+        scene_builder: &SceneBuilder,
         mut segment: LineSegment2F,
         tile_y: i32,
     ) {
@@ -331,7 +324,7 @@ impl BuiltObject {
 
             let fill_segment = LineSegment2F::new(fill_from, fill_to);
             let fill_tile_coords = Vector2I::new(subsegment_tile_x, tile_y);
-            self.add_fill(builder, fill_segment, fill_tile_coords);
+            self.add_fill(scene_builder, fill_segment, fill_tile_coords);
         }
     }
 
@@ -344,4 +337,21 @@ impl BuiltObject {
     pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Vector2I {
         self.tiles.index_to_coords(tile_index as usize)
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct BuiltObject {
+    pub alpha_tiles: Vec<AlphaTile>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ObjectBuilder {
+    pub built_object: BuiltObject,
+    pub fills: Vec<FillBatchPrimitive>,
+    pub tiles: DenseTileMap<TileObjectPrimitive>,
+    pub bounds: RectF,
+}
+
+struct CulledTiles {
+    alpha_tiles: Vec<AlphaTile>,
 }

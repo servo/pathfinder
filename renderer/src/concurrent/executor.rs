@@ -15,17 +15,17 @@ pub trait Executor {
     /// Like the Rayon snippet:
     ///
     /// ```norun
-    /// (0..length).into_par_iter().flat_map(builder).collect()
+    /// (0..length).into_par_iter().map(builder).collect()
     /// ```
-    fn flatten_into_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
-                                 where T: Send, F: Fn(usize) -> Vec<T> + Send + Sync;
+    fn build_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
+                          where T: Send, F: Fn(usize) -> T + Send + Sync;
 }
 
 pub struct SequentialExecutor;
 
 impl Executor for SequentialExecutor {
-    fn flatten_into_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
-                                 where T: Send, F: Fn(usize) -> Vec<T> + Send + Sync {
-        (0..length).into_iter().flat_map(builder).collect()
+    fn build_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
+                          where T: Send, F: Fn(usize) -> T + Send + Sync {
+        (0..length).into_iter().map(builder).collect()
     }
 }
