@@ -24,6 +24,7 @@ use pathfinder_content::outline::Outline;
 #[derive(Clone)]
 pub struct Scene {
     pub(crate) paths: Vec<DrawPath>,
+    pub(crate) clip_paths: Vec<ClipPath>,
     palette: Palette,
     bounds: RectF,
     view_box: RectF,
@@ -34,6 +35,7 @@ impl Scene {
     pub fn new() -> Scene {
         Scene {
             paths: vec![],
+            clip_paths: vec![],
             palette: Palette::new(),
             bounds: RectF::default(),
             view_box: RectF::default(),
@@ -43,6 +45,13 @@ impl Scene {
     pub fn push_path(&mut self, path: DrawPath) {
         self.bounds = self.bounds.union_rect(path.outline.bounds());
         self.paths.push(path);
+    }
+
+    pub fn push_clip_path(&mut self, clip_path: ClipPath) -> ClipPathId {
+        self.bounds = self.bounds.union_rect(clip_path.outline.bounds());
+        let clip_path_id = ClipPathId(self.clip_paths.len() as u32);
+        self.clip_paths.push(clip_path);
+        clip_path_id
     }
 
     #[inline]
@@ -204,13 +213,24 @@ impl<'a> Iterator for PathIter<'a> {
 pub struct DrawPath {
     outline: Outline,
     paint: PaintId,
+    clip_path: Option<ClipPathId>,
     name: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct ClipPath {
+    outline: Outline,
+    name: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ClipPathId(pub u32);
+
 impl DrawPath {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, name: String) -> DrawPath {
-        DrawPath { outline, paint, name }
+    pub fn new(outline: Outline, paint: PaintId, clip_path: Option<ClipPathId>, name: String)
+               -> DrawPath {
+        DrawPath { outline, paint, clip_path, name }
     }
 
     #[inline]
@@ -219,7 +239,24 @@ impl DrawPath {
     }
 
     #[inline]
+    pub(crate) fn clip_path(&self) -> Option<ClipPathId> {
+        self.clip_path
+    }
+
+    #[inline]
     pub(crate) fn paint(&self) -> PaintId {
         self.paint
+    }
+}
+
+impl ClipPath {
+    #[inline]
+    pub fn new(outline: Outline, name: String) -> ClipPath {
+        ClipPath { outline, name }
+    }
+
+    #[inline]
+    pub fn outline(&self) -> &Outline {
+        &self.outline
     }
 }

@@ -122,8 +122,9 @@ impl BuiltSVG {
                     let path = Transform2FPathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
+                    // TODO(pcwalton): Clip paths.
                     let name = format!("Fill({})", node.id());
-                    self.scene.push_path(DrawPath::new(outline, style, name));
+                    self.scene.push_path(DrawPath::new(outline, style, None, name));
                 }
 
                 if let Some(ref stroke) = path.stroke {
@@ -148,8 +149,9 @@ impl BuiltSVG {
                     let mut outline = stroke_to_fill.into_outline();
                     outline.transform(&transform);
 
+                    // TODO(pcwalton): Clip paths.
                     let name = format!("Stroke({})", node.id());
-                    self.scene.push_path(DrawPath::new(outline, style, name));
+                    self.scene.push_path(DrawPath::new(outline, style, None, name));
                 }
             }
             NodeKind::Path(..) => {}

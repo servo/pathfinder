@@ -76,7 +76,7 @@ impl SceneExt for Scene {
             outline = stroke_to_fill.into_outline();
         }
 
-        self.push_path(DrawPath::new(outline, paint_id, String::new()));
+        self.push_path(DrawPath::new(outline, paint_id, None, String::new()));
         Ok(())
     }
 

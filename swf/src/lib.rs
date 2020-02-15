@@ -197,6 +197,7 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
                 scene.push_path(DrawPath::new(
                     path,
                     paint_id,
+                    None,
                     String::new()
                 ));
             }

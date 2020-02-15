@@ -22,7 +22,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
-use pathfinder_renderer::scene::{DrawPath, Scene};
+use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, Scene};
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
@@ -199,17 +199,27 @@ impl CanvasRenderingContext2D {
         self.push_path(outline, paint_id);
     }
 
+    pub fn clip_path(&mut self, path: Path2D) {
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
+
+        let clip_path_id = self.scene.push_clip_path(ClipPath::new(outline, String::new()));
+        self.current_state.clip_path = Some(clip_path_id);
+    }
+
     fn push_path(&mut self, outline: Outline, paint_id: PaintId) {
+        let clip_path = self.current_state.clip_path;
+
         if !self.current_state.shadow_paint.is_fully_transparent() {
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
             let paint_id = self.scene.push_paint(&paint);
 
             let mut outline = outline.clone();
             outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
-            self.scene.push_path(DrawPath::new(outline, paint_id, String::new()))
+            self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, String::new()))
         }
 
-        self.scene.push_path(DrawPath::new(outline, paint_id, String::new()))
+        self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, String::new()))
     }
 
     // Transformations
@@ -273,6 +283,7 @@ struct State {
     shadow_offset: Vector2F,
     text_align: TextAlign,
     global_alpha: f32,
+    clip_path: Option<ClipPathId>,
 }
 
 impl State {
@@ -293,6 +304,7 @@ impl State {
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
             global_alpha: 1.0,
+            clip_path: None,
         }
     }
 
