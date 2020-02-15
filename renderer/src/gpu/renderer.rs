@@ -538,18 +538,16 @@ where
                 Some(ColorF::new(1.0, 1.0, 1.0, 1.0))
             };
 
-        let textures = vec![self.device.framebuffer_texture(&self.fill_framebuffer)];
-        let uniforms = vec![
-            (&self.mask_winding_tile_program.mask_texture_uniform, UniformData::TextureUnit(0)),
-        ];
-
         self.device.draw_elements(tile_count * 6, &RenderState {
             target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
             program: &self.mask_winding_tile_program.program,
             vertex_array: &self.mask_winding_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            textures: &textures,
-            uniforms: &uniforms,
+            textures: &[self.device.framebuffer_texture(&self.fill_framebuffer)],
+            uniforms: &[
+                (&self.mask_winding_tile_program.mask_texture_uniform,
+                 UniformData::TextureUnit(0)),
+            ],
             viewport: self.mask_viewport(),
             options: RenderOptions {
                 // TODO(pcwalton): MIN blending for masks.
