@@ -127,10 +127,10 @@ impl<'a> SceneBuilder<'a> {
                                                           paint_metadata,
                                                           0..path_count);
         if !solid_tiles.is_empty() {
-            self.listener.send(RenderCommand::SolidTile(solid_tiles));
+            self.listener.send(RenderCommand::DrawSolidTiles(solid_tiles));
         }
         if !culled_tiles.alpha_tiles.is_empty() {
-            self.listener.send(RenderCommand::AlphaTile(culled_tiles.alpha_tiles));
+            self.listener.send(RenderCommand::DrawAlphaTiles(culled_tiles.alpha_tiles));
         }
     }
 

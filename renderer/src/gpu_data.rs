@@ -22,8 +22,8 @@ pub enum RenderCommand {
     AddPaintData(PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
-    AlphaTile(Vec<AlphaTile>),
-    SolidTile(Vec<SolidTileVertex>),
+    DrawAlphaTiles(Vec<AlphaTile>),
+    DrawSolidTiles(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
 }
 
@@ -100,11 +100,11 @@ impl Debug for RenderCommand {
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
-            RenderCommand::AlphaTile(ref tiles) => {
-                write!(formatter, "AlphaTile(x{})", tiles.len())
+            RenderCommand::DrawAlphaTiles(ref tiles) => {
+                write!(formatter, "DrawAlphaTiles(x{})", tiles.len())
             }
-            RenderCommand::SolidTile(ref tiles) => {
-                write!(formatter, "SolidTile(x{})", tiles.len())
+            RenderCommand::DrawSolidTiles(ref tiles) => {
+                write!(formatter, "DrawSolidTiles(x{})", tiles.len())
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

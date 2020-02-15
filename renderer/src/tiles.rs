@@ -551,12 +551,7 @@ impl AlphaTileVertex {
            -> AlphaTileVertex {
         let tile_position = tile_origin + tile_offset;
         let color_uv = paint_metadata.calculate_tex_coords(tile_position).scale(65535.0).to_i32();
-
-        let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
-        let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
-        let mask_scale = 65535.0 / MASK_TILES_ACROSS as f32;
-        let mask_uv = Vector2I::new(mask_u, mask_v) + tile_offset;
-        let mask_uv = mask_uv.to_f32().scale(mask_scale).to_i32();
+        let mask_uv = calculate_mask_uv(tile_index as u16, tile_offset);
 
         AlphaTileVertex {
             tile_x: tile_position.x() as i16,
@@ -574,6 +569,14 @@ impl AlphaTileVertex {
     pub fn tile_position(&self) -> Vector2I {
         Vector2I::new(self.tile_x as i32, self.tile_y as i32)
     }
+}
+
+fn calculate_mask_uv(tile_index: u16, tile_offset: Vector2I) -> Vector2I {
+    let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
+    let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
+    let mask_scale = 65535.0 / MASK_TILES_ACROSS as f32;
+    let mask_uv = Vector2I::new(mask_u, mask_v) + tile_offset;
+    mask_uv.to_f32().scale(mask_scale).to_i32()
 }
 
 impl Default for TileObjectPrimitive {

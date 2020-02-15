@@ -239,13 +239,13 @@ where
                 self.draw_buffered_fills();
                 self.begin_composite_timer_query();
             }
-            RenderCommand::SolidTile(ref solid_tile_vertices) => {
+            RenderCommand::DrawSolidTiles(ref solid_tile_vertices) => {
                 let count = solid_tile_vertices.len() / 4;
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(solid_tile_vertices);
                 self.draw_solid_tiles(count as u32);
             }
-            RenderCommand::AlphaTile(ref alpha_tiles) => {
+            RenderCommand::DrawAlphaTiles(ref alpha_tiles) => {
                 let count = alpha_tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
