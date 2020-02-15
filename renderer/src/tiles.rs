@@ -8,9 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::builder::{ObjectBuilder, SceneBuilder};
-use crate::gpu::renderer::MASK_TILES_ACROSS;
-use crate::gpu_data::{AlphaTile, AlphaTileVertex, MaskTile, MaskTileVertex, TileObjectPrimitive};
+use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder};
+use crate::gpu_data::TileObjectPrimitive;
 use crate::paint::PaintMetadata;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
@@ -31,12 +30,18 @@ pub(crate) struct Tiler<'a> {
     scene_builder: &'a SceneBuilder<'a>,
     pub(crate) object_builder: ObjectBuilder,
     outline: &'a Outline,
-    paint_metadata: &'a PaintMetadata,
+    path_info: TilingPathInfo<'a>,
     object_index: u16,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
     old_active_edges: Vec<ActiveEdge>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum TilingPathInfo<'a> {
+    Clip,
+    Draw { paint_metadata: &'a PaintMetadata, built_clip_path: Option<&'a BuiltPath> },
 }
 
 impl<'a> Tiler<'a> {
@@ -46,7 +51,7 @@ impl<'a> Tiler<'a> {
         outline: &'a Outline,
         view_box: RectF,
         object_index: u16,
-        paint_metadata: &'a PaintMetadata,
+        path_info: TilingPathInfo<'a>,
     ) -> Tiler<'a> {
         let bounds = outline
             .bounds()
@@ -59,7 +64,7 @@ impl<'a> Tiler<'a> {
             object_builder,
             outline,
             object_index,
-            paint_metadata,
+            path_info,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -85,7 +90,7 @@ impl<'a> Tiler<'a> {
         self.pack_and_cull();
 
         // Done!
-        debug!("{:#?}", self.object_builder.built_object);
+        debug!("{:#?}", self.object_builder.built_path);
     }
 
     fn generate_strip(&mut self, strip_origin_y: i32) {
@@ -108,6 +113,20 @@ impl<'a> Tiler<'a> {
     }
 
     fn pack_and_cull(&mut self) {
+        match self.path_info {
+            TilingPathInfo::Clip => unimplemented!(),
+            TilingPathInfo::Draw { .. } => self.pack_and_cull_draw_path(),
+        }
+    }
+
+    fn pack_and_cull_draw_path(&mut self) {
+        let (paint_metadata, built_clip_path) = match self.path_info {
+            TilingPathInfo::Clip => unreachable!(),
+            TilingPathInfo::Draw { paint_metadata, built_clip_path } => {
+                (paint_metadata, built_clip_path)
+            }
+        };
+
         for (tile_index, tile) in self.object_builder.tiles.data.iter().enumerate() {
             let tile_coords = self.object_builder.local_tile_index_to_coords(tile_index as u32);
 
@@ -118,53 +137,17 @@ impl<'a> Tiler<'a> {
                 }
 
                 // If this is a solid tile, poke it into the Z-buffer and stop here.
-                if self.paint_metadata.is_opaque {
+                if paint_metadata.is_opaque {
                     self.scene_builder.z_buffer.update(tile_coords, self.object_index);
                     continue;
                 }
             }
 
-            self.object_builder.built_object.mask_tiles.push(MaskTile {
-                upper_left: MaskTileVertex::new(tile.alpha_tile_index as u16,
-                                                Vector2I::default(),
-                                                self.object_index,
-                                                tile.backdrop as i16),
-                upper_right: MaskTileVertex::new(tile.alpha_tile_index as u16,
-                                                 Vector2I::new(1, 0),
-                                                 self.object_index,
-                                                 tile.backdrop as i16),
-                lower_left: MaskTileVertex::new(tile.alpha_tile_index as u16,
-                                                Vector2I::new(0, 1),
-                                                self.object_index,
-                                                tile.backdrop as i16),
-                lower_right: MaskTileVertex::new(tile.alpha_tile_index as u16,
-                                                 Vector2I::splat(1),
-                                                 self.object_index,
-                                                 tile.backdrop as i16),
-            });
-
-            self.object_builder.built_object.alpha_tiles.push(AlphaTile {
-                upper_left: AlphaTileVertex::new(tile_coords,
-                                                 tile.alpha_tile_index as u16,
-                                                 Vector2I::default(),
-                                                 self.object_index,
-                                                 &self.paint_metadata),
-                upper_right: AlphaTileVertex::new(tile_coords,
-                                                  tile.alpha_tile_index as u16,
-                                                  Vector2I::new(1, 0),
-                                                  self.object_index,
-                                                  &self.paint_metadata),
-                lower_left: AlphaTileVertex::new(tile_coords,
-                                                 tile.alpha_tile_index as u16,
-                                                 Vector2I::new(0, 1),
-                                                 self.object_index,
-                                                 &self.paint_metadata),
-                lower_right: AlphaTileVertex::new(tile_coords,
-                                                  tile.alpha_tile_index as u16,
-                                                  Vector2I::splat(1),
-                                                  self.object_index,
-                                                  &self.paint_metadata),
-            });
+            self.object_builder.built_path.push_mask_tile(tile, self.object_index);
+            self.object_builder.built_path.push_alpha_tile(tile,
+                                                           tile_coords,
+                                                           self.object_index,
+                                                           paint_metadata);
         }
     }
 
@@ -553,60 +536,6 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
         self.crossing.x().partial_cmp(&other.crossing.x())
     }
-}
-
-impl MaskTileVertex {
-    #[inline]
-    fn new(tile_index: u16, tile_offset: Vector2I, object_index: u16, backdrop: i16)
-           -> MaskTileVertex {
-        let mask_uv = calculate_mask_uv(tile_index, tile_offset);
-        MaskTileVertex {
-            tile_x: mask_uv.x() as u16,
-            tile_y: mask_uv.y() as u16,
-            mask_u: mask_uv.x() as u16,
-            mask_v: mask_uv.y() as u16,
-            backdrop,
-            object_index,
-        }
-    }
-}
-
-impl AlphaTileVertex {
-    #[inline]
-    fn new(tile_origin: Vector2I,
-           tile_index: u16,
-           tile_offset: Vector2I,
-           object_index: u16,
-           paint_metadata: &PaintMetadata)
-           -> AlphaTileVertex {
-        let tile_position = tile_origin + tile_offset;
-        let color_uv = paint_metadata.calculate_tex_coords(tile_position).scale(65535.0).to_i32();
-        let mask_uv = calculate_mask_uv(tile_index, tile_offset);
-
-        AlphaTileVertex {
-            tile_x: tile_position.x() as i16,
-            tile_y: tile_position.y() as i16,
-            color_u: color_uv.x() as u16,
-            color_v: color_uv.y() as u16,
-            mask_u: mask_uv.x() as u16,
-            mask_v: mask_uv.y() as u16,
-            object_index,
-            pad: 0,
-        }
-    }
-
-    #[inline]
-    pub fn tile_position(&self) -> Vector2I {
-        Vector2I::new(self.tile_x as i32, self.tile_y as i32)
-    }
-}
-
-fn calculate_mask_uv(tile_index: u16, tile_offset: Vector2I) -> Vector2I {
-    let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
-    let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
-    let mask_scale = 65535.0 / MASK_TILES_ACROSS as f32;
-    let mask_uv = Vector2I::new(mask_u, mask_v) + tile_offset;
-    mask_uv.to_f32().scale(mask_scale).to_i32()
 }
 
 impl Default for TileObjectPrimitive {
