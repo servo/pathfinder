@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu_data::{AlphaTile, FillBatchPrimitive, RenderCommand, TileObjectPrimitive};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, RenderCommand, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::Scene;
@@ -106,9 +106,11 @@ impl<'a> SceneBuilder<'a> {
     }
 
     fn cull_tiles(&self, built_objects: Vec<BuiltObject>) -> CulledTiles {
-        let mut culled_tiles = CulledTiles { alpha_tiles: vec![] };
+        let mut culled_tiles = CulledTiles { mask_tiles: vec![], alpha_tiles: vec![] };
 
         for built_object in built_objects {
+            culled_tiles.mask_tiles.extend_from_slice(&built_object.mask_tiles);
+
             for alpha_tile in built_object.alpha_tiles {
                 let alpha_tile_coords = alpha_tile.upper_left.tile_position();
                 if self.z_buffer.test(alpha_tile_coords,
@@ -126,6 +128,9 @@ impl<'a> SceneBuilder<'a> {
         let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
                                                           paint_metadata,
                                                           0..path_count);
+        if !culled_tiles.mask_tiles.is_empty() {
+            self.listener.send(RenderCommand::RenderMaskTiles(culled_tiles.mask_tiles));
+        }
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::DrawSolidTiles(solid_tiles));
         }
@@ -143,6 +148,11 @@ impl<'a> SceneBuilder<'a> {
     }
 }
 
+struct CulledTiles {
+    mask_tiles: Vec<MaskTile>,
+    alpha_tiles: Vec<AlphaTile>,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TileStats {
     pub solid_tile_count: u32,
@@ -156,7 +166,7 @@ impl ObjectBuilder {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
         let tiles = DenseTileMap::new(tile_rect);
         ObjectBuilder {
-            built_object: BuiltObject { alpha_tiles: vec![] },
+            built_object: BuiltObject { mask_tiles: vec![], alpha_tiles: vec![] },
             bounds,
             fills: vec![],
             tiles,
@@ -341,6 +351,7 @@ impl ObjectBuilder {
 
 #[derive(Debug)]
 pub(crate) struct BuiltObject {
+    pub mask_tiles: Vec<MaskTile>,
     pub alpha_tiles: Vec<AlphaTile>,
 }
 
@@ -350,8 +361,4 @@ pub(crate) struct ObjectBuilder {
     pub fills: Vec<FillBatchPrimitive>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
     pub bounds: RectF,
-}
-
-struct CulledTiles {
-    alpha_tiles: Vec<AlphaTile>,
 }

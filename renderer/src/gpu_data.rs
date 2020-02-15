@@ -22,6 +22,7 @@ pub enum RenderCommand {
     AddPaintData(PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
+    RenderMaskTiles(Vec<MaskTile>),
     DrawAlphaTiles(Vec<AlphaTile>),
     DrawSolidTiles(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
@@ -71,11 +72,31 @@ pub struct SolidTileVertex {
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
+pub struct MaskTile {
+    pub upper_left: MaskTileVertex,
+    pub upper_right: MaskTileVertex,
+    pub lower_left: MaskTileVertex,
+    pub lower_right: MaskTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
 pub struct AlphaTile {
     pub upper_left: AlphaTileVertex,
     pub upper_right: AlphaTileVertex,
     pub lower_left: AlphaTileVertex,
     pub lower_right: AlphaTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct MaskTileVertex {
+    pub tile_x: u16,
+    pub tile_y: u16,
+    pub mask_u: u16,
+    pub mask_v: u16,
+    pub backdrop: i16,
+    pub object_index: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -87,8 +108,8 @@ pub struct AlphaTileVertex {
     pub mask_v: u16,
     pub color_u: u16,
     pub color_v: u16,
-    pub backdrop: i16,
     pub object_index: u16,
+    pub pad: u16,
 }
 
 impl Debug for RenderCommand {
@@ -100,6 +121,9 @@ impl Debug for RenderCommand {
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
+            RenderCommand::RenderMaskTiles(ref tiles) => {
+                write!(formatter, "RenderMaskTiles(x{})", tiles.len())
+            }
             RenderCommand::DrawAlphaTiles(ref tiles) => {
                 write!(formatter, "DrawAlphaTiles(x{})", tiles.len())
             }

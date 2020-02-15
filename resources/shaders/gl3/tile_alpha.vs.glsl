@@ -21,18 +21,15 @@ uniform vec2 uStencilTextureSize;
 in ivec2 aTilePosition;
 in vec2 aColorTexCoord;
 in vec2 aMaskTexCoord;
-in int aBackdrop;
 
 out vec2 vColorTexCoord;
 out vec2 vMaskTexCoord;
-out float vBackdrop;
 
 void main(){
     vec2 position = aTilePosition * uTileSize;
 
     vMaskTexCoord = aMaskTexCoord;
     vColorTexCoord = aColorTexCoord;
-    vBackdrop = float(aBackdrop);
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 

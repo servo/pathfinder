@@ -21,13 +21,12 @@ struct main0_in
 {
     float2 vColorTexCoord [[user(locn0)]];
     float2 vMaskTexCoord [[user(locn1)]];
-    float vBackdrop [[user(locn2)]];
 };
 
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float coverage = abs(spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord).x + in.vBackdrop);
+    float coverage = spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord).x;
     float4 color = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
     out.oFragColor = float4(color.xyz, color.w * coverage);
     return out;

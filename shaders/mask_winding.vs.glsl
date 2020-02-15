@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/tile_alpha.vs.glsl
+// pathfinder/shaders/mask_winding.vs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -12,21 +12,15 @@
 
 precision highp float;
 
-uniform mat4 uTransform;
-uniform vec2 uTileSize;
-uniform vec2 uStencilTextureSize;
-
-in ivec2 aTilePosition;
-in vec2 aColorTexCoord;
+in vec2 aPosition;
 in vec2 aMaskTexCoord;
+in int aBackdrop;
 
-out vec2 vColorTexCoord;
 out vec2 vMaskTexCoord;
+out float vBackdrop;
 
 void main() {
-    vec2 position = aTilePosition * uTileSize;
-
     vMaskTexCoord = aMaskTexCoord;
-    vColorTexCoord = aColorTexCoord;
-    gl_Position = uTransform * vec4(position, 0.0, 1.0);
+    vBackdrop = float(aBackdrop);
+    gl_Position = vec4(mix(vec2(-1.0, -1.0), vec2(1.0, 1.0), aPosition), 0.0, 1.0);
 }

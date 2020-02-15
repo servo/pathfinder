@@ -11,10 +11,12 @@
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu::shaders::{FillProgram, AlphaTileProgram, AlphaTileVertexArray, FillVertexArray};
-use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, PostprocessProgram, PostprocessVertexArray};
-use crate::gpu::shaders::{ReprojectionProgram, ReprojectionVertexArray, SolidTileProgram};
-use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArray};
-use crate::gpu_data::{AlphaTile, FillBatchPrimitive, PaintData, RenderCommand, SolidTileVertex};
+use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskWindingTileProgram, MaskWindingTileVertexArray};
+use crate::gpu::shaders::{PostprocessProgram, PostprocessVertexArray, ReprojectionProgram};
+use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
+use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData};
+use crate::gpu_data::{RenderCommand, SolidTileVertex};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF, ColorU};
@@ -55,8 +57,10 @@ where
     dest_framebuffer: DestFramebuffer<D>,
     options: RendererOptions,
     fill_program: FillProgram<D>,
+    mask_winding_tile_program: MaskWindingTileProgram<D>,
     solid_tile_program: SolidTileProgram<D>,
     alpha_tile_program: AlphaTileProgram<D>,
+    mask_winding_tile_vertex_array: MaskWindingTileVertexArray<D>,
     solid_tile_vertex_array: SolidTileVertexArray<D>,
     alpha_tile_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
@@ -65,6 +69,7 @@ where
     quads_vertex_indices_buffer: D::Buffer,
     quads_vertex_indices_length: usize,
     fill_vertex_array: FillVertexArray<D>,
+    fill_framebuffer: D::Framebuffer,
     mask_framebuffer: D::Framebuffer,
     paint_texture: Option<D::Texture>,
 
@@ -108,10 +113,9 @@ where
                options: RendererOptions)
                -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
-
+        let mask_winding_tile_program = MaskWindingTileProgram::new(&device, resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
-
         let postprocess_program = PostprocessProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
@@ -141,6 +145,11 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
+        let mask_winding_tile_vertex_array = MaskWindingTileVertexArray::new(
+            &device,
+            &mask_winding_tile_program,
+            &quads_vertex_indices_buffer,
+        );
         let alpha_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_tile_program,
@@ -165,10 +174,16 @@ where
             &quad_vertex_indices_buffer,
         );
 
+        let fill_framebuffer_size =
+            Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+        let fill_framebuffer_texture =
+            device.create_texture(TextureFormat::R16F, fill_framebuffer_size);
+        let fill_framebuffer = device.create_framebuffer(fill_framebuffer_texture);
+
         let mask_framebuffer_size =
             Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         let mask_framebuffer_texture =
-            device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
+            device.create_texture(TextureFormat::R8, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
         let window_size = dest_framebuffer.window_size(&device);
@@ -180,8 +195,10 @@ where
             dest_framebuffer,
             options,
             fill_program,
+            mask_winding_tile_program,
             solid_tile_program,
             alpha_tile_program,
+            mask_winding_tile_vertex_array,
             solid_tile_vertex_array,
             alpha_tile_vertex_array,
             area_lut_texture,
@@ -190,6 +207,7 @@ where
             quads_vertex_indices_buffer,
             quads_vertex_indices_length: 0,
             fill_vertex_array,
+            fill_framebuffer,
             mask_framebuffer,
             paint_texture: None,
 
@@ -238,6 +256,11 @@ where
             RenderCommand::FlushFills => {
                 self.draw_buffered_fills();
                 self.begin_composite_timer_query();
+            }
+            RenderCommand::RenderMaskTiles(ref mask_tiles) => {
+                let count = mask_tiles.len();
+                self.upload_mask_tiles(mask_tiles);
+                self.draw_mask_tiles(count as u32);
             }
             RenderCommand::DrawSolidTiles(ref solid_tile_vertices) => {
                 let count = solid_tile_vertices.len() / 4;
@@ -374,6 +397,16 @@ where
                                       TextureDataRef::U8(texels));
     }
 
+    fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile]) {
+        self.device.allocate_buffer(
+            &self.mask_winding_tile_vertex_array.vertex_buffer,
+            BufferData::Memory(&mask_tiles),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
+        self.ensure_index_buffer(mask_tiles.len());
+    }
+
     fn upload_solid_tiles(&mut self, solid_tile_vertices: &[SolidTileVertex]) {
         self.device.allocate_buffer(
             &self.solid_tile_vertex_array.vertex_buffer,
@@ -450,7 +483,7 @@ where
 
         let mut clear_color = None;
         if !self.framebuffer_flags.contains(
-                FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
+                FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS) {
             clear_color = Some(ColorF::default());
         };
 
@@ -459,7 +492,7 @@ where
 
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
-            target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+            target: &RenderTarget::Framebuffer(&self.fill_framebuffer),
             program: &self.fill_program.program,
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
@@ -486,7 +519,7 @@ where
         self.device.end_timer_query(&timer_query);
         self.current_timers.stage_0.push(timer_query);
 
-        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
+        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS);
         self.buffered_fills.clear();
     }
 
@@ -494,6 +527,38 @@ where
         let draw_viewport = self.draw_viewport().size().to_f32();
         let scale = Vector4F::new(2.0 / draw_viewport.x(), -2.0 / draw_viewport.y(), 1.0, 1.0);
         Transform4F::from_scale(scale).translate(Vector4F::new(-1.0, 1.0, 0.0, 1.0))
+    }
+
+    fn draw_mask_tiles(&mut self, tile_count: u32) {
+        let clear_color =
+            if self.framebuffer_flags
+                   .contains(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
+                None
+            } else {
+                Some(ColorF::new(1.0, 1.0, 1.0, 1.0))
+            };
+
+        let textures = vec![self.device.framebuffer_texture(&self.fill_framebuffer)];
+        let uniforms = vec![
+            (&self.mask_winding_tile_program.mask_texture_uniform, UniformData::TextureUnit(0)),
+        ];
+
+        self.device.draw_elements(tile_count * 6, &RenderState {
+            target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+            program: &self.mask_winding_tile_program.program,
+            vertex_array: &self.mask_winding_tile_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &textures,
+            uniforms: &uniforms,
+            viewport: self.mask_viewport(),
+            options: RenderOptions {
+                // TODO(pcwalton): MIN blending for masks.
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                ..RenderOptions::default()
+            },
+        });
+
+        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
     }
 
     fn draw_alpha_tiles(&mut self, tile_count: u32) {
@@ -937,8 +1002,9 @@ impl Add<RenderTime> for RenderTime {
 
 bitflags! {
     struct FramebufferFlags: u8 {
-        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x01;
-        const MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS = 0x02;
-        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x04;
+        const MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS = 0x01;
+        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x02;
+        const MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS = 0x04;
+        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x08;
     }
 }

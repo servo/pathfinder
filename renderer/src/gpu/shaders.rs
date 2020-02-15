@@ -9,13 +9,15 @@
 // except according to those terms.
 
 use crate::gpu_data::FillBatchPrimitive;
-use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_gpu::resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
 const SOLID_TILE_VERTEX_SIZE: usize = 12;
-const MASK_TILE_VERTEX_SIZE: usize = 16;
+const ALPHA_TILE_VERTEX_SIZE: usize = 16;
+const MASK_TILE_VERTEX_SIZE: usize = 12;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -118,39 +120,30 @@ where
     }
 }
 
-pub struct AlphaTileVertexArray<D>
-where
-    D: Device,
-{
+pub struct MaskWindingTileVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
     pub vertex_buffer: D::Buffer,
 }
 
-impl<D> AlphaTileVertexArray<D>
-where
-    D: Device,
-{
-    pub fn new(
-        device: &D,
-        alpha_tile_program: &AlphaTileProgram<D>,
-        quads_vertex_indices_buffer: &D::Buffer,
-    ) -> AlphaTileVertexArray<D> {
+impl<D> MaskWindingTileVertexArray<D> where D: Device {
+    pub fn new(device: &D,
+               mask_winding_tile_program: &MaskWindingTileProgram<D>,
+               quads_vertex_indices_buffer: &D::Buffer)
+               -> MaskWindingTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-        let tile_position_attr =
-            device.get_vertex_attr(&alpha_tile_program.program, "TilePosition").unwrap();
-        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                          "ColorTexCoord").unwrap();
-        let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+        let position_attr = device.get_vertex_attr(&mask_winding_tile_program.program, "Position")
+                                  .unwrap();
+        let mask_tex_coord_attr = device.get_vertex_attr(&mask_winding_tile_program.program,
                                                          "MaskTexCoord").unwrap();
-        let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop")
+        let backdrop_attr = device.get_vertex_attr(&mask_winding_tile_program.program, "Backdrop")
                                   .unwrap();
 
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
             stride: MASK_TILE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
@@ -165,21 +158,66 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
-            stride: MASK_TILE_VERTEX_SIZE,
-            offset: 8,
-            divisor: 0,
-            buffer_index: 0,
-        });
         device.configure_vertex_attr(&vertex_array, &backdrop_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
             stride: MASK_TILE_VERTEX_SIZE,
-            offset: 12,
+            offset: 8,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
+
+        MaskWindingTileVertexArray { vertex_array, vertex_buffer }
+    }
+}
+
+pub struct AlphaTileVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+    pub vertex_buffer: D::Buffer,
+}
+
+impl<D> AlphaTileVertexArray<D> where D: Device {
+    pub fn new(
+        device: &D,
+        alpha_tile_program: &AlphaTileProgram<D>,
+        quads_vertex_indices_buffer: &D::Buffer,
+    ) -> AlphaTileVertexArray<D> {
+        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
+
+        let tile_position_attr =
+            device.get_vertex_attr(&alpha_tile_program.program, "TilePosition").unwrap();
+        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                          "ColorTexCoord").unwrap();
+        let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                         "MaskTexCoord").unwrap();
+
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: ALPHA_TILE_VERTEX_SIZE,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &mask_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
+            stride: ALPHA_TILE_VERTEX_SIZE,
+            offset: 4,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
+            stride: ALPHA_TILE_VERTEX_SIZE,
+            offset: 8,
             divisor: 0,
             buffer_index: 0,
         });
@@ -267,6 +305,19 @@ where
             tile_size_uniform,
             area_lut_uniform,
         }
+    }
+}
+
+pub struct MaskWindingTileProgram<D> where D: Device {
+    pub program: D::Program,
+    pub mask_texture_uniform: D::Uniform,
+}
+
+impl<D> MaskWindingTileProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> MaskWindingTileProgram<D> {
+        let program = device.create_program(resources, "mask_winding");
+        let mask_texture_uniform = device.get_uniform(&program, "MaskTexture");
+        MaskWindingTileProgram { program, mask_texture_uniform }
     }
 }
 
