@@ -22,7 +22,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
-use pathfinder_renderer::scene::{PathObject, Scene};
+use pathfinder_renderer::scene::{DrawPath, Scene};
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
@@ -206,10 +206,10 @@ impl CanvasRenderingContext2D {
 
             let mut outline = outline.clone();
             outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
-            self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+            self.scene.push_path(DrawPath::new(outline, paint_id, String::new()))
         }
 
-        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+        self.scene.push_path(DrawPath::new(outline, paint_id, String::new()))
     }
 
     // Transformations

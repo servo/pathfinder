@@ -13,7 +13,7 @@ use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::outline::{Outline, Contour};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::vector::Vector2F;
-use pathfinder_renderer::scene::{PathObject, Scene};
+use pathfinder_renderer::scene::{DrawPath, Scene};
 
 use swf_types::tags::SetBackgroundColor;
 use swf_types::{Tag, SRgb8, Movie};
@@ -194,7 +194,7 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
                     path = stroke_to_fill.into_outline();
                 }
 
-                scene.push_path(PathObject::new(
+                scene.push_path(DrawPath::new(
                     path,
                     paint_id,
                     String::new()

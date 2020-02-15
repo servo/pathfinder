@@ -12,7 +12,7 @@
 
 use crate::gpu_data::SolidTileVertex;
 use crate::paint::PaintMetadata;
-use crate::scene::PathObject;
+use crate::scene::DrawPath;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_geometry::rect::RectF;
@@ -57,7 +57,7 @@ impl ZBuffer {
     }
 
     pub fn build_solid_tiles(&self,
-                             paths: &[PathObject],
+                             paths: &[DrawPath],
                              paint_metadata: &[PaintMetadata],
                              object_range: Range<u32>)
                              -> Vec<SolidTileVertex> {

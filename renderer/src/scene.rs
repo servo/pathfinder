@@ -23,7 +23,7 @@ use pathfinder_content::outline::Outline;
 
 #[derive(Clone)]
 pub struct Scene {
-    pub(crate) paths: Vec<PathObject>,
+    pub(crate) paths: Vec<DrawPath>,
     palette: Palette,
     bounds: RectF,
     view_box: RectF,
@@ -40,7 +40,7 @@ impl Scene {
         }
     }
 
-    pub fn push_path(&mut self, path: PathObject) {
+    pub fn push_path(&mut self, path: DrawPath) {
         self.bounds = self.bounds.union_rect(path.outline.bounds());
         self.paths.push(path);
     }
@@ -201,16 +201,16 @@ impl<'a> Iterator for PathIter<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct PathObject {
+pub struct DrawPath {
     outline: Outline,
     paint: PaintId,
     name: String,
 }
 
-impl PathObject {
+impl DrawPath {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, name: String) -> PathObject {
-        PathObject { outline, paint, name }
+    pub fn new(outline: Outline, paint: PaintId, name: String) -> DrawPath {
+        DrawPath { outline, paint, name }
     }
 
     #[inline]

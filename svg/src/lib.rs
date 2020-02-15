@@ -23,7 +23,7 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::Paint;
-use pathfinder_renderer::scene::{PathObject, Scene};
+use pathfinder_renderer::scene::{DrawPath, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
 use usvg::{Color as SvgColor, LineCap as UsvgLineCap, LineJoin as UsvgLineJoin, Node, NodeExt};
@@ -123,7 +123,7 @@ impl BuiltSVG {
                     let outline = Outline::from_segments(path);
 
                     let name = format!("Fill({})", node.id());
-                    self.scene.push_path(PathObject::new(outline, style, name));
+                    self.scene.push_path(DrawPath::new(outline, style, name));
                 }
 
                 if let Some(ref stroke) = path.stroke {
@@ -149,7 +149,7 @@ impl BuiltSVG {
                     outline.transform(&transform);
 
                     let name = format!("Stroke({})", node.id());
-                    self.scene.push_path(PathObject::new(outline, style, name));
+                    self.scene.push_path(DrawPath::new(outline, style, name));
                 }
             }
             NodeKind::Path(..) => {}
