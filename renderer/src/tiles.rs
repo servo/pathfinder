@@ -114,7 +114,7 @@ impl<'a> Tiler<'a> {
 
     fn pack_and_cull(&mut self) {
         match self.path_info {
-            TilingPathInfo::Clip => unimplemented!(),
+            TilingPathInfo::Clip => self.pack_and_cull_clip_path(),
             TilingPathInfo::Draw { .. } => self.pack_and_cull_draw_path(),
         }
     }
@@ -127,12 +127,43 @@ impl<'a> Tiler<'a> {
             }
         };
 
-        for (tile_index, tile) in self.object_builder.tiles.data.iter().enumerate() {
-            let tile_coords = self.object_builder.local_tile_index_to_coords(tile_index as u32);
+        for (draw_tile_index, draw_tile) in self.object_builder
+                                                .built_path
+                                                .tiles
+                                                .data
+                                                .iter()
+                                                .enumerate() {
+            let tile_coords = self.object_builder
+                                  .local_tile_index_to_coords(draw_tile_index as u32);
 
-            if tile.is_solid() {
+            // Figure out what clip tile we need, if any.
+            let clip_tile = match built_clip_path {
+                None => None,
+                Some(built_clip_path) => {
+                    match built_clip_path.tiles.get(tile_coords) {
+                        None => {
+                            // This tile is outside of the bounds of the clip path entirely. We can
+                            // cull it.
+                            continue;
+                        }
+                        Some(clip_tile) if clip_tile.is_solid() => {
+                            if clip_tile.backdrop != 0 {
+                                // The clip tile is fully opaque, so this tile isn't clipped at
+                                // all.
+                                None
+                            } else {
+                                // This tile is completely clipped out. Cull it.
+                                continue;
+                            }
+                        }
+                        Some(clip_tile) => Some(clip_tile),
+                    }
+                }
+            };
+
+            if clip_tile.is_none() && draw_tile.is_solid() {
                 // Blank tiles are always skipped.
-                if tile.backdrop == 0 {
+                if draw_tile.backdrop == 0 {
                     continue;
                 }
 
@@ -143,12 +174,21 @@ impl<'a> Tiler<'a> {
                 }
             }
 
-            self.object_builder.built_path.push_mask_tile(tile, self.object_index);
-            self.object_builder.built_path.push_alpha_tile(tile,
-                                                           tile_coords,
-                                                           self.object_index,
-                                                           paint_metadata);
+            ObjectBuilder::push_mask_tile(&mut self.object_builder.built_path.mask_tiles,
+                                          draw_tile,
+                                          self.object_index);
+            ObjectBuilder::push_alpha_tile(&mut self.object_builder.built_path.alpha_tiles,
+                                           draw_tile,
+                                           tile_coords,
+                                           self.object_index,
+                                           paint_metadata);
+
+            // TODO(pcwalton): Add the clip tile if necessary.
         }
+    }
+
+    fn pack_and_cull_clip_path(&mut self) {
+        // TODO(pcwalton)
     }
 
     fn process_old_active_edges(&mut self, tile_y: i32) {
@@ -225,7 +265,7 @@ impl<'a> Tiler<'a> {
                 if let Some(tile_index) = self.object_builder
                                               .tile_coords_to_local_index(current_tile_coords) {
                     // FIXME(pcwalton): Handle winding overflow.
-                    self.object_builder.tiles.data[tile_index as usize].backdrop =
+                    self.object_builder.built_path.tiles.data[tile_index as usize].backdrop =
                         current_winding as i8;
                 }
 

@@ -43,6 +43,11 @@ impl<T> DenseTileMap<T> {
     }
 
     #[inline]
+    pub fn get(&self, coords: Vector2I) -> Option<&T> {
+        self.coords_to_index(coords).and_then(|index| self.data.get(index))
+    }
+
+    #[inline]
     pub fn coords_to_index(&self, coords: Vector2I) -> Option<usize> {
         if self.rect.contains_point(coords) {
             Some(self.coords_to_index_unchecked(coords))

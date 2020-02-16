@@ -42,7 +42,6 @@ pub(crate) struct SceneBuilder<'a> {
 pub(crate) struct ObjectBuilder {
     pub built_path: BuiltPath,
     pub fills: Vec<FillBatchPrimitive>,
-    pub tiles: DenseTileMap<TileObjectPrimitive>,
     pub bounds: RectF,
 }
 
@@ -50,6 +49,7 @@ pub(crate) struct ObjectBuilder {
 pub(crate) struct BuiltPath {
     pub mask_tiles: Vec<MaskTile>,
     pub alpha_tiles: Vec<AlphaTile>,
+    pub tiles: DenseTileMap<TileObjectPrimitive>,
 }
 
 impl<'a> SceneBuilder<'a> {
@@ -226,16 +226,15 @@ impl ObjectBuilder {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
         let tiles = DenseTileMap::new(tile_rect);
         ObjectBuilder {
-            built_path: BuiltPath { mask_tiles: vec![], alpha_tiles: vec![] },
+            built_path: BuiltPath { mask_tiles: vec![], alpha_tiles: vec![], tiles },
             bounds,
             fills: vec![],
-            tiles,
         }
     }
 
     #[inline]
     pub(crate) fn tile_rect(&self) -> RectI {
-        self.tiles.rect
+        self.built_path.tiles.rect
     }
 
     fn add_fill(
@@ -295,8 +294,8 @@ impl ObjectBuilder {
         scene_builder: &SceneBuilder,
         tile_coords: Vector2I,
     ) -> u16 {
-        let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
-        let alpha_tile_index = self.tiles.data[local_tile_index].alpha_tile_index;
+        let local_tile_index = self.built_path.tiles.coords_to_index_unchecked(tile_coords);
+        let alpha_tile_index = self.built_path.tiles.data[local_tile_index].alpha_tile_index;
         if alpha_tile_index != !0 {
             return alpha_tile_index;
         }
@@ -304,7 +303,7 @@ impl ObjectBuilder {
         let alpha_tile_index = scene_builder
             .next_alpha_tile_index
             .fetch_add(1, Ordering::Relaxed) as u16;
-        self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
+        self.built_path.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
         alpha_tile_index
     }
 
@@ -400,18 +399,18 @@ impl ObjectBuilder {
 
     #[inline]
     pub(crate) fn tile_coords_to_local_index(&self, coords: Vector2I) -> Option<u32> {
-        self.tiles.coords_to_index(coords).map(|index| index as u32)
+        self.built_path.tiles.coords_to_index(coords).map(|index| index as u32)
     }
 
     #[inline]
     pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Vector2I {
-        self.tiles.index_to_coords(tile_index as usize)
+        self.built_path.tiles.index_to_coords(tile_index as usize)
     }
-}
 
-impl BuiltPath {
-    pub(crate) fn push_mask_tile(&mut self, tile: &TileObjectPrimitive, object_index: u16) {
-        self.mask_tiles.push(MaskTile {
+    pub(crate) fn push_mask_tile(mask_tiles: &mut Vec<MaskTile>,
+                                 tile: &TileObjectPrimitive,
+                                 object_index: u16) {
+        mask_tiles.push(MaskTile {
             upper_left: MaskTileVertex::new(tile.alpha_tile_index as u16,
                                             Vector2I::default(),
                                             object_index,
@@ -431,12 +430,12 @@ impl BuiltPath {
         });
     }
 
-    pub(crate) fn push_alpha_tile(&mut self,
+    pub(crate) fn push_alpha_tile(alpha_tiles: &mut Vec<AlphaTile>,
                                   tile: &TileObjectPrimitive,
                                   tile_coords: Vector2I,
                                   object_index: u16,
                                   paint_metadata: &PaintMetadata) {
-        self.alpha_tiles.push(AlphaTile {
+        alpha_tiles.push(AlphaTile {
             upper_left: AlphaTileVertex::new(tile_coords,
                                              tile.alpha_tile_index as u16,
                                              Vector2I::default(),
