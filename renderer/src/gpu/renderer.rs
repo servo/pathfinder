@@ -24,9 +24,9 @@ use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendFunc, BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
-use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureDataRef};
+use pathfinder_gpu::{BlendFunc, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
+use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
 use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cmp;
@@ -545,12 +545,17 @@ where
             primitive: Primitive::Triangles,
             textures: &[self.device.framebuffer_texture(&self.fill_framebuffer)],
             uniforms: &[
-                (&self.mask_winding_tile_program.mask_texture_uniform,
+                (&self.mask_winding_tile_program.fill_texture_uniform,
                  UniformData::TextureUnit(0)),
             ],
             viewport: self.mask_viewport(),
             options: RenderOptions {
                 // TODO(pcwalton): MIN blending for masks.
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBOneAlphaOne,
+                    op: BlendOp::Min,
+                    ..BlendState::default()
+                }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
             },

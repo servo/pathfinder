@@ -91,10 +91,10 @@ pub struct AlphaTile {
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct MaskTileVertex {
-    pub tile_x: u16,
-    pub tile_y: u16,
     pub mask_u: u16,
     pub mask_v: u16,
+    pub fill_u: u16,
+    pub fill_v: u16,
     pub backdrop: i16,
     pub object_index: u16,
 }

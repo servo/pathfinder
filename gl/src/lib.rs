@@ -116,6 +116,15 @@ impl GLDevice {
                         BlendOp::Subtract => {
                             gl::BlendEquation(gl::FUNC_SUBTRACT); ck();
                         }
+                        BlendOp::ReverseSubtract => {
+                            gl::BlendEquation(gl::FUNC_REVERSE_SUBTRACT); ck();
+                        }
+                        BlendOp::Min => {
+                            gl::BlendEquation(gl::MIN); ck();
+                        }
+                        BlendOp::Max => {
+                            gl::BlendEquation(gl::MAX); ck();
+                        }
                     }
                     gl::Enable(gl::BLEND); ck();
                 }

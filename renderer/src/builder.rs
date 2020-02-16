@@ -33,7 +33,9 @@ pub(crate) struct SceneBuilder<'a> {
     scene: &'a Scene,
     built_options: &'a PreparedBuildOptions,
 
-    pub(crate) next_alpha_tile_index: AtomicUsize,
+    next_alpha_tile_index: AtomicUsize,
+    next_mask_tile_index: AtomicUsize,
+
     pub(crate) z_buffer: ZBuffer,
     pub(crate) listener: Box<dyn RenderCommandListener>,
 }
@@ -64,6 +66,8 @@ impl<'a> SceneBuilder<'a> {
             built_options,
 
             next_alpha_tile_index: AtomicUsize::new(0),
+            next_mask_tile_index: AtomicUsize::new(0),
+
             z_buffer: ZBuffer::new(effective_view_box),
             listener,
         }
@@ -206,6 +210,11 @@ impl<'a> SceneBuilder<'a> {
         let culled_tiles = self.cull_tiles(built_clip_paths, built_draw_paths);
         self.pack_tiles(paint_metadata, culled_tiles);
     }
+
+    pub(crate) fn allocate_mask_tile_index(&self) -> u16 {
+        // FIXME(pcwalton): Check for overflow!
+        self.next_mask_tile_index.fetch_add(1, Ordering::Relaxed) as u16
+    }
 }
 
 struct CulledTiles {
@@ -300,6 +309,7 @@ impl ObjectBuilder {
             return alpha_tile_index;
         }
 
+        // FIXME(pcwalton): Check for overflow!
         let alpha_tile_index = scene_builder
             .next_alpha_tile_index
             .fetch_add(1, Ordering::Relaxed) as u16;
@@ -408,51 +418,56 @@ impl ObjectBuilder {
     }
 
     pub(crate) fn push_mask_tile(mask_tiles: &mut Vec<MaskTile>,
-                                 tile: &TileObjectPrimitive,
+                                 fill_tile: &TileObjectPrimitive,
+                                 mask_tile_index: u16,
                                  object_index: u16) {
         mask_tiles.push(MaskTile {
-            upper_left: MaskTileVertex::new(tile.alpha_tile_index as u16,
+            upper_left: MaskTileVertex::new(mask_tile_index,
+                                            fill_tile.alpha_tile_index as u16,
                                             Vector2I::default(),
                                             object_index,
-                                            tile.backdrop as i16),
-            upper_right: MaskTileVertex::new(tile.alpha_tile_index as u16,
+                                            fill_tile.backdrop as i16),
+            upper_right: MaskTileVertex::new(mask_tile_index,
+                                             fill_tile.alpha_tile_index as u16,
                                              Vector2I::new(1, 0),
                                              object_index,
-                                             tile.backdrop as i16),
-            lower_left: MaskTileVertex::new(tile.alpha_tile_index as u16,
+                                             fill_tile.backdrop as i16),
+            lower_left: MaskTileVertex::new(mask_tile_index,
+                                            fill_tile.alpha_tile_index as u16,
                                             Vector2I::new(0, 1),
                                             object_index,
-                                            tile.backdrop as i16),
-            lower_right: MaskTileVertex::new(tile.alpha_tile_index as u16,
+                                            fill_tile.backdrop as i16),
+            lower_right: MaskTileVertex::new(mask_tile_index,
+                                             fill_tile.alpha_tile_index as u16,
                                              Vector2I::splat(1),
                                              object_index,
-                                             tile.backdrop as i16),
+                                             fill_tile.backdrop as i16),
         });
     }
 
     pub(crate) fn push_alpha_tile(alpha_tiles: &mut Vec<AlphaTile>,
-                                  tile: &TileObjectPrimitive,
+                                  mask_tile_index: u16,
                                   tile_coords: Vector2I,
                                   object_index: u16,
                                   paint_metadata: &PaintMetadata) {
         alpha_tiles.push(AlphaTile {
             upper_left: AlphaTileVertex::new(tile_coords,
-                                             tile.alpha_tile_index as u16,
+                                             mask_tile_index,
                                              Vector2I::default(),
                                              object_index,
                                              paint_metadata),
             upper_right: AlphaTileVertex::new(tile_coords,
-                                              tile.alpha_tile_index as u16,
+                                              mask_tile_index,
                                               Vector2I::new(1, 0),
                                               object_index,
                                               paint_metadata),
             lower_left: AlphaTileVertex::new(tile_coords,
-                                             tile.alpha_tile_index as u16,
+                                             mask_tile_index,
                                              Vector2I::new(0, 1),
                                              object_index,
                                              paint_metadata),
             lower_right: AlphaTileVertex::new(tile_coords,
-                                              tile.alpha_tile_index as u16,
+                                              mask_tile_index,
                                               Vector2I::splat(1),
                                               object_index,
                                               paint_metadata),
@@ -462,14 +477,19 @@ impl ObjectBuilder {
 
 impl MaskTileVertex {
     #[inline]
-    fn new(tile_index: u16, tile_offset: Vector2I, object_index: u16, backdrop: i16)
+    fn new(mask_index: u16,
+           fill_index: u16,
+           tile_offset: Vector2I,
+           object_index: u16,
+           backdrop: i16)
            -> MaskTileVertex {
-        let mask_uv = calculate_mask_uv(tile_index, tile_offset);
+        let mask_uv = calculate_mask_uv(mask_index, tile_offset);
+        let fill_uv = calculate_mask_uv(fill_index, tile_offset);
         MaskTileVertex {
-            tile_x: mask_uv.x() as u16,
-            tile_y: mask_uv.y() as u16,
             mask_u: mask_uv.x() as u16,
             mask_v: mask_uv.y() as u16,
+            fill_u: fill_uv.x() as u16,
+            fill_v: fill_uv.y() as u16,
             backdrop,
             object_index,
         }

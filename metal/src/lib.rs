@@ -1008,19 +1008,17 @@ impl MetalDevice {
                             MTLBlendFactor::One);
                     }
                 }
-                match blend.op {
-                    BlendOp::Add => {
-                        pipeline_color_attachment.set_rgb_blend_operation(MTLBlendOperation::Add);
-                        pipeline_color_attachment.set_alpha_blend_operation(
-                            MTLBlendOperation::Add);
-                    }
-                    BlendOp::Subtract => {
-                        pipeline_color_attachment.set_rgb_blend_operation(
-                            MTLBlendOperation::Subtract);
-                        pipeline_color_attachment.set_alpha_blend_operation(
-                            MTLBlendOperation::Subtract);
-                    }
-                }
+
+                let blend_op = match blend.op {
+                    BlendOp::Add => MTLBlendOperation::Add,
+                    BlendOp::Subtract => MTLBlendOperation::Subtract,
+                    BlendOp::ReverseSubtract => MTLBlendOperation::ReverseSubtract,
+                    BlendOp::Min => MTLBlendOperation::Min,
+                    BlendOp::Max => MTLBlendOperation::Max,
+                };
+
+                pipeline_color_attachment.set_rgb_blend_operation(blend_op);
+                pipeline_color_attachment.set_alpha_blend_operation(blend_op);
             }
         }
 

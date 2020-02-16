@@ -15,10 +15,10 @@
 precision highp float;
 
 in vec2 aPosition;
-in vec2 aMaskTexCoord;
+in vec2 aFillTexCoord;
 in int aBackdrop;
 
-out vec2 vMaskTexCoord;
+out vec2 vFillTexCoord;
 out float vBackdrop;
 
 void main(){
@@ -27,7 +27,7 @@ void main(){
 
 
 
-    vMaskTexCoord = aMaskTexCoord;
+    vFillTexCoord = aFillTexCoord;
     vBackdrop = float(aBackdrop);
     gl_Position = vec4(position, 0.0, 1.0);
 }

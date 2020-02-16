@@ -12,13 +12,13 @@
 
 precision highp float;
 
-uniform sampler2D uMaskTexture;
+uniform sampler2D uFillTexture;
 
-in vec2 vMaskTexCoord;
+in vec2 vFillTexCoord;
 in float vBackdrop;
 
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = vec4(abs(texture(uMaskTexture, vMaskTexCoord).r + vBackdrop));
+    oFragColor = vec4(abs(texture(uFillTexture, vFillTexCoord).r + vBackdrop));
 }

@@ -134,8 +134,8 @@ impl<D> MaskWindingTileVertexArray<D> where D: Device {
 
         let position_attr = device.get_vertex_attr(&mask_winding_tile_program.program, "Position")
                                   .unwrap();
-        let mask_tex_coord_attr = device.get_vertex_attr(&mask_winding_tile_program.program,
-                                                         "MaskTexCoord").unwrap();
+        let fill_tex_coord_attr = device.get_vertex_attr(&mask_winding_tile_program.program,
+                                                         "FillTexCoord").unwrap();
         let backdrop_attr = device.get_vertex_attr(&mask_winding_tile_program.program, "Backdrop")
                                   .unwrap();
 
@@ -149,7 +149,7 @@ impl<D> MaskWindingTileVertexArray<D> where D: Device {
             divisor: 0,
             buffer_index: 0,
         });
-        device.configure_vertex_attr(&vertex_array, &mask_tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &fill_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U16,
@@ -310,14 +310,14 @@ where
 
 pub struct MaskWindingTileProgram<D> where D: Device {
     pub program: D::Program,
-    pub mask_texture_uniform: D::Uniform,
+    pub fill_texture_uniform: D::Uniform,
 }
 
 impl<D> MaskWindingTileProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> MaskWindingTileProgram<D> {
         let program = device.create_program(resources, "mask_winding");
-        let mask_texture_uniform = device.get_uniform(&program, "MaskTexture");
-        MaskWindingTileProgram { program, mask_texture_uniform }
+        let fill_texture_uniform = device.get_uniform(&program, "FillTexture");
+        MaskWindingTileProgram { program, fill_texture_uniform }
     }
 }
 

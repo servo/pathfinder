@@ -6,8 +6,8 @@ using namespace metal;
 
 struct spvDescriptorSetBuffer0
 {
-    texture2d<float> uMaskTexture [[id(0)]];
-    sampler uMaskTextureSmplr [[id(1)]];
+    texture2d<float> uFillTexture [[id(0)]];
+    sampler uFillTextureSmplr [[id(1)]];
 };
 
 struct main0_out
@@ -17,14 +17,14 @@ struct main0_out
 
 struct main0_in
 {
-    float2 vMaskTexCoord [[user(locn0)]];
+    float2 vFillTexCoord [[user(locn0)]];
     float vBackdrop [[user(locn1)]];
 };
 
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    out.oFragColor = float4(abs(spvDescriptorSet0.uMaskTexture.sample(spvDescriptorSet0.uMaskTextureSmplr, in.vMaskTexCoord).x + in.vBackdrop));
+    out.oFragColor = float4(abs(spvDescriptorSet0.uFillTexture.sample(spvDescriptorSet0.uFillTextureSmplr, in.vFillTexCoord).x + in.vBackdrop));
     return out;
 }
 

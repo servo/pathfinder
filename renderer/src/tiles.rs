@@ -162,28 +162,44 @@ impl<'a> Tiler<'a> {
             };
 
             if clip_tile.is_none() && draw_tile.is_solid() {
-                // Blank tiles are always skipped.
+                // This is a simple case, so we can try some optimizations. First, blank tiles
+                // are always skipped.
                 if draw_tile.backdrop == 0 {
                     continue;
                 }
 
-                // If this is a solid tile, poke it into the Z-buffer and stop here.
+                // Next, if this is a solid tile, just poke it into the Z-buffer. We don't need
+                // to do anything else here.
                 if paint_metadata.is_opaque {
                     self.scene_builder.z_buffer.update(tile_coords, self.object_index);
                     continue;
                 }
             }
 
+            // Allocate a mask tile.
+            let mask_tile_index = self.scene_builder.allocate_mask_tile_index();
+
+            // Add the clip primitive to the mask framebuffer, if necessary.
+            if let Some(clip_tile) = clip_tile {
+                ObjectBuilder::push_mask_tile(&mut self.object_builder.built_path.mask_tiles,
+                                              clip_tile,
+                                              mask_tile_index,
+                                              self.object_index);
+            }
+
+            // Add the primitive to the mask framebuffer.
             ObjectBuilder::push_mask_tile(&mut self.object_builder.built_path.mask_tiles,
                                           draw_tile,
+                                          mask_tile_index,
                                           self.object_index);
+
+            // Add the primitive to draw the mask.
             ObjectBuilder::push_alpha_tile(&mut self.object_builder.built_path.alpha_tiles,
-                                           draw_tile,
+                                           mask_tile_index,
                                            tile_coords,
                                            self.object_index,
                                            paint_metadata);
 
-            // TODO(pcwalton): Add the clip tile if necessary.
         }
     }
 

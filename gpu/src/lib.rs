@@ -227,6 +227,9 @@ pub enum BlendFunc {
 pub enum BlendOp {
     Add,
     Subtract,
+    ReverseSubtract,
+    Min,
+    Max,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
