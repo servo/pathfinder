@@ -21,9 +21,11 @@ struct main0_in
 vertex main0_out main0(main0_in in [[stage_in]])
 {
     main0_out out = {};
+    float2 position = mix(float2(-1.0), float2(1.0), in.aPosition);
+    position.y = -position.y;
     out.vMaskTexCoord = in.aMaskTexCoord;
     out.vBackdrop = float(in.aBackdrop);
-    out.gl_Position = float4(mix(float2(-1.0, 1.0), float2(1.0, -1.0), in.aPosition), 0.0, 1.0);
+    out.gl_Position = float4(position, 0.0, 1.0);
     return out;
 }
 

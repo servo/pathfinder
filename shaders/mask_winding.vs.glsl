@@ -20,7 +20,12 @@ out vec2 vMaskTexCoord;
 out float vBackdrop;
 
 void main() {
+    vec2 position = mix(vec2(-1.0), vec2(1.0), aPosition);
+#ifdef PF_ORIGIN_UPPER_LEFT
+    position.y = -position.y;
+#endif
+
     vMaskTexCoord = aMaskTexCoord;
     vBackdrop = float(aBackdrop);
-    gl_Position = vec4(mix(vec2(-1.0, 1.0), vec2(1.0, -1.0), aPosition), 0.0, 1.0);
+    gl_Position = vec4(position, 0.0, 1.0);
 }
