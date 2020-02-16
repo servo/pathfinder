@@ -1779,6 +1779,7 @@ name = "pathfinder_svg"
 version = "0.1.0"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashbrown 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_color 0.1.0",
  "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.4.0",

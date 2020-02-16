@@ -13,6 +13,7 @@
 #[macro_use]
 extern crate bitflags;
 
+use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
@@ -23,7 +24,7 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::Paint;
-use pathfinder_renderer::scene::{DrawPath, Scene};
+use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
 use usvg::{Color as SvgColor, LineCap as UsvgLineCap, LineJoin as UsvgLineJoin, Node, NodeExt};
@@ -35,6 +36,7 @@ const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 pub struct BuiltSVG {
     pub scene: Scene,
     pub result_flags: BuildResultFlags,
+    pub clip_paths: HashMap<String, ClipPathId>,
 }
 
 bitflags! {
@@ -62,11 +64,12 @@ bitflags! {
 impl BuiltSVG {
     // TODO(pcwalton): Allow a global transform to be set.
     pub fn from_tree(tree: Tree) -> BuiltSVG {
-        let global_transform = Transform2F::default();
-
+        // TODO(pcwalton): Maybe have a `SVGBuilder` type to hold the clip path IDs and other
+        // transient data separate from `BuiltSVG`?
         let mut built_svg = BuiltSVG {
             scene: Scene::new(),
             result_flags: BuildResultFlags::empty(),
+            clip_paths: HashMap::new(),
         };
 
         let root = &tree.root();
@@ -74,7 +77,7 @@ impl BuiltSVG {
             NodeKind::Svg(ref svg) => {
                 built_svg.scene.set_view_box(usvg_rect_to_euclid_rect(&svg.view_box.rect));
                 for kid in root.children() {
-                    built_svg.process_node(&kid, &global_transform);
+                    built_svg.process_node(&kid, &State::new(), &mut None);
                 }
             }
             _ => unreachable!(),
@@ -87,16 +90,16 @@ impl BuiltSVG {
         built_svg
     }
 
-    fn process_node(&mut self, node: &Node, transform: &Transform2F) {
+    fn process_node(&mut self,
+                    node: &Node,
+                    state: &State,
+                    clip_outline: &mut Option<Outline>) {
+        let mut state = (*state).clone();
         let node_transform = usvg_transform_to_transform_2d(&node.transform());
-        let transform = node_transform * *transform;
+        state.transform = node_transform * state.transform;
 
         match *node.borrow() {
             NodeKind::Group(ref group) => {
-                if group.clip_path.is_some() {
-                    self.result_flags
-                        .insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_ATTR);
-                }
                 if group.filter.is_some() {
                     self.result_flags
                         .insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
@@ -106,34 +109,35 @@ impl BuiltSVG {
                         .insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
                 }
 
+                if let Some(ref clip_path_name) = group.clip_path {
+                    if let Some(clip_path_id) = self.clip_paths.get(clip_path_name) {
+                        // TODO(pcwalton): Combine multiple clip paths if there's already one.
+                        state.clip_path = Some(*clip_path_id);
+                    }
+                }
+
                 for kid in node.children() {
-                    self.process_node(&kid, &transform)
+                    self.process_node(&kid, &state, clip_outline)
                 }
             }
-            NodeKind::Path(ref path) if path.visibility == Visibility::Visible => {
+            NodeKind::Path(ref path) if state.path_destination == PathDestination::Clip => {
+                // TODO(pcwalton): Multiple clip paths.
+                let path = UsvgPathToSegments::new(path.data.iter().cloned());
+                let path = Transform2FPathIter::new(path, &state.transform);
+                *clip_outline = Some(Outline::from_segments(path));
+            }
+            NodeKind::Path(ref path) if state.path_destination == PathDestination::Draw &&
+                    path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
-                    let style = self.scene.push_paint(&Paint::from_svg_paint(
-                        &fill.paint,
-                        fill.opacity,
-                        &mut self.result_flags,
-                    ));
-
                     let path = UsvgPathToSegments::new(path.data.iter().cloned());
-                    let path = Transform2FPathIter::new(path, &transform);
+                    let path = Transform2FPathIter::new(path, &state.transform);
                     let outline = Outline::from_segments(path);
 
-                    // TODO(pcwalton): Clip paths.
                     let name = format!("Fill({})", node.id());
-                    self.scene.push_path(DrawPath::new(outline, style, None, name));
+                    self.push_draw_path(outline, name, &state, &fill.paint, fill.opacity);
                 }
 
                 if let Some(ref stroke) = path.stroke {
-                    let style = self.scene.push_paint(&Paint::from_svg_paint(
-                        &stroke.paint,
-                        stroke.opacity,
-                        &mut self.result_flags,
-                    ));
-
                     let stroke_style = StrokeStyle {
                         line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
                         line_cap: LineCap::from_usvg_line_cap(stroke.linecap),
@@ -147,22 +151,32 @@ impl BuiltSVG {
                     let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
                     stroke_to_fill.offset();
                     let mut outline = stroke_to_fill.into_outline();
-                    outline.transform(&transform);
+                    outline.transform(&state.transform);
 
-                    // TODO(pcwalton): Clip paths.
                     let name = format!("Stroke({})", node.id());
-                    self.scene.push_path(DrawPath::new(outline, style, None, name));
+                    self.push_draw_path(outline, name, &state, &stroke.paint, stroke.opacity);
                 }
             }
             NodeKind::Path(..) => {}
-            NodeKind::ClipPath(..) => {
-                self.result_flags
-                    .insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_NODE);
+            NodeKind::ClipPath(_) => {
+                let mut clip_outline = None;
+                state.path_destination = PathDestination::Clip;
+                for kid in node.children() {
+                    self.process_node(&kid, &state, &mut clip_outline);
+                }
+
+                if let Some(clip_outline) = clip_outline {
+                    let name = format!("ClipPath({})", node.id());
+                    let clip_path = ClipPath::new(clip_outline, name);
+                    let clip_path_id = self.scene.push_clip_path(clip_path);
+                    self.clip_paths.insert(node.id().to_owned(), clip_path_id);
+                }
             }
-            NodeKind::Defs { .. } => {
-                if node.has_children() {
-                    self.result_flags
-                        .insert(BuildResultFlags::UNSUPPORTED_DEFS_NODE);
+            NodeKind::Defs => {
+                // FIXME(pcwalton): This is wrong.
+                state.path_destination = PathDestination::Defs;
+                for kid in node.children() {
+                    self.process_node(&kid, &state, clip_outline);
                 }
             }
             NodeKind::Filter(..) => {
@@ -194,6 +208,18 @@ impl BuiltSVG {
                     .insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
             }
         }
+    }
+
+    fn push_draw_path(&mut self,
+                      outline: Outline,
+                      name: String,
+                      state: &State,
+                      paint: &UsvgPaint,
+                      opacity: Opacity) {
+        let style = self.scene.push_paint(&Paint::from_svg_paint(paint,
+                                                                 opacity,
+                                                                 &mut self.result_flags));
+        self.scene.push_path(DrawPath::new(outline, style, state.clip_path, name));
     }
 }
 
@@ -407,4 +433,31 @@ impl LineJoinExt for LineJoin {
             UsvgLineJoin::Bevel => LineJoin::Bevel,
         }
     }
+}
+
+#[derive(Clone)]
+struct State {
+    // Where paths are being appended to.
+    path_destination: PathDestination,
+    // The current transform.
+    transform: Transform2F,
+    // The current clip path in effect.
+    clip_path: Option<ClipPathId>,
+}
+
+impl State {
+    fn new() -> State {
+        State {
+            path_destination: PathDestination::Draw,
+            transform: Transform2F::default(),
+            clip_path: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum PathDestination {
+    Draw,
+    Defs,
+    Clip,
 }
