@@ -15,6 +15,7 @@ use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_canvas::{TextAlign, TextMetrics};
 use pathfinder_color::{ColorF, ColorU};
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::ArcDirection;
 use pathfinder_content::stroke::LineCap;
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -372,7 +373,8 @@ pub unsafe extern "C" fn PFCanvasSetStrokeStyle(canvas: PFCanvasRef,
 /// first.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFillPath(canvas: PFCanvasRef, path: PFPathRef) {
-    (*canvas).fill_path(*Box::from_raw(path))
+    // TODO(pcwalton): Expose fill rules to the C API.
+    (*canvas).fill_path(*Box::from_raw(path), FillRule::Winding)
 }
 
 /// This function automatically destroys the path. If you wish to use the path again, clone it

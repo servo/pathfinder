@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use crate::gpu_data::FillBatchPrimitive;
+use pathfinder_content::fill::FillRule;
 use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_gpu::resources::ResourceLoader;
@@ -120,23 +121,23 @@ where
     }
 }
 
-pub struct MaskWindingTileVertexArray<D> where D: Device {
+pub struct MaskTileVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
     pub vertex_buffer: D::Buffer,
 }
 
-impl<D> MaskWindingTileVertexArray<D> where D: Device {
+impl<D> MaskTileVertexArray<D> where D: Device {
     pub fn new(device: &D,
-               mask_winding_tile_program: &MaskWindingTileProgram<D>,
+               mask_tile_program: &MaskTileProgram<D>,
                quads_vertex_indices_buffer: &D::Buffer)
-               -> MaskWindingTileVertexArray<D> {
+               -> MaskTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-        let position_attr = device.get_vertex_attr(&mask_winding_tile_program.program, "Position")
+        let position_attr = device.get_vertex_attr(&mask_tile_program.program, "Position")
                                   .unwrap();
-        let fill_tex_coord_attr = device.get_vertex_attr(&mask_winding_tile_program.program,
+        let fill_tex_coord_attr = device.get_vertex_attr(&mask_tile_program.program,
                                                          "FillTexCoord").unwrap();
-        let backdrop_attr = device.get_vertex_attr(&mask_winding_tile_program.program, "Backdrop")
+        let backdrop_attr = device.get_vertex_attr(&mask_tile_program.program, "Backdrop")
                                   .unwrap();
 
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
@@ -169,7 +170,7 @@ impl<D> MaskWindingTileVertexArray<D> where D: Device {
         });
         device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
-        MaskWindingTileVertexArray { vertex_array, vertex_buffer }
+        MaskTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
@@ -308,16 +309,26 @@ where
     }
 }
 
-pub struct MaskWindingTileProgram<D> where D: Device {
+pub struct MaskTileProgram<D> where D: Device {
     pub program: D::Program,
     pub fill_texture_uniform: D::Uniform,
 }
 
-impl<D> MaskWindingTileProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> MaskWindingTileProgram<D> {
-        let program = device.create_program(resources, "mask_winding");
+impl<D> MaskTileProgram<D> where D: Device {
+    pub fn new(fill_rule: FillRule, device: &D, resources: &dyn ResourceLoader)
+               -> MaskTileProgram<D> {
+        let program_name = match fill_rule {
+            FillRule::Winding => "mask_winding",
+            FillRule::EvenOdd => "mask_evenodd",
+        };
+
+        let program = device.create_program_from_shader_names(resources,
+                                                              program_name,
+                                                              "mask",
+                                                              program_name);
+
         let fill_texture_uniform = device.get_uniform(&program, "FillTexture");
-        MaskWindingTileProgram { program, fill_texture_uniform }
+        MaskTileProgram { program, fill_texture_uniform }
     }
 }
 

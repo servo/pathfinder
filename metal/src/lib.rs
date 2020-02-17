@@ -701,7 +701,8 @@ impl MetalDevice {
             if blit_command_encoder.is_none() {
                 blit_command_encoder = Some(command_buffer.new_blit_command_encoder());
             }
-            let blit_command_encoder = blit_command_encoder.as_ref().unwrap();
+            let blit_command_encoder =
+                blit_command_encoder.as_ref().expect("Where's the blit command encoder?");
             blit_command_encoder.synchronize_resource(&texture.texture);
             texture.dirty.set(false);
         }
@@ -725,9 +726,10 @@ impl MetalDevice {
                                                                            .descriptor));
 
         // Create render pipeline state.
-        let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
-                                                                  .object_at(0)
-                                                                  .unwrap();
+        let pipeline_color_attachment =
+            render_pipeline_descriptor.color_attachments()
+                                      .object_at(0)
+                                      .expect("Where's the color attachment?");
         self.prepare_pipeline_color_attachment_for_render(pipeline_color_attachment,
                                                           render_state);
 
@@ -753,7 +755,9 @@ impl MetalDevice {
                                                                 .enumerate() {
             let real_index = vertex_buffer_index as u64 + FIRST_VERTEX_BUFFER_INDEX;
             let buffer = vertex_buffer.buffer.borrow();
-            let buffer = buffer.as_ref().map(|buffer| buffer.as_ref()).unwrap();
+            let buffer = buffer.as_ref()
+                               .map(|buffer| buffer.as_ref())
+                               .expect("Where's the vertex buffer?");
             encoder.set_vertex_buffer(real_index, Some(buffer), 0);
             encoder.use_resource(buffer, MTLResourceUsage::Read);
         }

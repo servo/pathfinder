@@ -16,6 +16,7 @@ use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
 use pathfinder_color::ColorU;
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -214,12 +215,14 @@ pub struct DrawPath {
     outline: Outline,
     paint: PaintId,
     clip_path: Option<ClipPathId>,
+    fill_rule: FillRule,
     name: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct ClipPath {
     outline: Outline,
+    fill_rule: FillRule,
     name: String,
 }
 
@@ -228,9 +231,13 @@ pub struct ClipPathId(pub u32);
 
 impl DrawPath {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, clip_path: Option<ClipPathId>, name: String)
+    pub fn new(outline: Outline,
+               paint: PaintId,
+               clip_path: Option<ClipPathId>,
+               fill_rule: FillRule,
+               name: String)
                -> DrawPath {
-        DrawPath { outline, paint, clip_path, name }
+        DrawPath { outline, paint, clip_path, fill_rule, name }
     }
 
     #[inline]
@@ -247,16 +254,26 @@ impl DrawPath {
     pub(crate) fn paint(&self) -> PaintId {
         self.paint
     }
+
+    #[inline]
+    pub(crate) fn fill_rule(&self) -> FillRule {
+        self.fill_rule
+    }
 }
 
 impl ClipPath {
     #[inline]
-    pub fn new(outline: Outline, name: String) -> ClipPath {
-        ClipPath { outline, name }
+    pub fn new(outline: Outline, fill_rule: FillRule, name: String) -> ClipPath {
+        ClipPath { outline, fill_rule, name }
     }
 
     #[inline]
     pub fn outline(&self) -> &Outline {
         &self.outline
+    }
+
+    #[inline]
+    pub(crate) fn fill_rule(&self) -> FillRule {
+        self.fill_rule
     }
 }

@@ -15,6 +15,7 @@ extern crate bitflags;
 
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
 use pathfinder_content::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
@@ -27,9 +28,10 @@ use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
-use usvg::{Color as SvgColor, LineCap as UsvgLineCap, LineJoin as UsvgLineJoin, Node, NodeExt};
-use usvg::{NodeKind, Opacity, Paint as UsvgPaint, PathSegment as UsvgPathSegment};
-use usvg::{Rect as UsvgRect, Transform as UsvgTransform, Tree, Visibility};
+use usvg::{Color as SvgColor, FillRule as UsvgFillRule, LineCap as UsvgLineCap};
+use usvg::{LineJoin as UsvgLineJoin, Node, NodeExt, NodeKind, Opacity, Paint as UsvgPaint};
+use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform};
+use usvg::{Tree, Visibility};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
@@ -134,7 +136,12 @@ impl BuiltSVG {
                     let outline = Outline::from_segments(path);
 
                     let name = format!("Fill({})", node.id());
-                    self.push_draw_path(outline, name, &state, &fill.paint, fill.opacity);
+                    self.push_draw_path(outline,
+                                        name,
+                                        &state,
+                                        &fill.paint,
+                                        fill.opacity,
+                                        fill.rule);
                 }
 
                 if let Some(ref stroke) = path.stroke {
@@ -154,7 +161,12 @@ impl BuiltSVG {
                     outline.transform(&state.transform);
 
                     let name = format!("Stroke({})", node.id());
-                    self.push_draw_path(outline, name, &state, &stroke.paint, stroke.opacity);
+                    self.push_draw_path(outline,
+                                        name,
+                                        &state,
+                                        &stroke.paint,
+                                        stroke.opacity,
+                                        UsvgFillRule::NonZero);
                 }
             }
             NodeKind::Path(..) => {}
@@ -167,7 +179,8 @@ impl BuiltSVG {
 
                 if let Some(clip_outline) = clip_outline {
                     let name = format!("ClipPath({})", node.id());
-                    let clip_path = ClipPath::new(clip_outline, name);
+                    // FIXME(pcwalton): Is the winding fill rule correct to use?
+                    let clip_path = ClipPath::new(clip_outline, FillRule::Winding, name);
                     let clip_path_id = self.scene.push_clip_path(clip_path);
                     self.clip_paths.insert(node.id().to_owned(), clip_path_id);
                 }
@@ -215,11 +228,13 @@ impl BuiltSVG {
                       name: String,
                       state: &State,
                       paint: &UsvgPaint,
-                      opacity: Opacity) {
+                      opacity: Opacity,
+                      fill_rule: UsvgFillRule) {
         let style = self.scene.push_paint(&Paint::from_svg_paint(paint,
                                                                  opacity,
                                                                  &mut self.result_flags));
-        self.scene.push_path(DrawPath::new(outline, style, state.clip_path, name));
+        let fill_rule = FillRule::from_usvg_fill_rule(fill_rule);
+        self.scene.push_path(DrawPath::new(outline, style, state.clip_path, fill_rule, name));
     }
 }
 
@@ -431,6 +446,20 @@ impl LineJoinExt for LineJoin {
             UsvgLineJoin::Miter => LineJoin::Miter(miter_limit),
             UsvgLineJoin::Round => LineJoin::Round,
             UsvgLineJoin::Bevel => LineJoin::Bevel,
+        }
+    }
+}
+
+trait FillRuleExt {
+    fn from_usvg_fill_rule(usvg_fill_rule: UsvgFillRule) -> Self;
+}
+
+impl FillRuleExt for FillRule {
+    #[inline]
+    fn from_usvg_fill_rule(usvg_fill_rule: UsvgFillRule) -> FillRule {
+        match usvg_fill_rule {
+            UsvgFillRule::NonZero => FillRule::Winding,
+            UsvgFillRule::EvenOdd => FillRule::EvenOdd,
         }
     }
 }

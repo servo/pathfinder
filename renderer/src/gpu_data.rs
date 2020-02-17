@@ -12,6 +12,7 @@
 
 use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
@@ -22,7 +23,7 @@ pub enum RenderCommand {
     AddPaintData(PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
-    RenderMaskTiles(Vec<MaskTile>),
+    RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
     DrawAlphaTiles(Vec<AlphaTile>),
     DrawSolidTiles(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
@@ -121,8 +122,8 @@ impl Debug for RenderCommand {
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
-            RenderCommand::RenderMaskTiles(ref tiles) => {
-                write!(formatter, "RenderMaskTiles(x{})", tiles.len())
+            RenderCommand::RenderMaskTiles { ref tiles, fill_rule } => {
+                write!(formatter, "RenderMaskTiles(x{}, {:?})", tiles.len(), fill_rule)
             }
             RenderCommand::DrawAlphaTiles(ref tiles) => {
                 write!(formatter, "DrawAlphaTiles(x{})", tiles.len())

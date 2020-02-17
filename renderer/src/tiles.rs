@@ -11,6 +11,7 @@
 use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder};
 use crate::gpu_data::TileObjectPrimitive;
 use crate::paint::PaintMetadata;
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
 use pathfinder_content::sorted_vector::SortedVector;
@@ -49,6 +50,7 @@ impl<'a> Tiler<'a> {
     pub(crate) fn new(
         scene_builder: &'a SceneBuilder<'a>,
         outline: &'a Outline,
+        fill_rule: FillRule,
         view_box: RectF,
         object_index: u16,
         path_info: TilingPathInfo<'a>,
@@ -57,7 +59,7 @@ impl<'a> Tiler<'a> {
             .bounds()
             .intersection(view_box)
             .unwrap_or(RectF::default());
-        let object_builder = ObjectBuilder::new(bounds);
+        let object_builder = ObjectBuilder::new(bounds, fill_rule);
 
         Tiler {
             scene_builder,
@@ -162,10 +164,14 @@ impl<'a> Tiler<'a> {
             };
 
             if clip_tile.is_none() && draw_tile.is_solid() {
-                // This is a simple case, so we can try some optimizations. First, blank tiles
-                // are always skipped.
-                if draw_tile.backdrop == 0 {
-                    continue;
+                // This is the simple case of a solid tile with no clip, so there are optimization
+                // opportunities. First, tiles that must be blank per the fill rule are always
+                // skipped.
+                match (self.object_builder.built_path.fill_rule, draw_tile.backdrop) {
+                    (FillRule::Winding, 0) => continue,
+                    (FillRule::Winding, _) => {}
+                    (FillRule::EvenOdd, backdrop) if backdrop % 2 == 0 => continue,
+                    (FillRule::EvenOdd, _) => {}
                 }
 
                 // Next, if this is a solid tile, just poke it into the Z-buffer. We don't need

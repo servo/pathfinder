@@ -11,7 +11,7 @@
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu::shaders::{FillProgram, AlphaTileProgram, AlphaTileVertexArray, FillVertexArray};
-use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskWindingTileProgram, MaskWindingTileVertexArray};
+use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
 use crate::gpu::shaders::{PostprocessProgram, PostprocessVertexArray, ReprojectionProgram};
 use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
 use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
@@ -20,6 +20,7 @@ use crate::gpu_data::{RenderCommand, SolidTileVertex};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF, ColorU};
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
@@ -57,10 +58,12 @@ where
     dest_framebuffer: DestFramebuffer<D>,
     options: RendererOptions,
     fill_program: FillProgram<D>,
-    mask_winding_tile_program: MaskWindingTileProgram<D>,
+    mask_winding_tile_program: MaskTileProgram<D>,
+    mask_evenodd_tile_program: MaskTileProgram<D>,
     solid_tile_program: SolidTileProgram<D>,
     alpha_tile_program: AlphaTileProgram<D>,
-    mask_winding_tile_vertex_array: MaskWindingTileVertexArray<D>,
+    mask_winding_tile_vertex_array: MaskTileVertexArray<D>,
+    mask_evenodd_tile_vertex_array: MaskTileVertexArray<D>,
     solid_tile_vertex_array: SolidTileVertexArray<D>,
     alpha_tile_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
@@ -113,7 +116,12 @@ where
                options: RendererOptions)
                -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
-        let mask_winding_tile_program = MaskWindingTileProgram::new(&device, resources);
+        let mask_winding_tile_program = MaskTileProgram::new(FillRule::Winding,
+                                                             &device,
+                                                             resources);
+        let mask_evenodd_tile_program = MaskTileProgram::new(FillRule::EvenOdd,
+                                                             &device,
+                                                             resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
         let postprocess_program = PostprocessProgram::new(&device, resources);
@@ -145,9 +153,14 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
-        let mask_winding_tile_vertex_array = MaskWindingTileVertexArray::new(
+        let mask_winding_tile_vertex_array = MaskTileVertexArray::new(
             &device,
             &mask_winding_tile_program,
+            &quads_vertex_indices_buffer,
+        );
+        let mask_evenodd_tile_vertex_array = MaskTileVertexArray::new(
+            &device,
+            &mask_evenodd_tile_program,
             &quads_vertex_indices_buffer,
         );
         let alpha_tile_vertex_array = AlphaTileVertexArray::new(
@@ -196,9 +209,11 @@ where
             options,
             fill_program,
             mask_winding_tile_program,
+            mask_evenodd_tile_program,
             solid_tile_program,
             alpha_tile_program,
             mask_winding_tile_vertex_array,
+            mask_evenodd_tile_vertex_array,
             solid_tile_vertex_array,
             alpha_tile_vertex_array,
             area_lut_texture,
@@ -257,10 +272,10 @@ where
                 self.draw_buffered_fills();
                 self.begin_composite_timer_query();
             }
-            RenderCommand::RenderMaskTiles(ref mask_tiles) => {
+            RenderCommand::RenderMaskTiles { tiles: ref mask_tiles, fill_rule } => {
                 let count = mask_tiles.len();
-                self.upload_mask_tiles(mask_tiles);
-                self.draw_mask_tiles(count as u32);
+                self.upload_mask_tiles(mask_tiles, fill_rule);
+                self.draw_mask_tiles(count as u32, fill_rule);
             }
             RenderCommand::DrawSolidTiles(ref solid_tile_vertices) => {
                 let count = solid_tile_vertices.len() / 4;
@@ -397,9 +412,14 @@ where
                                       TextureDataRef::U8(texels));
     }
 
-    fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile]) {
+    fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile], fill_rule: FillRule) {
+        let vertex_array = match fill_rule {
+            FillRule::Winding => &self.mask_winding_tile_vertex_array,
+            FillRule::EvenOdd => &self.mask_evenodd_tile_vertex_array,
+        };
+
         self.device.allocate_buffer(
-            &self.mask_winding_tile_vertex_array.vertex_buffer,
+            &vertex_array.vertex_buffer,
             BufferData::Memory(&mask_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
@@ -529,7 +549,7 @@ where
         Transform4F::from_scale(scale).translate(Vector4F::new(-1.0, 1.0, 0.0, 1.0))
     }
 
-    fn draw_mask_tiles(&mut self, tile_count: u32) {
+    fn draw_mask_tiles(&mut self, tile_count: u32, fill_rule: FillRule) {
         let clear_color =
             if self.framebuffer_flags
                    .contains(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
@@ -538,10 +558,19 @@ where
                 Some(ColorF::new(1.0, 1.0, 1.0, 1.0))
             };
 
+        let (mask_tile_program, mask_tile_vertex_array) = match fill_rule {
+            FillRule::Winding => {
+                (&self.mask_winding_tile_program, &self.mask_winding_tile_vertex_array)
+            }
+            FillRule::EvenOdd => {
+                (&self.mask_evenodd_tile_program, &self.mask_evenodd_tile_vertex_array)
+            }
+        };
+
         self.device.draw_elements(tile_count * 6, &RenderState {
             target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
-            program: &self.mask_winding_tile_program.program,
-            vertex_array: &self.mask_winding_tile_vertex_array.vertex_array,
+            program: &mask_tile_program.program,
+            vertex_array: &mask_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &[self.device.framebuffer_texture(&self.fill_framebuffer)],
             uniforms: &[
@@ -550,7 +579,6 @@ where
             ],
             viewport: self.mask_viewport(),
             options: RenderOptions {
-                // TODO(pcwalton): MIN blending for masks.
                 blend: Some(BlendState {
                     func: BlendFunc::RGBOneAlphaOne,
                     op: BlendOp::Min,

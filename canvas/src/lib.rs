@@ -12,6 +12,7 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
 use pathfinder_content::pattern::Pattern;
@@ -80,7 +81,7 @@ impl CanvasRenderingContext2D {
     pub fn fill_rect(&mut self, rect: RectF) {
         let mut path = Path2D::new();
         path.rect(rect);
-        self.fill_path(path);
+        self.fill_path(path, FillRule::Winding);
     }
 
     #[inline]
@@ -156,14 +157,14 @@ impl CanvasRenderingContext2D {
     // Drawing paths
 
     #[inline]
-    pub fn fill_path(&mut self, path: Path2D) {
+    pub fn fill_path(&mut self, path: Path2D, fill_rule: FillRule) {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
         let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        self.push_path(outline, paint_id);
+        self.push_path(outline, paint_id, fill_rule);
     }
 
     #[inline]
@@ -196,18 +197,20 @@ impl CanvasRenderingContext2D {
         outline = stroke_to_fill.into_outline();
 
         outline.transform(&self.current_state.transform);
-        self.push_path(outline, paint_id);
+        self.push_path(outline, paint_id, FillRule::Winding);
     }
 
-    pub fn clip_path(&mut self, path: Path2D) {
+    pub fn clip_path(&mut self, path: Path2D, fill_rule: FillRule) {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
-        let clip_path_id = self.scene.push_clip_path(ClipPath::new(outline, String::new()));
+        let clip_path_id = self.scene   
+                               .push_clip_path(ClipPath::new(outline, fill_rule, String::new()));
+
         self.current_state.clip_path = Some(clip_path_id);
     }
 
-    fn push_path(&mut self, outline: Outline, paint_id: PaintId) {
+    fn push_path(&mut self, outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
         let clip_path = self.current_state.clip_path;
 
         if !self.current_state.shadow_paint.is_fully_transparent() {
@@ -216,10 +219,14 @@ impl CanvasRenderingContext2D {
 
             let mut outline = outline.clone();
             outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
-            self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, String::new()))
+            self.scene.push_path(DrawPath::new(outline,
+                                               paint_id,
+                                               clip_path,
+                                               fill_rule,
+                                               String::new()))
         }
 
-        self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, String::new()))
+        self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, fill_rule, String::new()))
     }
 
     // Transformations

@@ -20,6 +20,7 @@ use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -52,6 +53,7 @@ pub(crate) struct BuiltPath {
     pub mask_tiles: Vec<MaskTile>,
     pub alpha_tiles: Vec<AlphaTile>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
+    pub fill_rule: FillRule,
 }
 
 impl<'a> SceneBuilder<'a> {
@@ -122,6 +124,7 @@ impl<'a> SceneBuilder<'a> {
 
         let mut tiler = Tiler::new(self,
                                    &outline,
+                                   path_object.fill_rule(),
                                    view_box,
                                    path_index as u16,
                                    TilingPathInfo::Clip);
@@ -150,6 +153,7 @@ impl<'a> SceneBuilder<'a> {
 
         let mut tiler = Tiler::new(self,
                                    &outline,
+                                   path_object.fill_rule(),
                                    view_box,
                                    path_index as u16,
                                    TilingPathInfo::Draw {
@@ -165,14 +169,18 @@ impl<'a> SceneBuilder<'a> {
 
     fn cull_tiles(&self, built_clip_paths: Vec<BuiltPath>, built_draw_paths: Vec<BuiltPath>)
                   -> CulledTiles {
-        let mut culled_tiles = CulledTiles { mask_tiles: vec![], alpha_tiles: vec![] };
+        let mut culled_tiles = CulledTiles {
+            mask_winding_tiles: vec![],
+            mask_evenodd_tiles: vec![],
+            alpha_tiles: vec![],
+        };
 
         for built_clip_path in built_clip_paths {
-            culled_tiles.mask_tiles.extend_from_slice(&built_clip_path.mask_tiles);
+            culled_tiles.push_mask_tiles(&built_clip_path);
         }
 
         for built_draw_path in built_draw_paths {
-            culled_tiles.mask_tiles.extend_from_slice(&built_draw_path.mask_tiles);
+            culled_tiles.push_mask_tiles(&built_draw_path);
 
             for alpha_tile in built_draw_path.alpha_tiles {
                 let alpha_tile_coords = alpha_tile.upper_left.tile_position();
@@ -191,9 +199,20 @@ impl<'a> SceneBuilder<'a> {
         let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
                                                           paint_metadata,
                                                           0..path_count);
-        if !culled_tiles.mask_tiles.is_empty() {
-            self.listener.send(RenderCommand::RenderMaskTiles(culled_tiles.mask_tiles));
+
+        if !culled_tiles.mask_winding_tiles.is_empty() {
+            self.listener.send(RenderCommand::RenderMaskTiles {
+                tiles: culled_tiles.mask_winding_tiles,
+                fill_rule: FillRule::Winding,
+            });
         }
+        if !culled_tiles.mask_evenodd_tiles.is_empty() {
+            self.listener.send(RenderCommand::RenderMaskTiles {
+                tiles: culled_tiles.mask_evenodd_tiles,
+                fill_rule: FillRule::EvenOdd,
+            });
+        }
+
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::DrawSolidTiles(solid_tiles));
         }
@@ -218,7 +237,8 @@ impl<'a> SceneBuilder<'a> {
 }
 
 struct CulledTiles {
-    mask_tiles: Vec<MaskTile>,
+    mask_winding_tiles: Vec<MaskTile>,
+    mask_evenodd_tiles: Vec<MaskTile>,
     alpha_tiles: Vec<AlphaTile>,
 }
 
@@ -231,11 +251,11 @@ pub struct TileStats {
 // Utilities for built objects
 
 impl ObjectBuilder {
-    pub(crate) fn new(bounds: RectF) -> ObjectBuilder {
+    pub(crate) fn new(bounds: RectF, fill_rule: FillRule) -> ObjectBuilder {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
         let tiles = DenseTileMap::new(tile_rect);
         ObjectBuilder {
-            built_path: BuiltPath { mask_tiles: vec![], alpha_tiles: vec![], tiles },
+            built_path: BuiltPath { mask_tiles: vec![], alpha_tiles: vec![], tiles, fill_rule },
             bounds,
             fills: vec![],
         }
@@ -532,4 +552,13 @@ fn calculate_mask_uv(tile_index: u16, tile_offset: Vector2I) -> Vector2I {
     let mask_scale = 65535.0 / MASK_TILES_ACROSS as f32;
     let mask_uv = Vector2I::new(mask_u, mask_v) + tile_offset;
     mask_uv.to_f32().scale(mask_scale).to_i32()
+}
+
+impl CulledTiles {
+    fn push_mask_tiles(&mut self, built_path: &BuiltPath) {
+        match built_path.fill_rule {
+            FillRule::Winding => self.mask_winding_tiles.extend_from_slice(&built_path.mask_tiles),
+            FillRule::EvenOdd => self.mask_evenodd_tiles.extend_from_slice(&built_path.mask_tiles),
+        }
+    }
 }
