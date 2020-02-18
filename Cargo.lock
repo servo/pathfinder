@@ -268,6 +268,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "canvas_nanovg"
+version = "0.1.0"
+dependencies = [
+ "arrayvec 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gl 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_canvas 0.1.0",
+ "pathfinder_color 0.1.0",
+ "pathfinder_content 0.1.0",
+ "pathfinder_geometry 0.4.0",
+ "pathfinder_gl 0.1.0",
+ "pathfinder_gpu 0.1.0",
+ "pathfinder_renderer 0.1.0",
+ "sdl2 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sdl2-sys 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "canvas_text"
 version = "0.1.0"
 dependencies = [
