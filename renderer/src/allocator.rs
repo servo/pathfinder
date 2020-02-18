@@ -12,6 +12,9 @@
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
+use std::mem;
+
+const MAX_TEXTURE_LENGTH: u32 = 4096;
 
 #[derive(Debug)]
 pub struct TextureAllocator {
@@ -44,7 +47,16 @@ impl TextureAllocator {
     pub fn allocate(&mut self, requested_size: Vector2I) -> Option<TextureLocation> {
         let requested_length =
             (requested_size.x().max(requested_size.y()) as u32).next_power_of_two();
-        self.root.allocate(Vector2I::default(), self.size, requested_length)
+        loop {
+            if let Some(location) = self.root.allocate(Vector2I::default(),
+                                                       self.size,
+                                                       requested_length) {
+                return Some(location);
+            }
+            if !self.grow() {
+                return None;
+            }
+        }
     }
 
     #[inline]
@@ -61,6 +73,37 @@ impl TextureAllocator {
             TreeNode::EmptyLeaf => true,
             _ => false,
         }
+    }
+
+    // TODO(pcwalton): Make this more flexible.
+    pub fn grow(&mut self) -> bool {
+        if self.size >= MAX_TEXTURE_LENGTH {
+            return false;
+        }
+
+        let old_root = mem::replace(&mut self.root, TreeNode::EmptyLeaf);
+        self.size *= 2;
+
+        // NB: Don't change the order of the children, or else texture coordinates of
+        // already-allocated objects will become invalid.
+        self.root = TreeNode::Parent([
+            Box::new(old_root),
+            Box::new(TreeNode::EmptyLeaf),
+            Box::new(TreeNode::EmptyLeaf),
+            Box::new(TreeNode::EmptyLeaf),
+        ]);
+
+        true
+    }
+
+    #[inline]
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+
+    #[inline]
+    pub fn scale(&self) -> f32 {
+        1.0 / self.size as f32
     }
 }
 
