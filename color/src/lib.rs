@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use pathfinder_simd::default::F32x4;
+use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::slice;
 
@@ -101,9 +102,39 @@ impl Debug for ColorU {
 pub struct ColorF(pub F32x4);
 
 impl ColorF {
+    // Constructors
+
     #[inline]
     pub fn new(r: f32, g: f32, b: f32, a: f32) -> ColorF {
         ColorF(F32x4::new(r, g, b, a))
+    }
+
+    #[inline]
+    pub fn from_hsla(mut h: f32, s: f32, l: f32, a: f32) -> ColorF {
+        // https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB
+
+        h %= 2.0 * PI;
+        h *= 3.0 / PI;
+
+        // Calculate chroma.
+        let c = (1.0 - f32::abs(2.0 * l - 1.0)) * s;
+        let xc = F32x4::new(c * (1.0 - f32::abs(h % 2.0 - 1.0)), c, 0.0, a);
+        let rgba = match f32::ceil(h) as i32 {
+            1     => xc.yxzw(),
+            2     => xc.xyzw(),
+            3     => xc.zyxw(),
+            4     => xc.zxyw(),
+            5     => xc.xzyw(),
+            0 | 6 => xc.yzxw(),
+            _     => xc.zzzw(),
+        };
+        let m = l - 0.5 * c;
+        ColorF(rgba + F32x4::new(m, m, m, 0.0))
+    }
+
+    #[inline]
+    pub fn from_hsl(h: f32, s: f32, l: f32) -> ColorF {
+        ColorF::from_hsla(h, s, l, 1.0)
     }
 
     #[inline]
