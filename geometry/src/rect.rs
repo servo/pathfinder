@@ -156,6 +156,11 @@ impl RectF {
     }
 
     #[inline]
+    pub fn center(self) -> Vector2F {
+        self.origin() + self.size().scale(0.5)
+    }
+
+    #[inline]
     pub fn scale(self, factor: f32) -> RectF {
         RectF(self.0 * F32x4::splat(factor))
     }
