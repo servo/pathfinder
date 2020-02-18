@@ -11,6 +11,7 @@
 use crate::sorted_vector::SortedVector;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::util;
 use pathfinder_simd::default::F32x4;
 use std::cmp::{Ordering, PartialOrd};
 use std::convert;
@@ -117,11 +118,12 @@ impl Gradient {
         &self.stops.array
     }
 
-    pub fn sample(&self, t: f32) -> ColorU {
+    pub fn sample(&self, mut t: f32) -> ColorU {
         if self.stops.is_empty() {
             return ColorU::transparent_black();
         }
 
+        t = util::clamp(t, 0.0, 1.0);
         let last_index = self.stops.len() - 1;
         let upper_index = self.stops.binary_search_by(|stop| {
             stop.offset.partial_cmp(&t).unwrap_or(Ordering::Less)
