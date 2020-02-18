@@ -372,8 +372,8 @@ impl Contour {
                                     direction: ArcDirection) {
         let mut direction_transform = Transform2F::default();
         if direction == ArcDirection::CCW {
-            chord = chord.scale_xy(Vector2F::new(-1.0, 1.0));
-            direction_transform = Transform2F::from_scale(Vector2F::new(-1.0, 1.0));
+            chord = chord.reversed();
+            direction_transform = Transform2F::from_scale(Vector2F::new(1.0, -1.0));
         }
 
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
