@@ -316,12 +316,13 @@ impl State {
     }
 
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
-        if self.global_alpha == 1.0 {
+        if self.global_alpha == 1.0 && (paint.is_color() || self.transform.is_identity()) {
             return Cow::Borrowed(paint);
         }
 
         let mut paint = (*paint).clone();
         paint.set_opacity(self.global_alpha);
+        paint.apply_transform(&self.transform);
         Cow::Owned(paint)
     }
 

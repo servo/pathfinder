@@ -114,6 +114,11 @@ impl Gradient {
     }
 
     #[inline]
+    pub fn geometry_mut(&mut self) -> &mut GradientGeometry {
+        &mut self.geometry
+    }
+
+    #[inline]
     pub fn stops(&self) -> &[ColorStop] {
         &self.stops.array
     }

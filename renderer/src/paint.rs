@@ -105,6 +105,14 @@ impl Paint {
         }
     }
 
+    #[inline]
+    pub fn is_color(&self) -> bool {
+        match *self {
+            Paint::Color(_) => true,
+            Paint::Gradient(_) | Paint::Pattern(_) => false,
+        }
+    }
+
     pub fn set_opacity(&mut self, alpha: f32) {
         if alpha == 1.0 {
             return;
@@ -114,6 +122,42 @@ impl Paint {
             Paint::Color(ref mut color) => color.a = (color.a as f32 * alpha).round() as u8,
             Paint::Gradient(ref mut gradient) => gradient.set_opacity(alpha),
             Paint::Pattern(ref mut pattern) => pattern.image.set_opacity(alpha),
+        }
+    }
+
+    pub fn apply_transform(&mut self, transform: &Transform2F) {
+        if transform.is_identity() {
+            return;
+        }
+
+        match *self {
+            Paint::Color(_) => {}
+            Paint::Gradient(ref mut gradient) => {
+                match *gradient.geometry_mut() {
+                    GradientGeometry::Linear(ref mut line) => {
+                        *line = *transform * *line;
+                    }
+                    GradientGeometry::Radial {
+                        ref mut line,
+                        ref mut start_radius,
+                        ref mut end_radius,
+                    } => {
+                        *line = *transform * *line;
+
+                        // FIXME(pcwalton): This is wrong; I think the transform can make the
+                        // radial gradient into an ellipse.
+                        *start_radius *= util::lerp(transform.matrix.m11(),
+                                                    transform.matrix.m22(),
+                                                    0.5);
+                        *end_radius *= util::lerp(transform.matrix.m11(),
+                                                  transform.matrix.m22(),
+                                                  0.5);
+                    }
+                }
+            }
+            Paint::Pattern(_) => {
+                // TODO(pcwalton): Implement this.
+            }
         }
     }
 }
@@ -159,8 +203,8 @@ impl Palette {
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
         for paint in &self.paints {
             let tex_location = match paint {
-                Paint::Color(color) => solid_color_tile_builder.allocate(&mut allocator),
-                Paint::Gradient(ref gradient) => {
+                Paint::Color(_) => solid_color_tile_builder.allocate(&mut allocator),
+                Paint::Gradient(_) => {
                     // TODO(pcwalton): Optimize this:
                     // 1. Use repeating/clamp on the sides.
                     // 2. Choose an optimal size for the gradient that minimizes memory usage while
@@ -190,14 +234,14 @@ impl Palette {
                     let vector = rect_to_inset_uv(metadata.tex_rect, texture_length).origin();
                     Transform2F { matrix: Matrix2x2F(F32x4::default()), vector }
                 }
-                Paint::Gradient(ref gradient) => {
+                Paint::Gradient(_) => {
                     let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_length).origin();
                     let gradient_tile_scale = GRADIENT_TILE_LENGTH as f32 * texture_scale;
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(Vector2F::splat(gradient_tile_scale) /
                                                 view_box_size.to_f32())
                 }
-                Paint::Pattern(ref pattern) => {
+                Paint::Pattern(_) => {
                     let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_length).origin();
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_uniform_scale(texture_scale)
