@@ -1,4 +1,4 @@
-// pathfinder/canvas/src/lib.rs
+// pathfinder/canvas/src/text_no_text.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
