@@ -26,7 +26,7 @@ out vec2 vColorTexCoord;
 out vec2 vMaskTexCoord;
 
 void main(){
-    vec2 position = aTilePosition * uTileSize;
+    vec2 position = vec2(aTilePosition)* uTileSize;
 
     vMaskTexCoord = aMaskTexCoord;
     vColorTexCoord = aColorTexCoord;

@@ -205,10 +205,14 @@ impl WebGlDevice {
                 self.ck();
             }
             Some(blend) => {
-                match blend.op {
-                    BlendOp::Add => self.context.blend_equation(WebGl::FUNC_ADD),
-                    BlendOp::Subtract => self.context.blend_equation(WebGl::FUNC_SUBTRACT),
-                }
+                let func = match blend.op {
+                    BlendOp::Add => WebGl::FUNC_ADD,
+                    BlendOp::Subtract => WebGl::FUNC_SUBTRACT,
+                    BlendOp::ReverseSubtract => WebGl::FUNC_REVERSE_SUBTRACT,
+                    BlendOp::Max => WebGl::MAX,
+                    BlendOp::Min => WebGl::MIN,
+                };
+                self.context.blend_equation(func);
                 self.ck();
 
                 match blend.func {
