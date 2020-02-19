@@ -466,6 +466,18 @@ impl I32x2 {
         I32x2([x, x])
     }
 
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> i32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> i32 {
+        self[1]
+    }
+
     #[inline]
     pub fn concat_xy_xy(self, other: I32x2) -> I32x4 {
         I32x4([self[0], self[1], other[0], other[1]])

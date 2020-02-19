@@ -11,35 +11,28 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::options::BoundingQuad;
-use crate::tile_map::DenseTileMap;
+use pathfinder_color::ColorU;
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
-
-#[derive(Debug)]
-pub(crate) struct BuiltObject {
-    pub bounds: RectF,
-    pub fills: Vec<FillBatchPrimitive>,
-    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
-    pub tiles: DenseTileMap<TileObjectPrimitive>,
-}
 
 pub enum RenderCommand {
     Start { path_count: usize, bounding_quad: BoundingQuad },
     AddPaintData(PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
-    AlphaTile(Vec<AlphaTileBatchPrimitive>),
-    SolidTile(Vec<SolidTileBatchPrimitive>),
+    RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
+    DrawAlphaTiles(Vec<AlphaTile>),
+    DrawSolidTiles(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
 }
 
 #[derive(Clone, Debug)]
 pub struct PaintData {
     pub size: Vector2I,
-    pub texels: Vec<u8>,
+    pub texels: Vec<ColorU>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -69,34 +62,55 @@ pub struct FillBatchPrimitive {
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
-pub struct SolidTileBatchPrimitive {
+pub struct SolidTileVertex {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub texture_m00: u16,
-    pub texture_m10: u16,
-    pub texture_m01: u16,
-    pub texture_m11: u16,
-    pub texture_m02: u16,
-    pub texture_m12: u16,
+    pub color_u: u16,
+    pub color_v: u16,
     pub object_index: u16,
     pub pad: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
-pub struct AlphaTileBatchPrimitive {
-    pub tile_x_lo: u8,
-    pub tile_y_lo: u8,
-    pub tile_hi: u8,
-    pub backdrop: i8,
+pub struct MaskTile {
+    pub upper_left: MaskTileVertex,
+    pub upper_right: MaskTileVertex,
+    pub lower_left: MaskTileVertex,
+    pub lower_right: MaskTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct AlphaTile {
+    pub upper_left: AlphaTileVertex,
+    pub upper_right: AlphaTileVertex,
+    pub lower_left: AlphaTileVertex,
+    pub lower_right: AlphaTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct MaskTileVertex {
+    pub mask_u: u16,
+    pub mask_v: u16,
+    pub fill_u: u16,
+    pub fill_v: u16,
+    pub backdrop: i16,
     pub object_index: u16,
-    pub tile_index: u16,
-    pub texture_m00: u16,
-    pub texture_m10: u16,
-    pub texture_m01: u16,
-    pub texture_m11: u16,
-    pub texture_m02: u16,
-    pub texture_m12: u16,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct AlphaTileVertex {
+    pub tile_x: i16,
+    pub tile_y: i16,
+    pub mask_u: u16,
+    pub mask_v: u16,
+    pub color_u: u16,
+    pub color_v: u16,
+    pub object_index: u16,
+    pub pad: u16,
 }
 
 impl Debug for RenderCommand {
@@ -108,11 +122,14 @@ impl Debug for RenderCommand {
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
-            RenderCommand::AlphaTile(ref tiles) => {
-                write!(formatter, "AlphaTile(x{})", tiles.len())
+            RenderCommand::RenderMaskTiles { ref tiles, fill_rule } => {
+                write!(formatter, "RenderMaskTiles(x{}, {:?})", tiles.len(), fill_rule)
             }
-            RenderCommand::SolidTile(ref tiles) => {
-                write!(formatter, "SolidTile(x{})", tiles.len())
+            RenderCommand::DrawAlphaTiles(ref tiles) => {
+                write!(formatter, "DrawAlphaTiles(x{})", tiles.len())
+            }
+            RenderCommand::DrawSolidTiles(ref tiles) => {
+                write!(formatter, "DrawSolidTiles(x{})", tiles.len())
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

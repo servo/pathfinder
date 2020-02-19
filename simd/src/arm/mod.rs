@@ -428,6 +428,18 @@ impl I32x2 {
         I32x2::new(x, x)
     }
 
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> i32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> i32 {
+        self[1]
+    }
+
     #[inline]
     pub fn packed_eq(self, other: I32x2) -> U32x2 {
         unsafe { U32x2(simd_eq(self.0, other.0)) }
@@ -766,6 +778,7 @@ impl Index<usize> for U32x4 {
 
 extern "platform-intrinsic" {
     fn simd_add<T>(x: T, y: T) -> T;
+    fn simd_div<T>(x: T, y: T) -> T;
     fn simd_mul<T>(x: T, y: T) -> T;
     fn simd_sub<T>(x: T, y: T) -> T;
 

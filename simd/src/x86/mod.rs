@@ -477,6 +477,18 @@ impl I32x2 {
         I32x2::new(x, x)
     }
 
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> i32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> i32 {
+        self[1]
+    }
+
     // Concatenations
 
     #[inline]

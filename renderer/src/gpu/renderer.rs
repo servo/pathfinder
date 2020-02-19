@@ -1,6 +1,6 @@
 // pathfinder/renderer/src/gpu/renderer.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -12,19 +12,25 @@
 use crate::gpu::debug::DebugUIPresenter;
 
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
-use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
+use crate::gpu::shaders::{FillProgram, AlphaTileProgram, AlphaTileVertexArray, FillVertexArray};
+use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
+use crate::gpu::shaders::{PostprocessProgram, PostprocessVertexArray, ReprojectionProgram};
+use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
+use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData};
+use crate::gpu_data::{RenderCommand, SolidTileVertex};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_color::ColorF;
+use pathfinder_color::{self as color, ColorF, ColorU};
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendFunc, BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
-use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureDataRef, TextureFormat};
-use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BlendFunc, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
+use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
+use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cmp;
 use std::collections::VecDeque;
@@ -36,16 +42,12 @@ use std::u32;
 static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
+pub(crate) const MASK_TILES_ACROSS: u32 = 256;
+pub(crate) const MASK_TILES_DOWN: u32 = 256;
+
 // FIXME(pcwalton): Shrink this again!
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
-
-// TODO(pcwalton): Replace with `mem::size_of` calls?
-const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 20;
-const MASK_TILE_INSTANCE_SIZE: usize = 20;
-
-const MAX_FILLS_PER_BATCH: usize = 0x4000;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * MASK_TILES_ACROSS as i32;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * MASK_TILES_DOWN as i32;
 
 pub struct Renderer<D>
 where
@@ -58,14 +60,21 @@ where
     dest_framebuffer: DestFramebuffer<D>,
     options: RendererOptions,
     fill_program: FillProgram<D>,
+    mask_winding_tile_program: MaskTileProgram<D>,
+    mask_evenodd_tile_program: MaskTileProgram<D>,
     solid_tile_program: SolidTileProgram<D>,
     alpha_tile_program: AlphaTileProgram<D>,
+    mask_winding_tile_vertex_array: MaskTileVertexArray<D>,
+    mask_evenodd_tile_vertex_array: MaskTileVertexArray<D>,
     solid_tile_vertex_array: SolidTileVertexArray<D>,
     alpha_tile_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
     quad_vertex_positions_buffer: D::Buffer,
     quad_vertex_indices_buffer: D::Buffer,
+    quads_vertex_indices_buffer: D::Buffer,
+    quads_vertex_indices_length: usize,
     fill_vertex_array: FillVertexArray<D>,
+    fill_framebuffer: D::Framebuffer,
     mask_framebuffer: D::Framebuffer,
     paint_texture: Option<D::Texture>,
 
@@ -111,10 +120,14 @@ where
                options: RendererOptions)
                -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
-
+        let mask_winding_tile_program = MaskTileProgram::new(FillRule::Winding,
+                                                             &device,
+                                                             resources);
+        let mask_evenodd_tile_program = MaskTileProgram::new(FillRule::EvenOdd,
+                                                             &device,
+                                                             resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
-
         let postprocess_program = PostprocessProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
@@ -136,6 +149,7 @@ where
             BufferTarget::Index,
             BufferUploadMode::Static,
         );
+        let quads_vertex_indices_buffer = device.create_buffer();
 
         let fill_vertex_array = FillVertexArray::new(
             &device,
@@ -143,17 +157,25 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
+        let mask_winding_tile_vertex_array = MaskTileVertexArray::new(
+            &device,
+            &mask_winding_tile_program,
+            &quads_vertex_indices_buffer,
+        );
+        let mask_evenodd_tile_vertex_array = MaskTileVertexArray::new(
+            &device,
+            &mask_evenodd_tile_program,
+            &quads_vertex_indices_buffer,
+        );
         let alpha_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_tile_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &quads_vertex_indices_buffer,
         );
         let solid_tile_vertex_array = SolidTileVertexArray::new(
             &device,
             &solid_tile_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &quads_vertex_indices_buffer,
         );
         let postprocess_vertex_array = PostprocessVertexArray::new(
             &device,
@@ -169,10 +191,16 @@ where
             &quad_vertex_indices_buffer,
         );
 
+        let fill_framebuffer_size =
+            Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+        let fill_framebuffer_texture =
+            device.create_texture(TextureFormat::R16F, fill_framebuffer_size);
+        let fill_framebuffer = device.create_framebuffer(fill_framebuffer_texture);
+
         let mask_framebuffer_size =
             Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         let mask_framebuffer_texture =
-            device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
+            device.create_texture(TextureFormat::R8, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
         let window_size = dest_framebuffer.window_size(&device);
@@ -186,14 +214,21 @@ where
             dest_framebuffer,
             options,
             fill_program,
+            mask_winding_tile_program,
+            mask_evenodd_tile_program,
             solid_tile_program,
             alpha_tile_program,
+            mask_winding_tile_vertex_array,
+            mask_evenodd_tile_vertex_array,
             solid_tile_vertex_array,
             alpha_tile_vertex_array,
             area_lut_texture,
             quad_vertex_positions_buffer,
             quad_vertex_indices_buffer,
+            quads_vertex_indices_buffer,
+            quads_vertex_indices_length: 0,
             fill_vertex_array,
+            fill_framebuffer,
             mask_framebuffer,
             paint_texture: None,
 
@@ -245,13 +280,18 @@ where
                 self.draw_buffered_fills();
                 self.begin_composite_timer_query();
             }
-            RenderCommand::SolidTile(ref solid_tiles) => {
-                let count = solid_tiles.len();
+            RenderCommand::RenderMaskTiles { tiles: ref mask_tiles, fill_rule } => {
+                let count = mask_tiles.len();
+                self.upload_mask_tiles(mask_tiles, fill_rule);
+                self.draw_mask_tiles(count as u32, fill_rule);
+            }
+            RenderCommand::DrawSolidTiles(ref solid_tile_vertices) => {
+                let count = solid_tile_vertices.len() / 4;
                 self.stats.solid_tile_count += count;
-                self.upload_solid_tiles(solid_tiles);
+                self.upload_solid_tiles(solid_tile_vertices);
                 self.draw_solid_tiles(count as u32);
             }
-            RenderCommand::AlphaTile(ref alpha_tiles) => {
+            RenderCommand::DrawAlphaTiles(ref alpha_tiles) => {
                 let count = alpha_tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
@@ -358,10 +398,11 @@ where
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
         // FIXME(pcwalton): This is a hack. We shouldn't be generating paint data at all on the
         // renderer side.
-        let (paint_size, paint_texels): (Vector2I, &[u8]);
+        let (paint_size, paint_texels): (Vector2I, &[ColorU]);
+        let dummy_paint = [ColorU::white(); 1];
         if self.postprocess_options.is_some() {
             paint_size = Vector2I::splat(1);
-            paint_texels = &[255; 4];
+            paint_texels = &dummy_paint;
         } else {
             paint_size = paint_data.size;
             paint_texels = &paint_data.texels;
@@ -375,27 +416,70 @@ where
             }
         }
 
+        let texels = color::color_slice_to_u8_slice(paint_texels);
         self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
                                       RectI::new(Vector2I::default(), paint_size),
-                                      TextureDataRef::U8(paint_texels));
+                                      TextureDataRef::U8(texels));
     }
 
-    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
+    fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile], fill_rule: FillRule) {
+        let vertex_array = match fill_rule {
+            FillRule::Winding => &self.mask_winding_tile_vertex_array,
+            FillRule::EvenOdd => &self.mask_evenodd_tile_vertex_array,
+        };
+
         self.device.allocate_buffer(
-            &self.solid_tile_vertex_array.vertex_buffer,
-            BufferData::Memory(&solid_tiles),
+            &vertex_array.vertex_buffer,
+            BufferData::Memory(&mask_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+        self.ensure_index_buffer(mask_tiles.len());
     }
 
-    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
+    fn upload_solid_tiles(&mut self, solid_tile_vertices: &[SolidTileVertex]) {
+        self.device.allocate_buffer(
+            &self.solid_tile_vertex_array.vertex_buffer,
+            BufferData::Memory(&solid_tile_vertices),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
+        self.ensure_index_buffer(solid_tile_vertices.len() / 4);
+    }
+
+    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTile]) {
         self.device.allocate_buffer(
             &self.alpha_tile_vertex_array.vertex_buffer,
             BufferData::Memory(&alpha_tiles),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+        self.ensure_index_buffer(alpha_tiles.len());
+    }
+
+    fn ensure_index_buffer(&mut self, mut length: usize) {
+        length = length.next_power_of_two();
+        if self.quads_vertex_indices_length >= length {
+            return;
+        }
+
+        // TODO(pcwalton): Generate these with SIMD.
+        let mut indices: Vec<u32> = Vec::with_capacity(length * 6);
+        for index in 0..(length as u32) {
+            indices.extend_from_slice(&[
+                index * 4 + 0, index * 4 + 1, index * 4 + 2,
+                index * 4 + 1, index * 4 + 3, index * 4 + 2,
+            ]);
+        }
+
+        self.device.allocate_buffer(
+            &self.quads_vertex_indices_buffer,
+            BufferData::Memory(&indices),
+            BufferTarget::Index,
+            BufferUploadMode::Static,
+        );
+
+        self.quads_vertex_indices_length = length;
     }
 
     fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
@@ -429,7 +513,7 @@ where
 
         let mut clear_color = None;
         if !self.framebuffer_flags.contains(
-                FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
+                FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS) {
             clear_color = Some(ColorF::default());
         };
 
@@ -438,7 +522,7 @@ where
 
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
-            target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+            target: &RenderTarget::Framebuffer(&self.fill_framebuffer),
             program: &self.fill_program.program,
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
@@ -465,7 +549,7 @@ where
         self.device.end_timer_query(&timer_query);
         self.current_timers.stage_0.push(timer_query);
 
-        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
+        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS);
         self.buffered_fills.clear();
     }
 
@@ -475,7 +559,50 @@ where
         Transform4F::from_scale(scale).translate(Vector4F::new(-1.0, 1.0, 0.0, 1.0))
     }
 
-    fn draw_alpha_tiles(&mut self, count: u32) {
+    fn draw_mask_tiles(&mut self, tile_count: u32, fill_rule: FillRule) {
+        let clear_color =
+            if self.framebuffer_flags
+                   .contains(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
+                None
+            } else {
+                Some(ColorF::new(1.0, 1.0, 1.0, 1.0))
+            };
+
+        let (mask_tile_program, mask_tile_vertex_array) = match fill_rule {
+            FillRule::Winding => {
+                (&self.mask_winding_tile_program, &self.mask_winding_tile_vertex_array)
+            }
+            FillRule::EvenOdd => {
+                (&self.mask_evenodd_tile_program, &self.mask_evenodd_tile_vertex_array)
+            }
+        };
+
+        self.device.draw_elements(tile_count * 6, &RenderState {
+            target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+            program: &mask_tile_program.program,
+            vertex_array: &mask_tile_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[self.device.framebuffer_texture(&self.fill_framebuffer)],
+            uniforms: &[
+                (&self.mask_winding_tile_program.fill_texture_uniform,
+                 UniformData::TextureUnit(0)),
+            ],
+            viewport: self.mask_viewport(),
+            options: RenderOptions {
+                blend: Some(BlendState {
+                    func: BlendFunc::RGBOneAlphaOne,
+                    op: BlendOp::Min,
+                    ..BlendState::default()
+                }),
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                ..RenderOptions::default()
+            },
+        });
+
+        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
+    }
+
+    fn draw_alpha_tiles(&mut self, tile_count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
@@ -500,7 +627,7 @@ where
                                               .0
                                               .to_f32x2())));
 
-        self.device.draw_elements_instanced(6, count, &RenderState {
+        self.device.draw_elements(tile_count * 6, &RenderState {
             target: &self.draw_render_target(),
             program: &self.alpha_tile_program.program,
             vertex_array: &self.alpha_tile_vertex_array.vertex_array,
@@ -522,7 +649,7 @@ where
         self.preserve_draw_framebuffer();
     }
 
-    fn draw_solid_tiles(&mut self, count: u32) {
+    fn draw_solid_tiles(&mut self, tile_count: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![];
@@ -540,7 +667,7 @@ where
         uniforms.push((&self.solid_tile_program.paint_texture_size_uniform,
                         UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x2())));
 
-        self.device.draw_elements_instanced(6, count, &RenderState {
+        self.device.draw_elements(6 * tile_count, &RenderState {
             target: &self.draw_render_target(),
             program: &self.solid_tile_program.program,
             vertex_array: &self.solid_tile_vertex_array.vertex_array,
@@ -812,8 +939,8 @@ where
     }
 
     fn mask_viewport(&self) -> RectI {
-        let texture = self.device.framebuffer_texture(&self.mask_framebuffer);
-        RectI::new(Vector2I::default(), self.device.texture_size(texture))
+        RectI::new(Vector2I::default(),
+                   Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
     }
 
     fn allocate_timer_query(&mut self) -> D::TimerQuery {
@@ -836,568 +963,6 @@ where
     }
 }
 
-struct FillVertexArray<D>
-where
-    D: Device,
-{
-    vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-}
-
-impl<D> FillVertexArray<D>
-where
-    D: Device,
-{
-    fn new(
-        device: &D,
-        fill_program: &FillProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> FillVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-
-        let vertex_buffer = device.create_buffer();
-        let vertex_buffer_data: BufferData<FillBatchPrimitive> =
-            BufferData::Uninitialized(MAX_FILLS_PER_BATCH);
-        device.allocate_buffer(
-            &vertex_buffer,
-            vertex_buffer_data,
-            BufferTarget::Vertex,
-            BufferUploadMode::Dynamic,
-        );
-
-        let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord").unwrap();
-        let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx").unwrap();
-        let to_px_attr = device.get_vertex_attr(&fill_program.program, "ToPx").unwrap();
-        let from_subpx_attr = device.get_vertex_attr(&fill_program.program, "FromSubpx").unwrap();
-        let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx").unwrap();
-        let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex").unwrap();
-
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &from_px_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &to_px_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 1,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &from_subpx_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 2,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &to_subpx_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 4,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 6,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        FillVertexArray { vertex_array, vertex_buffer }
-    }
-}
-
-struct AlphaTileVertexArray<D>
-where
-    D: Device,
-{
-    vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-}
-
-impl<D> AlphaTileVertexArray<D>
-where
-    D: Device,
-{
-    fn new(
-        device: &D,
-        alpha_tile_program: &AlphaTileProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> AlphaTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
-
-        let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord")
-                                    .unwrap();
-        let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin")
-                                     .unwrap();
-        let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop")
-                                  .unwrap();
-        let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex")
-                                    .unwrap();
-        let color_tex_matrix_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                           "ColorTexMatrix").unwrap();
-        let color_tex_offset_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                           "ColorTexOffset").unwrap();
-
-        // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
-        // driver bug.
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
-            size: 3,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &backdrop_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I8,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 3,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 6,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_matrix_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 4,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: MASK_TILE_INSTANCE_SIZE,
-                                        offset: 8,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_offset_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 2,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: MASK_TILE_INSTANCE_SIZE,
-                                        offset: 16,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        AlphaTileVertexArray { vertex_array, vertex_buffer }
-    }
-}
-
-struct SolidTileVertexArray<D>
-where
-    D: Device,
-{
-    vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-}
-
-impl<D> SolidTileVertexArray<D>
-where
-    D: Device,
-{
-    fn new(
-        device: &D,
-        solid_tile_program: &SolidTileProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> SolidTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
-
-        let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord")
-                                    .unwrap();
-        let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin")
-                                     .unwrap();
-        let color_tex_matrix_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                           "ColorTexMatrix").unwrap();
-        let color_tex_offset_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                           "ColorTexOffset").unwrap();
-
-        // NB: The object must be of type short, not unsigned short, to work around a macOS
-        // Radeon driver bug.
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: SOLID_TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_matrix_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 4,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: SOLID_TILE_INSTANCE_SIZE,
-                                        offset: 4,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_offset_attr,
-                                     &VertexAttrDescriptor {
-                                        size: 2,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
-                                        stride: SOLID_TILE_INSTANCE_SIZE,
-                                        offset: 12,
-                                        divisor: 1,
-                                        buffer_index: 1,
-                                     });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        SolidTileVertexArray { vertex_array, vertex_buffer }
-    }
-}
-
-struct FillProgram<D>
-where
-    D: Device,
-{
-    program: D::Program,
-    framebuffer_size_uniform: D::Uniform,
-    tile_size_uniform: D::Uniform,
-    area_lut_uniform: D::Uniform,
-}
-
-impl<D> FillProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> FillProgram<D> {
-        let program = device.create_program(resources, "fill");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let area_lut_uniform = device.get_uniform(&program, "AreaLUT");
-        FillProgram {
-            program,
-            framebuffer_size_uniform,
-            tile_size_uniform,
-            area_lut_uniform,
-        }
-    }
-}
-
-struct SolidTileProgram<D> where D: Device {
-    program: D::Program,
-    transform_uniform: D::Uniform,
-    tile_size_uniform: D::Uniform,
-    paint_texture_uniform: D::Uniform,
-    paint_texture_size_uniform: D::Uniform,
-}
-
-impl<D> SolidTileProgram<D> where D: Device {
-    fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileProgram<D> {
-        let program = device.create_program(resources, "tile_solid");
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
-        let paint_texture_size_uniform = device.get_uniform(&program, "PaintTextureSize");
-        SolidTileProgram {
-            program,
-            transform_uniform,
-            tile_size_uniform,
-            paint_texture_uniform,
-            paint_texture_size_uniform,
-        }
-    }
-}
-
-struct AlphaTileProgram<D> where D: Device {
-    program: D::Program,
-    transform_uniform: D::Uniform,
-    tile_size_uniform: D::Uniform,
-    stencil_texture_uniform: D::Uniform,
-    stencil_texture_size_uniform: D::Uniform,
-    paint_texture_uniform: D::Uniform,
-    paint_texture_size_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileProgram<D> where D: Device {
-    fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileProgram<D> {
-        let program = device.create_program(resources, "tile_alpha");
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
-        let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
-        let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
-        let paint_texture_size_uniform = device.get_uniform(&program, "PaintTextureSize");
-        AlphaTileProgram {
-            program,
-            transform_uniform,
-            tile_size_uniform,
-            stencil_texture_uniform,
-            stencil_texture_size_uniform,
-            paint_texture_uniform,
-            paint_texture_size_uniform,
-        }
-    }
-}
-
-struct PostprocessProgram<D>
-where
-    D: Device,
-{
-    program: D::Program,
-    source_uniform: D::Uniform,
-    source_size_uniform: D::Uniform,
-    framebuffer_size_uniform: D::Uniform,
-    kernel_uniform: D::Uniform,
-    gamma_lut_uniform: D::Uniform,
-    gamma_correction_enabled_uniform: D::Uniform,
-    fg_color_uniform: D::Uniform,
-    bg_color_uniform: D::Uniform,
-}
-
-impl<D> PostprocessProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> PostprocessProgram<D> {
-        let program = device.create_program(resources, "post");
-        let source_uniform = device.get_uniform(&program, "Source");
-        let source_size_uniform = device.get_uniform(&program, "SourceSize");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let kernel_uniform = device.get_uniform(&program, "Kernel");
-        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
-        let gamma_correction_enabled_uniform = device.get_uniform(&program,
-                                                                  "GammaCorrectionEnabled");
-        let fg_color_uniform = device.get_uniform(&program, "FGColor");
-        let bg_color_uniform = device.get_uniform(&program, "BGColor");
-        PostprocessProgram {
-            program,
-            source_uniform,
-            source_size_uniform,
-            framebuffer_size_uniform,
-            kernel_uniform,
-            gamma_lut_uniform,
-            gamma_correction_enabled_uniform,
-            fg_color_uniform,
-            bg_color_uniform,
-        }
-    }
-}
-
-struct PostprocessVertexArray<D>
-where
-    D: Device,
-{
-    vertex_array: D::VertexArray,
-}
-
-impl<D> PostprocessVertexArray<D>
-where
-    D: Device,
-{
-    fn new(
-        device: &D,
-        postprocess_program: &PostprocessProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> PostprocessVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position")
-                                  .unwrap();
-
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        PostprocessVertexArray { vertex_array }
-    }
-}
-
-struct StencilProgram<D>
-where
-    D: Device,
-{
-    program: D::Program,
-}
-
-impl<D> StencilProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> StencilProgram<D> {
-        let program = device.create_program(resources, "stencil");
-        StencilProgram { program }
-    }
-}
-
-struct StencilVertexArray<D>
-where
-    D: Device,
-{
-    vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-    index_buffer: D::Buffer,
-}
-
-impl<D> StencilVertexArray<D>
-where
-    D: Device,
-{
-    fn new(device: &D, stencil_program: &StencilProgram<D>) -> StencilVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
-
-        let position_attr = device.get_vertex_attr(&stencil_program.program, "Position").unwrap();
-
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 3,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::F32,
-            stride: 4 * 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
-
-        StencilVertexArray { vertex_array, vertex_buffer, index_buffer }
-    }
-}
-
-struct ReprojectionProgram<D>
-where
-    D: Device,
-{
-    program: D::Program,
-    old_transform_uniform: D::Uniform,
-    new_transform_uniform: D::Uniform,
-    texture_uniform: D::Uniform,
-}
-
-impl<D> ReprojectionProgram<D>
-where
-    D: Device,
-{
-    fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
-        let program = device.create_program(resources, "reproject");
-        let old_transform_uniform = device.get_uniform(&program, "OldTransform");
-        let new_transform_uniform = device.get_uniform(&program, "NewTransform");
-        let texture_uniform = device.get_uniform(&program, "Texture");
-
-        ReprojectionProgram {
-            program,
-            old_transform_uniform,
-            new_transform_uniform,
-            texture_uniform,
-        }
-    }
-}
-
-struct ReprojectionVertexArray<D>
-where
-    D: Device,
-{
-    vertex_array: D::VertexArray,
-}
-
-impl<D> ReprojectionVertexArray<D>
-where
-    D: Device,
-{
-    fn new(
-        device: &D,
-        reprojection_program: &ReprojectionProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> ReprojectionVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position")
-                                  .unwrap();
-
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        ReprojectionVertexArray { vertex_array }
-    }
-}
-
 #[derive(Clone, Copy, Default)]
 pub struct PostprocessOptions {
     pub fg_color: ColorF,
@@ -1405,6 +970,8 @@ pub struct PostprocessOptions {
     pub defringing_kernel: Option<DefringingKernel>,
     pub gamma_correction: bool,
 }
+
+// Render stats
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RenderStats {
@@ -1476,8 +1043,9 @@ impl Add<RenderTime> for RenderTime {
 
 bitflags! {
     struct FramebufferFlags: u8 {
-        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x01;
-        const MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS = 0x02;
-        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x04;
+        const MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS = 0x01;
+        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x02;
+        const MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS = 0x04;
+        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x08;
     }
 }

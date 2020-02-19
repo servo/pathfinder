@@ -34,12 +34,12 @@ impl DemoExecutor {
 }
 
 impl Executor for DemoExecutor {
-    fn flatten_into_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
-                                 where T: Send, F: Fn(usize) -> Vec<T> + Send + Sync {
+    fn build_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
+                          where T: Send, F: Fn(usize) -> T + Send + Sync {
         if self.sequential_mode {
-            SequentialExecutor.flatten_into_vector(length, builder)
+            SequentialExecutor.build_vector(length, builder)
         } else {
-            RayonExecutor.flatten_into_vector(length, builder)
+            RayonExecutor.build_vector(length, builder)
         }
     }
 }

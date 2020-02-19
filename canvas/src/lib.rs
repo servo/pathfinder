@@ -12,8 +12,10 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
+use pathfinder_content::pattern::Pattern;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -21,13 +23,14 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
-use pathfinder_renderer::scene::{PathObject, Scene};
+use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, Scene};
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
 use std::mem;
 use std::sync::Arc;
 use text::FontCollection;
+
 #[cfg(feature = "pf-text")]
 pub use text::TextMetrics;
 pub use text::CanvasFontContext;
@@ -78,7 +81,7 @@ impl CanvasRenderingContext2D {
     pub fn fill_rect(&mut self, rect: RectF) {
         let mut path = Path2D::new();
         path.rect(rect);
-        self.fill_path(path);
+        self.fill_path(path, FillRule::Winding);
     }
 
     #[inline]
@@ -154,14 +157,14 @@ impl CanvasRenderingContext2D {
     // Drawing paths
 
     #[inline]
-    pub fn fill_path(&mut self, path: Path2D) {
+    pub fn fill_path(&mut self, path: Path2D, fill_rule: FillRule) {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
         let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        self.push_path(outline, paint_id);
+        self.push_path(outline, paint_id, fill_rule);
     }
 
     #[inline]
@@ -171,9 +174,11 @@ impl CanvasRenderingContext2D {
 
         let mut stroke_style = self.current_state.resolve_stroke_style();
         
-        // the smaller scale is relevant here, as we multiply by it and want to ensure it is always bigger than HAIRLINE_STROKE_WIDTH
-        let transform_scale = f32::min(self.current_state.transform.m11(), self.current_state.transform.m22());
-        // avoid the division in the normal case of sufficient thickness
+        // The smaller scale is relevant here, as we multiply by it and want to ensure it is always
+        // bigger than `HAIRLINE_STROKE_WIDTH`.
+        let transform_scale = f32::min(self.current_state.transform.m11(),
+                                       self.current_state.transform.m22());
+        // Avoid the division in the normal case of sufficient thickness.
         if stroke_style.line_width * transform_scale < HAIRLINE_STROKE_WIDTH {
             stroke_style.line_width = HAIRLINE_STROKE_WIDTH / transform_scale;
         }
@@ -192,20 +197,36 @@ impl CanvasRenderingContext2D {
         outline = stroke_to_fill.into_outline();
 
         outline.transform(&self.current_state.transform);
-        self.push_path(outline, paint_id);
+        self.push_path(outline, paint_id, FillRule::Winding);
     }
 
-    fn push_path(&mut self, outline: Outline, paint_id: PaintId) {
+    pub fn clip_path(&mut self, path: Path2D, fill_rule: FillRule) {
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
+
+        let clip_path_id = self.scene   
+                               .push_clip_path(ClipPath::new(outline, fill_rule, String::new()));
+
+        self.current_state.clip_path = Some(clip_path_id);
+    }
+
+    fn push_path(&mut self, outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
+        let clip_path = self.current_state.clip_path;
+
         if !self.current_state.shadow_paint.is_fully_transparent() {
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
             let paint_id = self.scene.push_paint(&paint);
 
             let mut outline = outline.clone();
             outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
-            self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+            self.scene.push_path(DrawPath::new(outline,
+                                               paint_id,
+                                               clip_path,
+                                               fill_rule,
+                                               String::new()))
         }
 
-        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+        self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, fill_rule, String::new()))
     }
 
     // Transformations
@@ -269,6 +290,7 @@ struct State {
     shadow_offset: Vector2F,
     text_align: TextAlign,
     global_alpha: f32,
+    clip_path: Option<ClipPathId>,
 }
 
 impl State {
@@ -289,16 +311,18 @@ impl State {
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
             global_alpha: 1.0,
+            clip_path: None,
         }
     }
 
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
-        if self.global_alpha == 1.0 {
+        if self.global_alpha == 1.0 && (paint.is_color() || self.transform.is_identity()) {
             return Cow::Borrowed(paint);
         }
 
         let mut paint = (*paint).clone();
         paint.set_opacity(self.global_alpha);
+        paint.apply_transform(&self.transform);
         Cow::Owned(paint)
     }
 
@@ -449,6 +473,7 @@ impl Path2D {
 pub enum FillStyle {
     Color(ColorU),
     Gradient(Gradient),
+    Pattern(Pattern),
 }
 
 impl FillStyle {
@@ -456,6 +481,7 @@ impl FillStyle {
         match self {
             FillStyle::Color(color) => Paint::Color(color),
             FillStyle::Gradient(gradient) => Paint::Gradient(gradient),
+            FillStyle::Pattern(pattern) => Paint::Pattern(pattern),
         }
     }
 }
@@ -478,4 +504,3 @@ pub enum LineJoin {
     Bevel,
     Round,
 }
-

@@ -1,4 +1,4 @@
-// pathfinder/renderer/src/gpu/mod.rs
+// pathfinder/content/src/fill.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,10 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The GPU renderer for Pathfinder 3.
+//! Fill rules.
 
-pub mod debug;
-pub mod options;
-pub mod renderer;
-
-pub(crate) mod shaders;
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum FillRule {
+    Winding,
+    EvenOdd,
+}

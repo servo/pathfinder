@@ -10,13 +10,12 @@
 
 //! Software occlusion culling.
 
-use crate::gpu_data::SolidTileBatchPrimitive;
+use crate::gpu_data::SolidTileVertex;
 use crate::paint::PaintMetadata;
-use crate::scene::PathObject;
+use crate::scene::DrawPath;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2I;
 use pathfinder_geometry::vector::Vector2I;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
@@ -58,10 +57,10 @@ impl ZBuffer {
     }
 
     pub fn build_solid_tiles(&self,
-                             paths: &[PathObject],
+                             paths: &[DrawPath],
                              paint_metadata: &[PaintMetadata],
                              object_range: Range<u32>)
-                             -> Vec<SolidTileBatchPrimitive> {
+                             -> Vec<SolidTileVertex> {
         let mut solid_tiles = vec![];
         for tile_index in 0..self.buffer.data.len() {
             let depth = self.buffer.data[tile_index].load(AtomicOrdering::Relaxed);
@@ -76,30 +75,39 @@ impl ZBuffer {
             }
 
             let paint_id = paths[object_index as usize].paint();
-            let tex_transform = paint_metadata[paint_id.0 as usize].tex_transform;
+            let paint_metadata = &paint_metadata[paint_id.0 as usize];
 
-            solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords + self.buffer.rect.origin(),
-                                                          object_index as u16,
-                                                          tex_transform));
+            let tile_position = tile_coords + self.buffer.rect.origin();
+            let object_index = object_index as u16;
+
+            solid_tiles.extend_from_slice(&[
+                SolidTileVertex::new(tile_position, object_index, paint_metadata),
+                SolidTileVertex::new(tile_position + Vector2I::new(1, 0),
+                                     object_index,
+                                     paint_metadata),
+                SolidTileVertex::new(tile_position + Vector2I::new(0, 1),
+                                     object_index,
+                                     paint_metadata),
+                SolidTileVertex::new(tile_position + Vector2I::new(1, 1),
+                                     object_index,
+                                     paint_metadata),
+            ]);
         }
 
         solid_tiles
     }
 }
 
-impl SolidTileBatchPrimitive {
-    fn new(tile_coords: Vector2I, object_index: u16, tex_transform: Transform2I)
-           -> SolidTileBatchPrimitive {
-        SolidTileBatchPrimitive {
-            tile_x: tile_coords.x() as i16,
-            tile_y: tile_coords.y() as i16,
+impl SolidTileVertex {
+    fn new(tile_position: Vector2I, object_index: u16, paint_metadata: &PaintMetadata)
+           -> SolidTileVertex {
+        let color_uv = paint_metadata.calculate_tex_coords(tile_position).scale(65535.0).to_i32();
+        SolidTileVertex {
+            tile_x: tile_position.x() as i16,
+            tile_y: tile_position.y() as i16,
             object_index: object_index,
-            texture_m00: tex_transform.matrix.m11() as u16,
-            texture_m10: tex_transform.matrix.m21() as u16,
-            texture_m01: tex_transform.matrix.m12() as u16,
-            texture_m11: tex_transform.matrix.m22() as u16,
-            texture_m02: tex_transform.vector.x() as u16,
-            texture_m12: tex_transform.vector.y() as u16,
+            color_u: color_uv.x() as u16,
+            color_v: color_uv.y() as u16,
             pad: 0,
         }
     }

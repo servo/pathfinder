@@ -18,18 +18,15 @@ struct main0_out
 
 struct main0_in
 {
-    uint2 aTessCoord [[attribute(0)]];
-    int2 aTileOrigin [[attribute(1)]];
-    float4 aColorTexMatrix [[attribute(2)]];
-    float2 aColorTexOffset [[attribute(3)]];
+    int2 aTilePosition [[attribute(0)]];
+    float2 aColorTexCoord [[attribute(1)]];
 };
 
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float2 tileOffset = float2(in.aTessCoord) * (*spvDescriptorSet0.uTileSize);
-    float2 position = (float2(in.aTileOrigin) * (*spvDescriptorSet0.uTileSize)) + tileOffset;
-    out.vColorTexCoord = (float2x2(float2(in.aColorTexMatrix.xy), float2(in.aColorTexMatrix.zw)) * tileOffset) + in.aColorTexOffset;
+    float2 position = float2(in.aTilePosition) * (*spvDescriptorSet0.uTileSize);
+    out.vColorTexCoord = in.aColorTexCoord;
     out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(position, 0.0, 1.0);
     return out;
 }

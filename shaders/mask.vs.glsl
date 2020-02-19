@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/tile_alpha.fs.glsl
+// pathfinder/shaders/mask_winding.vs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -12,18 +12,20 @@
 
 precision highp float;
 
-uniform sampler2D uStencilTexture;
-uniform sampler2D uPaintTexture;
-uniform vec2 uPaintTextureSize;
+in vec2 aPosition;
+in vec2 aFillTexCoord;
+in int aBackdrop;
 
-in vec2 vColorTexCoord;
-in vec2 vMaskTexCoord;
-in vec4 vColor;
-
-out vec4 oFragColor;
+out vec2 vFillTexCoord;
+out float vBackdrop;
 
 void main() {
-    float coverage = texture(uStencilTexture, vMaskTexCoord).r;
-    vec4 color = texture(uPaintTexture, vColorTexCoord);
-    oFragColor = vec4(color.rgb, color.a * coverage);
+    vec2 position = mix(vec2(-1.0), vec2(1.0), aPosition);
+#ifdef PF_ORIGIN_UPPER_LEFT
+    position.y = -position.y;
+#endif
+
+    vFillTexCoord = aFillTexCoord;
+    vBackdrop = float(aBackdrop);
+    gl_Position = vec4(position, 0.0, 1.0);
 }

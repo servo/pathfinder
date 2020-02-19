@@ -8,24 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::builder::SceneBuilder;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
-/*
-use crate::paint::{self, PaintId};
-use crate::sorted_vector::SortedVector;
-use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::rect::{RectF, RectI};
-*/
-use crate::options::RenderCommandListener;
+use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder};
+use crate::gpu_data::TileObjectPrimitive;
 use crate::paint::PaintMetadata;
-
+use crate::options::RenderCommandListener;
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
 use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::Transform2I;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::cmp::Ordering;
 use std::mem;
@@ -37,10 +29,10 @@ pub const TILE_WIDTH: u32 = 16;
 pub const TILE_HEIGHT: u32 = 16;
 
 pub(crate) struct Tiler<'a, L: RenderCommandListener> {
-    builder: &'a SceneBuilder<'a, L>,
+    scene_builder: &'a SceneBuilder<'a, L>,
+    pub(crate) object_builder: ObjectBuilder,
     outline: &'a Outline,
-    pub built_object: BuiltObject,
-    paint_metadata: &'a PaintMetadata,
+    path_info: TilingPathInfo<'a>,
     object_index: u16,
 
     point_queue: SortedVector<QueuedEndpoint>,
@@ -48,27 +40,34 @@ pub(crate) struct Tiler<'a, L: RenderCommandListener> {
     old_active_edges: Vec<ActiveEdge>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum TilingPathInfo<'a> {
+    Clip,
+    Draw { paint_metadata: &'a PaintMetadata, built_clip_path: Option<&'a BuiltPath> },
+}
+
 impl<'a, L: RenderCommandListener> Tiler<'a, L> {
     #[allow(clippy::or_fun_call)]
     pub(crate) fn new(
-        builder: &'a SceneBuilder<'a, L>,
+        scene_builder: &'a SceneBuilder<'a, L>,
         outline: &'a Outline,
+        fill_rule: FillRule,
         view_box: RectF,
         object_index: u16,
-        paint_metadata: &'a PaintMetadata,
+        path_info: TilingPathInfo<'a>,
     ) -> Tiler<'a, L> {
         let bounds = outline
             .bounds()
             .intersection(view_box)
             .unwrap_or(RectF::default());
-        let built_object = BuiltObject::new(bounds);
+        let object_builder = ObjectBuilder::new(bounds, fill_rule);
 
         Tiler {
-            builder,
+            scene_builder,
+            object_builder,
             outline,
-            built_object,
             object_index,
-            paint_metadata,
+            path_info,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -85,7 +84,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
         self.old_active_edges.clear();
 
         // Generate strips.
-        let tile_rect = self.built_object.tile_rect();
+        let tile_rect = self.object_builder.tile_rect();
         for strip_origin_y in tile_rect.min_y()..tile_rect.max_y() {
             self.generate_strip(strip_origin_y);
         }
@@ -94,7 +93,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
         self.pack_and_cull();
 
         // Done!
-        debug!("{:#?}", self.built_object);
+        debug!("{:#?}", self.object_builder.built_path);
     }
 
     fn generate_strip(&mut self, strip_origin_y: i32) {
@@ -117,38 +116,106 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
     }
 
     fn pack_and_cull(&mut self) {
-        for (tile_index, tile) in self.built_object.tiles.data.iter().enumerate() {
-            let tile_coords = self
-                .built_object
-                .local_tile_index_to_coords(tile_index as u32);
+        match self.path_info {
+            TilingPathInfo::Clip => self.pack_and_cull_clip_path(),
+            TilingPathInfo::Draw { .. } => self.pack_and_cull_draw_path(),
+        }
+    }
 
-            if tile.is_solid() {
-                // Blank tiles are always skipped.
-                if tile.backdrop == 0 {
-                    continue;
+    fn pack_and_cull_draw_path(&mut self) {
+        let (paint_metadata, built_clip_path) = match self.path_info {
+            TilingPathInfo::Clip => unreachable!(),
+            TilingPathInfo::Draw { paint_metadata, built_clip_path } => {
+                (paint_metadata, built_clip_path)
+            }
+        };
+
+        for (draw_tile_index, draw_tile) in self.object_builder
+                                                .built_path
+                                                .tiles
+                                                .data
+                                                .iter()
+                                                .enumerate() {
+            let tile_coords = self.object_builder
+                                  .local_tile_index_to_coords(draw_tile_index as u32);
+
+            // Figure out what clip tile we need, if any.
+            let clip_tile = match built_clip_path {
+                None => None,
+                Some(built_clip_path) => {
+                    match built_clip_path.tiles.get(tile_coords) {
+                        None => {
+                            // This tile is outside of the bounds of the clip path entirely. We can
+                            // cull it.
+                            continue;
+                        }
+                        Some(clip_tile) if clip_tile.is_solid() => {
+                            if clip_tile.backdrop != 0 {
+                                // The clip tile is fully opaque, so this tile isn't clipped at
+                                // all.
+                                None
+                            } else {
+                                // This tile is completely clipped out. Cull it.
+                                continue;
+                            }
+                        }
+                        Some(clip_tile) => Some(clip_tile),
+                    }
+                }
+            };
+
+            if clip_tile.is_none() && draw_tile.is_solid() {
+                // This is the simple case of a solid tile with no clip, so there are optimization
+                // opportunities. First, tiles that must be blank per the fill rule are always
+                // skipped.
+                match (self.object_builder.built_path.fill_rule, draw_tile.backdrop) {
+                    (FillRule::Winding, 0) => continue,
+                    (FillRule::Winding, _) => {}
+                    (FillRule::EvenOdd, backdrop) if backdrop % 2 == 0 => continue,
+                    (FillRule::EvenOdd, _) => {}
                 }
 
-                // If this is a solid tile, poke it into the Z-buffer and stop here.
-                if self.paint_metadata.is_opaque {
-                    self.builder.z_buffer.update(tile_coords, self.object_index);
+                // Next, if this is a solid tile, just poke it into the Z-buffer. We don't need
+                // to do anything else here.
+                if paint_metadata.is_opaque {
+                    self.scene_builder.z_buffer.update(tile_coords, self.object_index);
                     continue;
                 }
             }
 
-            let alpha_tile = AlphaTileBatchPrimitive::new(
-                tile_coords,
-                tile.backdrop,
-                self.object_index,
-                tile.alpha_tile_index as u16,
-                self.paint_metadata.tex_transform,
-            );
+            // Allocate a mask tile.
+            let mask_tile_index = self.scene_builder.allocate_mask_tile_index();
 
-            self.built_object.alpha_tiles.push(alpha_tile);
+            // Add the clip primitive to the mask framebuffer, if necessary.
+            if let Some(clip_tile) = clip_tile {
+                ObjectBuilder::push_mask_tile(&mut self.object_builder.built_path.mask_tiles,
+                                              clip_tile,
+                                              mask_tile_index,
+                                              self.object_index);
+            }
+
+            // Add the primitive to the mask framebuffer.
+            ObjectBuilder::push_mask_tile(&mut self.object_builder.built_path.mask_tiles,
+                                          draw_tile,
+                                          mask_tile_index,
+                                          self.object_index);
+
+            // Add the primitive to draw the mask.
+            ObjectBuilder::push_alpha_tile(&mut self.object_builder.built_path.alpha_tiles,
+                                           mask_tile_index,
+                                           tile_coords,
+                                           self.object_index,
+                                           paint_metadata);
+
         }
     }
 
+    fn pack_and_cull_clip_path(&mut self) {
+        // TODO(pcwalton)
+    }
+
     fn process_old_active_edges(&mut self, tile_y: i32) {
-        let mut current_tile_x = self.built_object.tile_rect().min_x();
+        let mut current_tile_x = self.object_builder.tile_rect().min_x();
         let mut current_subtile_x = 0.0;
         let mut current_winding = 0;
 
@@ -200,8 +267,8 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
                 let current_tile_coords = Vector2I::new(current_tile_x, tile_y);
-                self.built_object.add_active_fill(
-                    self.builder,
+                self.object_builder.add_active_fill(
+                    self.scene_builder,
                     current_x,
                     tile_right_x,
                     current_winding,
@@ -218,12 +285,10 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                     current_winding, current_tile_x
                 );
                 let current_tile_coords = Vector2I::new(current_tile_x, tile_y);
-                if let Some(tile_index) = self
-                    .built_object
-                    .tile_coords_to_local_index(current_tile_coords)
-                {
+                if let Some(tile_index) = self.object_builder
+                                              .tile_coords_to_local_index(current_tile_coords) {
                     // FIXME(pcwalton): Handle winding overflow.
-                    self.built_object.tiles.data[tile_index as usize].backdrop =
+                    self.object_builder.built_path.tiles.data[tile_index as usize].backdrop =
                         current_winding as i8;
                 }
 
@@ -239,8 +304,8 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let current_tile_coords = Vector2I::new(current_tile_x, tile_y);
-                self.built_object.add_active_fill(
-                    self.builder,
+                self.object_builder.add_active_fill(
+                    self.scene_builder,
                     current_x,
                     segment_x,
                     current_winding,
@@ -255,7 +320,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
             // Process the edge.
             debug!("about to process existing active edge {:#?}", active_edge);
             debug_assert!(f32::abs(active_edge.crossing.y() - tile_top) < 0.1);
-            active_edge.process(self.builder, &mut self.built_object, tile_y);
+            active_edge.process(self.scene_builder, &mut self.object_builder, tile_y);
             if !active_edge.segment.is_none() {
                 self.active_edges.push(active_edge);
             }
@@ -291,8 +356,8 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 contour,
                 prev_endpoint_index,
                 &mut self.active_edges,
-                self.builder,
-                &mut self.built_object,
+                self.scene_builder,
+                &mut self.object_builder,
                 tile_y,
             );
 
@@ -315,8 +380,8 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 contour,
                 point_index.point(),
                 &mut self.active_edges,
-                self.builder,
-                &mut self.built_object,
+                self.scene_builder,
+                &mut self.object_builder,
                 tile_y,
             );
 
@@ -373,12 +438,12 @@ fn process_active_segment<L: RenderCommandListener>(
     from_endpoint_index: u32,
     active_edges: &mut SortedVector<ActiveEdge>,
     builder: &SceneBuilder<L>,
-    built_object: &mut BuiltObject,
+    object_builder: &mut ObjectBuilder,
     tile_y: i32,
 ) {
     let mut active_edge = ActiveEdge::from_segment(&contour.segment_after(from_endpoint_index));
     debug!("... process_active_segment({:#?})", active_edge);
-    active_edge.process(builder, built_object, tile_y);
+    active_edge.process(builder, object_builder, tile_y);
     if !active_edge.segment.is_none() {
         debug!("... ... pushing resulting active edge: {:#?}", active_edge);
         active_edges.push(active_edge);
@@ -425,7 +490,10 @@ impl ActiveEdge {
         ActiveEdge { segment: *segment, crossing }
     }
 
-    fn process<L: RenderCommandListener>(&mut self, builder: &SceneBuilder<L>, built_object: &mut BuiltObject, tile_y: i32) {
+    fn process<L: RenderCommandListener>(&mut self,
+               builder: &SceneBuilder<L>,
+               object_builder: &mut ObjectBuilder,
+               tile_y: i32) {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         debug!(
             "process_active_edge({:#?}, tile_y={}({}))",
@@ -438,7 +506,7 @@ impl ActiveEdge {
         if segment.is_line() {
             let line_segment = segment.as_line_segment();
             self.segment =
-                match self.process_line_segment(line_segment, builder, built_object, tile_y) {
+                match self.process_line_segment(line_segment, builder, object_builder, tile_y) {
                     Some(lower_part) => Segment::line(lower_part),
                     None => Segment::none(),
                 };
@@ -454,10 +522,8 @@ impl ActiveEdge {
         if self.crossing.y() < segment.baseline.min_y() {
             let first_line_segment =
                 LineSegment2F::new(self.crossing, segment.baseline.upper_point()).orient(winding);
-            if self
-                .process_line_segment(first_line_segment, builder, built_object, tile_y)
-                .is_some()
-            {
+            if self.process_line_segment(first_line_segment, builder, object_builder, tile_y)
+                   .is_some() {
                 return;
             }
         }
@@ -486,7 +552,7 @@ impl ActiveEdge {
             );
 
             let line = before_segment.baseline.orient(winding);
-            match self.process_line_segment(line, builder, built_object, tile_y) {
+            match self.process_line_segment(line, builder, object_builder, tile_y) {
                 Some(lower_part) if split_t == 1.0 => {
                     self.segment = Segment::line(lower_part);
                     return;
@@ -508,7 +574,7 @@ impl ActiveEdge {
         &mut self,
         line_segment: LineSegment2F,
         builder: &SceneBuilder<L>,
-        built_object: &mut BuiltObject,
+        object_builder: &mut ObjectBuilder,
         tile_y: i32,
     ) -> Option<LineSegment2F> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
@@ -518,12 +584,12 @@ impl ActiveEdge {
         );
 
         if line_segment.max_y() <= tile_bottom {
-            built_object.generate_fill_primitives_for_line(builder, line_segment, tile_y);
+            object_builder.generate_fill_primitives_for_line(builder, line_segment, tile_y);
             return None;
         }
 
         let (upper_part, lower_part) = line_segment.split_at_y(tile_bottom);
-        built_object.generate_fill_primitives_for_line(builder, upper_part, tile_y);
+        object_builder.generate_fill_primitives_for_line(builder, upper_part, tile_y);
         self.crossing = lower_part.upper_point();
         Some(lower_part)
     }
@@ -532,39 +598,6 @@ impl ActiveEdge {
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
         self.crossing.x().partial_cmp(&other.crossing.x())
-    }
-}
-
-impl AlphaTileBatchPrimitive {
-    #[inline]
-    fn new(tile_coords: Vector2I,
-           backdrop: i8,
-           object_index: u16,
-           tile_index: u16,
-           tex_transform: Transform2I)
-           -> AlphaTileBatchPrimitive {
-        AlphaTileBatchPrimitive {
-            tile_x_lo: (tile_coords.x() & 0xff) as u8,
-            tile_y_lo: (tile_coords.y() & 0xff) as u8,
-            tile_hi: (((tile_coords.x() >> 8) & 0x0f) | ((tile_coords.y() >> 4) & 0xf0)) as u8,
-            backdrop,
-            object_index,
-            tile_index,
-            texture_m00: tex_transform.matrix.m11() as u16,
-            texture_m10: tex_transform.matrix.m21() as u16,
-            texture_m01: tex_transform.matrix.m12() as u16,
-            texture_m11: tex_transform.matrix.m22() as u16,
-            texture_m02: tex_transform.vector.x() as u16,
-            texture_m12: tex_transform.vector.y() as u16,
-        }
-    }
-
-    #[inline]
-    pub fn tile_coords(&self) -> Vector2I {
-        Vector2I::new(
-            (self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
-            (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4),
-        )
     }
 }
 

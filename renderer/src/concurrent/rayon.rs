@@ -16,8 +16,8 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 pub struct RayonExecutor;
 
 impl Executor for RayonExecutor {
-    fn flatten_into_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
-                                 where T: Send, F: Fn(usize) -> Vec<T> + Send + Sync {
-        (0..length).into_par_iter().flat_map(builder).collect()
+    fn build_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>
+                          where T: Send, F: Fn(usize) -> T + Send + Sync {
+        (0..length).into_par_iter().map(builder).collect()
     }
 }

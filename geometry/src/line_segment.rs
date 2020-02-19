@@ -247,7 +247,6 @@ impl LineSegment2F {
         self.sample(0.5)
     }
 
-
     #[inline]
     pub fn offset(self, distance: f32) -> LineSegment2F {
         if self.is_zero_length() {

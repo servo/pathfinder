@@ -11,6 +11,7 @@
 //! A SIMD-optimized point type.
 
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
@@ -133,6 +134,15 @@ impl Vector2F {
     #[inline]
     pub fn yx(self) -> Vector2F {
         Vector2F(self.0.yx())
+    }
+
+    /// Returns the coefficient when the given vector `a` is projected onto this one.
+    ///
+    /// That is, if this vector is `v` and this function returns `c`, then `proj_v a = cv`. In
+    /// other words, this function computes `(a⋅v) / (v⋅v)`.
+    #[inline]
+    pub fn projection_coefficient(self, a: Vector2F) -> f32 {
+        a.dot(self) / self.square_length()
     }
 
     #[inline]
@@ -294,6 +304,16 @@ impl PartialEq for Vector2I {
     #[inline]
     fn eq(&self, other: &Vector2I) -> bool {
         self.0.packed_eq(other.0).all_true()
+    }
+}
+
+impl Eq for Vector2I {}
+
+impl Hash for Vector2I {
+    #[inline]
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.x().hash(state);
+        self.y().hash(state);
     }
 }
 

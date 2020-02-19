@@ -141,9 +141,9 @@ checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
 name = "backtrace"
-version = "0.3.43"
+version = "0.3.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f80256bc78f67e7df7e36d77366f636ed976895d91fe2ab9efa3973e8fe8c4f"
+checksum = "e4036b9bf40f3cf16aba72a3d65e8a520fc4bafcdc7079aea8f848c58c5b5536"
 dependencies = [
  "addr2line",
  "backtrace-sys",
@@ -202,15 +202,21 @@ checksum = "39092a32794787acd8525ee150305ff051b0aa6cc2abaf193924f5ab05425f39"
 
 [[package]]
 name = "bumpalo"
-version = "3.1.2"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fb8038c1ddc0a5f73787b130f4cc75151e96ed33e417fde765eb5a81e3532f4"
+checksum = "1f359dc14ff8911330a51ef78022d376f25ed00248912803b58f00cb1c27f742"
+
+[[package]]
+name = "bytemuck"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37fa13df2292ecb479ec23aa06f4507928bef07839be9ef15281411076629431"
 
 [[package]]
 name = "byteorder"
-version = "1.3.2"
+version = "1.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7c3dd8985a7111efc5c80b44e23ecdd8c007de8ade3b96595387e812b957cf5"
+checksum = "08c48aae112d48ed9f069b33538ea9e3e90aa263cfa3d1c24309612b1f7472de"
 
 [[package]]
 name = "c2-chacha"
@@ -318,9 +324,9 @@ dependencies = [
 
 [[package]]
 name = "cbindgen"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e21019c4afc1dd5f5ab3ce212d8ccb953f43520db79e0bb6438f3e26cc57dccf"
+checksum = "2c955bd5e66e36a03612c877585d75219da64e3d9ae5f14d76c979ccb95de070"
 dependencies = [
  "clap",
  "log",
@@ -403,21 +409,6 @@ dependencies = [
  "block",
  "core-foundation 0.6.4",
  "core-graphics 0.17.3",
- "foreign-types 0.3.2",
- "libc 0.2.66",
- "objc",
-]
-
-[[package]]
-name = "cocoa"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a4736c86d51bd878b474400d9ec888156f4037015f5d09794fab9f26eab1ad4"
-dependencies = [
- "bitflags",
- "block",
- "core-foundation 0.7.0",
- "core-graphics 0.19.0",
  "foreign-types 0.3.2",
  "libc 0.2.66",
  "objc",
@@ -687,7 +678,7 @@ name = "demo"
 version = "0.1.0"
 dependencies = [
  "color-backtrace",
- "foreign-types 0.5.0",
+ "foreign-types 0.3.2",
  "gl",
  "jemallocator",
  "metal",
@@ -1047,7 +1038,7 @@ checksum = "639246c8838b02a83b9339bd87da3714e73e52ecfaa758e15d761eb77b2290b5"
 dependencies = [
  "android_glue",
  "cgl",
- "cocoa 0.19.1",
+ "cocoa",
  "core-foundation 0.6.4",
  "core-graphics 0.17.3",
  "glutin_egl_sys",
@@ -1124,9 +1115,9 @@ dependencies = [
 
 [[package]]
 name = "half"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ff54597ea139063f4225f1ec47011b03c9de4a486957ff3fc506881dac951d0"
+checksum = "20d6a47d6e4b8559729f58287efa8e6f767e603c068fea7a5e4d9f1cebe2bebb"
 
 [[package]]
 name = "harfbuzz"
@@ -1183,18 +1174,18 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eff2656d88f158ce120947499e971d743c05dbcbed62e5bd2f38f1698bbc3772"
+checksum = "e2c55f143919fbc0bc77e427fe2d74cf23786d7c1875666f2fde3ac3c659bb67"
 dependencies = [
  "libc 0.2.66",
 ]
 
 [[package]]
 name = "hex"
-version = "0.4.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "023b39be39e3a2da62a94feb433e91e8bcd37676fbc8bea371daf52b7a769a3e"
+checksum = "644f9158b2f133fd50f5fb3242878846d9eb792e445c893805ff0e3824006e35"
 
 [[package]]
 name = "humantime"
@@ -1234,6 +1225,19 @@ dependencies = [
  "png 0.15.3",
  "scoped_threadpool",
  "tiff",
+]
+
+[[package]]
+name = "image"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef4e336ec01a678e7ab692914c641181528e8656451e6252f8f9e33728882eaf"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "num-iter",
+ "num-rational",
+ "num-traits",
 ]
 
 [[package]]
@@ -1501,9 +1505,9 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "memchr"
-version = "2.3.0"
+version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3197e20c7edb283f87c071ddfc7a2cca8f8e0b888c242959846a6fce03c72223"
+checksum = "53445de381a1f436797497c61d851644d0e8e88e6140f22872ad33a704933978"
 
 [[package]]
 name = "memmap"
@@ -1541,7 +1545,7 @@ checksum = "f83c7dcc2038e12f68493fa3de44235df27b2497178e257185b4b5b5d028a1e4"
 dependencies = [
  "bitflags",
  "block",
- "cocoa 0.19.1",
+ "cocoa",
  "core-graphics 0.17.3",
  "foreign-types 0.3.2",
  "log",
@@ -1844,6 +1848,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec 0.5.1",
  "bitflags",
+ "image 0.23.0",
  "log",
  "pathfinder_color",
  "pathfinder_geometry",
@@ -1956,9 +1961,9 @@ dependencies = [
  "bitflags",
  "block",
  "byteorder",
- "cocoa 0.20.0",
+ "cocoa",
  "core-foundation 0.7.0",
- "foreign-types 0.5.0",
+ "foreign-types 0.3.2",
  "half",
  "metal",
  "objc",
@@ -2010,6 +2015,7 @@ name = "pathfinder_svg"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "hashbrown",
  "pathfinder_color",
  "pathfinder_content",
  "pathfinder_geometry",
@@ -2474,9 +2480,9 @@ dependencies = [
 
 [[package]]
 name = "roxmltree"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "708ee8345e5b70c86aca5ab03bb7d961349b5b2fa7939d3b131af487101de2f3"
+checksum = "99d696b20b92d3e02e08fd8456f0ab03007c99e6b111a6205b9cb6fc044d0957"
 dependencies = [
  "xmlparser",
 ]
@@ -2552,9 +2558,9 @@ checksum = "1d51f5df5af43ab3f1360b429fa5e0152ac5ce8c0bd6485cae490332e96846a8"
 
 [[package]]
 name = "scopeguard"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b42e15e59b18a828bbf5c58ea01debb36b9b096346de35d941dcb89009f24a0d"
+checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "scroll"
@@ -2635,9 +2641,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.46"
+version = "1.0.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21b01d7f0288608a01dca632cf1df859df6fd6ffa885300fc275ce2ba6221953"
+checksum = "9371ade75d4c2d6cb154141b9752cf3781ec9c05e0e5cf35060e1e70ee7b9c25"
 dependencies = [
  "itoa",
  "ryu",
@@ -2727,9 +2733,9 @@ checksum = "5c2fb2ec9bcd216a5b0d0ccf31ab17b5ed1d627960edff65bbe95d3ce221cefc"
 
 [[package]]
 name = "smithay-client-toolkit"
-version = "0.6.4"
+version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93960e8975909fcb14cc755de93af2149d8b8f4eb368315537d40cfd0f324054"
+checksum = "421c8dc7acf5cb205b88160f8b4cc2c5cfabe210e43b2f80f009f4c1ef910f1d"
 dependencies = [
  "andrew",
  "bitflags",
@@ -3258,7 +3264,7 @@ checksum = "3ba128780050481f453bec2a115b916dbc6ae79c303dee9bad8b9080bdccd4f5"
 dependencies = [
  "android_glue",
  "bitflags",
- "cocoa 0.19.1",
+ "cocoa",
  "core-foundation 0.6.4",
  "core-graphics 0.17.3",
  "core-video-sys",

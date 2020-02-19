@@ -1,6 +1,6 @@
 // pathfinder/text/src/lib.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -14,12 +14,13 @@ use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder, Build};
+use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::PaintId;
-use pathfinder_renderer::scene::{PathObject, Scene};
+use pathfinder_renderer::scene::{DrawPath, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
 use std::mem;
 
@@ -76,7 +77,7 @@ impl SceneExt for Scene {
             outline = stroke_to_fill.into_outline();
         }
 
-        self.push_path(PathObject::new(outline, paint_id, String::new()));
+        self.push_path(DrawPath::new(outline, paint_id, None, FillRule::Winding, String::new()));
         Ok(())
     }
 

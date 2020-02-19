@@ -156,6 +156,11 @@ impl RectF {
     }
 
     #[inline]
+    pub fn center(self) -> Vector2F {
+        self.origin() + self.size().scale(0.5)
+    }
+
+    #[inline]
     pub fn scale(self, factor: f32) -> RectF {
         RectF(self.0 * F32x4::splat(factor))
     }
@@ -179,6 +184,11 @@ impl RectF {
     #[inline]
     pub fn dilate(self, amount: Vector2F) -> RectF {
         RectF::from_points(self.origin() - amount, self.lower_right() + amount)
+    }
+
+    #[inline]
+    pub fn contract(self, amount: Vector2F) -> RectF {
+        RectF::from_points(self.origin() + amount, self.lower_right() - amount)
     }
 
     #[inline]
@@ -306,6 +316,11 @@ impl RectI {
             .concat_xy_xy(point.0)
             .packed_le(point.0.concat_xy_xy(lower_right.0))
             .all_true()
+    }
+
+    #[inline]
+    pub fn contract(self, amount: Vector2I) -> RectI {
+        RectI::from_points(self.origin() + amount, self.lower_right() - amount)
     }
 
     #[inline]

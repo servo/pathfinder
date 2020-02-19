@@ -9,10 +9,13 @@
 // except according to those terms.
 
 use pathfinder_simd::default::F32x4;
+use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
+use std::slice;
 
-// TODO(pcwalton): Maybe this should be a u32?
+// TODO(pcwalton): Maybe this should be a u32? Need to be aware of endianness issues if we do that.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(C)]
 pub struct ColorU {
     pub r: u8,
     pub g: u8,
@@ -21,6 +24,11 @@ pub struct ColorU {
 }
 
 impl ColorU {
+    #[inline]
+    pub fn new(r: u8, g: u8, b: u8, a: u8) -> ColorU {
+        ColorU { r, g, b, a }
+    }
+
     #[inline]
     pub fn transparent_black() -> ColorU {
         ColorU::from_u32(0)
@@ -42,6 +50,16 @@ impl ColorU {
             r: 0,
             g: 0,
             b: 0,
+            a: 255,
+        }
+    }
+
+    #[inline]
+    pub fn white() -> ColorU {
+        ColorU {
+            r: 255,
+            g: 255,
+            b: 255,
             a: 255,
         }
     }
@@ -84,9 +102,39 @@ impl Debug for ColorU {
 pub struct ColorF(pub F32x4);
 
 impl ColorF {
+    // Constructors
+
     #[inline]
     pub fn new(r: f32, g: f32, b: f32, a: f32) -> ColorF {
         ColorF(F32x4::new(r, g, b, a))
+    }
+
+    #[inline]
+    pub fn from_hsla(mut h: f32, s: f32, l: f32, a: f32) -> ColorF {
+        // https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB
+
+        h %= 2.0 * PI;
+        h *= 3.0 / PI;
+
+        // Calculate chroma.
+        let c = (1.0 - f32::abs(2.0 * l - 1.0)) * s;
+        let xc = F32x4::new(c * (1.0 - f32::abs(h % 2.0 - 1.0)), c, 0.0, a);
+        let rgba = match f32::ceil(h) as i32 {
+            1     => xc.yxzw(),
+            2     => xc.xyzw(),
+            3     => xc.zyxw(),
+            4     => xc.zxyw(),
+            5     => xc.xzyw(),
+            0 | 6 => xc.yzxw(),
+            _     => xc.zzzw(),
+        };
+        let m = l - 0.5 * c;
+        ColorF(rgba + F32x4::new(m, m, m, 0.0))
+    }
+
+    #[inline]
+    pub fn from_hsl(h: f32, s: f32, l: f32) -> ColorF {
+        ColorF::from_hsla(h, s, l, 1.0)
     }
 
     #[inline]
@@ -142,4 +190,25 @@ impl Debug for ColorF {
             self.a()
         )
     }
+}
+
+#[inline]
+pub fn color_slice_to_u8_slice(slice: &[ColorU]) -> &[u8] {
+    unsafe {
+        slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * 4)
+    }
+}
+
+#[inline]
+pub fn u8_slice_to_color_slice(slice: &[u8]) -> &[ColorU] {
+    unsafe {
+        assert_eq!(slice.len() % 4, 0);
+        slice::from_raw_parts(slice.as_ptr() as *const ColorU, slice.len() / 4)
+    }
+}
+
+// TODO(pcwalton): Do this without a copy?
+#[inline]
+pub fn u8_vec_to_color_vec(buffer: Vec<u8>) -> Vec<ColorU> {
+    u8_slice_to_color_slice(&buffer).to_vec()
 }

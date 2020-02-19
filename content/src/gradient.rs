@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/gradient.rs
+// pathfinder/content/src/gradient.rs
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -11,32 +11,66 @@
 use crate::sorted_vector::SortedVector;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::util;
 use pathfinder_simd::default::F32x4;
-use std::cmp::{self, Ordering, PartialOrd};
+use std::cmp::{Ordering, PartialOrd};
 use std::convert;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Gradient {
-    line: LineSegment2F,
+    geometry: GradientGeometry,
     stops: SortedVector<ColorStop>,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum GradientGeometry {
+    Linear(LineSegment2F),
+    Radial {
+        line: LineSegment2F,
+        start_radius: f32,
+        end_radius: f32,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
 pub struct ColorStop {
-    pub color: ColorU,
     pub offset: f32,
+    pub color: ColorU,
 }
 
 impl Eq for Gradient {}
 
 impl Hash for Gradient {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
-        unsafe {
-            let data: [u32; 4] = mem::transmute::<F32x4, [u32; 4]>(self.line.0);
-            data.hash(state);
-            self.stops.hash(state);
+        match self.geometry {
+            GradientGeometry::Linear(line) => {
+                (0).hash(state);
+                hash_line_segment(line, state);
+            }
+            GradientGeometry::Radial { line, start_radius, end_radius } => {
+                (1).hash(state);
+                hash_line_segment(line, state);
+                hash_f32(start_radius, state);
+                hash_f32(end_radius, state);
+            }
+        }
+
+        self.stops.hash(state);
+
+        fn hash_line_segment<H>(line_segment: LineSegment2F, state: &mut H) where H: Hasher {
+            unsafe {
+                let data: [u32; 4] = mem::transmute::<F32x4, [u32; 4]>(line_segment.0);
+                data.hash(state);
+            }
+        }
+
+        fn hash_f32<H>(value: f32, state: &mut H) where H: Hasher {
+            unsafe {
+                let data: u32 = mem::transmute::<f32, u32>(value);
+                data.hash(state);
+            }
         }
     }
 }
@@ -55,8 +89,18 @@ impl Hash for ColorStop {
 
 impl Gradient {
     #[inline]
-    pub fn new(line: LineSegment2F) -> Gradient {
-        Gradient { line, stops: SortedVector::new() }
+    pub fn new(geometry: GradientGeometry) -> Gradient {
+        Gradient { geometry, stops: SortedVector::new() }
+    }
+
+    #[inline]
+    pub fn linear(line: LineSegment2F) -> Gradient {
+        Gradient::new(GradientGeometry::Linear(line))
+    }
+
+    #[inline]
+    pub fn radial(line: LineSegment2F, start_radius: f32, end_radius: f32) -> Gradient {
+        Gradient::new(GradientGeometry::Radial { line, start_radius, end_radius })
     }
 
     #[inline]
@@ -65,8 +109,13 @@ impl Gradient {
     }
 
     #[inline]
-    pub fn line(&self) -> LineSegment2F {
-        self.line
+    pub fn geometry(&self) -> &GradientGeometry {
+        &self.geometry
+    }
+
+    #[inline]
+    pub fn geometry_mut(&mut self) -> &mut GradientGeometry {
+        &mut self.geometry
     }
 
     #[inline]
@@ -74,15 +123,17 @@ impl Gradient {
         &self.stops.array
     }
 
-    pub fn sample(&self, t: f32) -> ColorU {
+    pub fn sample(&self, mut t: f32) -> ColorU {
         if self.stops.is_empty() {
             return ColorU::transparent_black();
         }
 
-        let lower_index = self.stops.binary_search_by(|stop| {
+        t = util::clamp(t, 0.0, 1.0);
+        let last_index = self.stops.len() - 1;
+        let upper_index = self.stops.binary_search_by(|stop| {
             stop.offset.partial_cmp(&t).unwrap_or(Ordering::Less)
-        }).unwrap_or_else(convert::identity);
-        let upper_index = cmp::min(lower_index + 1, self.stops.len() - 1);
+        }).unwrap_or_else(convert::identity).min(last_index);
+        let lower_index = if upper_index > 0 { upper_index - 1 } else { upper_index };
 
         let lower_stop = &self.stops.array[lower_index];
         let upper_stop = &self.stops.array[upper_index];
@@ -102,5 +153,12 @@ impl Gradient {
         for stop in &mut self.stops.array {
             stop.color.a = (stop.color.a as f32 * alpha).round() as u8;
         }
+    }
+}
+
+impl ColorStop {
+    #[inline]
+    pub fn new(color: ColorU, offset: f32) -> ColorStop {
+        ColorStop { color, offset }
     }
 }

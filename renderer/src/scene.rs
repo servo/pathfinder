@@ -16,6 +16,7 @@ use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
 use pathfinder_color::ColorU;
+use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -23,7 +24,8 @@ use pathfinder_content::outline::Outline;
 
 #[derive(Clone)]
 pub struct Scene {
-    pub(crate) paths: Vec<PathObject>,
+    pub(crate) paths: Vec<DrawPath>,
+    pub(crate) clip_paths: Vec<ClipPath>,
     palette: Palette,
     bounds: RectF,
     view_box: RectF,
@@ -34,20 +36,28 @@ impl Scene {
     pub fn new() -> Scene {
         Scene {
             paths: vec![],
+            clip_paths: vec![],
             palette: Palette::new(),
             bounds: RectF::default(),
             view_box: RectF::default(),
         }
     }
 
-    pub fn push_path(&mut self, path: PathObject) {
+    pub fn push_path(&mut self, path: DrawPath) {
         self.bounds = self.bounds.union_rect(path.outline.bounds());
         self.paths.push(path);
     }
 
+    pub fn push_clip_path(&mut self, clip_path: ClipPath) -> ClipPathId {
+        self.bounds = self.bounds.union_rect(clip_path.outline.bounds());
+        let clip_path_id = ClipPathId(self.clip_paths.len() as u32);
+        self.clip_paths.push(clip_path);
+        clip_path_id
+    }
+
     #[inline]
     pub fn build_paint_info(&self) -> PaintInfo {
-        self.palette.build_paint_info()
+        self.palette.build_paint_info(self.view_box.size().to_i32())
     }
 
     #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -149,6 +159,7 @@ impl Scene {
         match self.palette.paints[first_paint_id.0 as usize] {
             Paint::Color(color) => Some(color),
             Paint::Gradient(_) => None,
+            Paint::Pattern(_) => None,
         }
     }
 
@@ -200,16 +211,33 @@ impl<'a> Iterator for PathIter<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct PathObject {
+pub struct DrawPath {
     outline: Outline,
     paint: PaintId,
+    clip_path: Option<ClipPathId>,
+    fill_rule: FillRule,
     name: String,
 }
 
-impl PathObject {
+#[derive(Clone, Debug)]
+pub struct ClipPath {
+    outline: Outline,
+    fill_rule: FillRule,
+    name: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ClipPathId(pub u32);
+
+impl DrawPath {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, name: String) -> PathObject {
-        PathObject { outline, paint, name }
+    pub fn new(outline: Outline,
+               paint: PaintId,
+               clip_path: Option<ClipPathId>,
+               fill_rule: FillRule,
+               name: String)
+               -> DrawPath {
+        DrawPath { outline, paint, clip_path, fill_rule, name }
     }
 
     #[inline]
@@ -218,7 +246,34 @@ impl PathObject {
     }
 
     #[inline]
+    pub(crate) fn clip_path(&self) -> Option<ClipPathId> {
+        self.clip_path
+    }
+
+    #[inline]
     pub(crate) fn paint(&self) -> PaintId {
         self.paint
+    }
+
+    #[inline]
+    pub(crate) fn fill_rule(&self) -> FillRule {
+        self.fill_rule
+    }
+}
+
+impl ClipPath {
+    #[inline]
+    pub fn new(outline: Outline, fill_rule: FillRule, name: String) -> ClipPath {
+        ClipPath { outline, fill_rule, name }
+    }
+
+    #[inline]
+    pub fn outline(&self) -> &Outline {
+        &self.outline
+    }
+
+    #[inline]
+    pub(crate) fn fill_rule(&self) -> FillRule {
+        self.fill_rule
     }
 }

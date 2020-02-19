@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/tile_alpha.fs.glsl
+// pathfinder/shaders/mask_evenodd.fs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -12,18 +12,14 @@
 
 precision highp float;
 
-uniform sampler2D uStencilTexture;
-uniform sampler2D uPaintTexture;
-uniform vec2 uPaintTextureSize;
+uniform sampler2D uFillTexture;
 
-in vec2 vColorTexCoord;
-in vec2 vMaskTexCoord;
-in vec4 vColor;
+in vec2 vFillTexCoord;
+in float vBackdrop;
 
 out vec4 oFragColor;
 
 void main() {
-    float coverage = texture(uStencilTexture, vMaskTexCoord).r;
-    vec4 color = texture(uPaintTexture, vColorTexCoord);
-    oFragColor = vec4(color.rgb, color.a * coverage);
+    float alpha = texture(uFillTexture, vFillTexCoord).r + vBackdrop;
+    oFragColor = vec4(1.0 - abs(1.0 - mod(alpha, 2.0)));
 }
