@@ -10,16 +10,17 @@
 
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu::shaders::{FillProgram, AlphaTileProgram, AlphaTileVertexArray, FillVertexArray};
-use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
-use crate::gpu::shaders::{PostprocessProgram, PostprocessVertexArray, ReprojectionProgram};
-use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
+use crate::gpu::shaders::{AlphaTileProgram, AlphaTileVertexArray, FillProgram, FillVertexArray};
+use crate::gpu::shaders::{FilterBasicProgram, FilterBasicVertexArray, FilterTextProgram};
+use crate::gpu::shaders::{FilterTextVertexArray, MAX_FILLS_PER_BATCH, MaskTileProgram};
+use crate::gpu::shaders::{MaskTileVertexArray, ReprojectionProgram, ReprojectionVertexArray};
+use crate::gpu::shaders::{SolidTileProgram, SolidTileVertexArray};
 use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileVertex};
-use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF};
+use pathfinder_content::effects::{CompositeOp, DefringingKernel, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
@@ -79,9 +80,11 @@ where
     paint_texture: Option<D::Texture>,
     layer_framebuffer_stack: Vec<LayerFramebufferInfo<D>>,
 
-    // Postprocessing shader
-    postprocess_program: PostprocessProgram<D>,
-    postprocess_vertex_array: PostprocessVertexArray<D>,
+    // Filter shaders
+    filter_basic_program: FilterBasicProgram<D>,
+    filter_basic_vertex_array: FilterBasicVertexArray<D>,
+    filter_text_program: FilterTextProgram<D>,
+    filter_text_vertex_array: FilterTextVertexArray<D>,
     gamma_lut_texture: D::Texture,
 
     // Stencil shader
@@ -126,7 +129,8 @@ where
                                                              resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
-        let postprocess_program = PostprocessProgram::new(&device, resources);
+        let filter_basic_program = FilterBasicProgram::new(&device, resources);
+        let filter_text_program = FilterTextProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
 
@@ -175,9 +179,15 @@ where
             &solid_tile_program,
             &quads_vertex_indices_buffer,
         );
-        let postprocess_vertex_array = PostprocessVertexArray::new(
+        let filter_basic_vertex_array = FilterBasicVertexArray::new(
             &device,
-            &postprocess_program,
+            &filter_basic_program,
+            &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
+        );
+        let filter_text_vertex_array = FilterTextVertexArray::new(
+            &device,
+            &filter_text_program,
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
@@ -229,8 +239,10 @@ where
             paint_texture: None,
             layer_framebuffer_stack: vec![],
 
-            postprocess_program,
-            postprocess_vertex_array,
+            filter_basic_program,
+            filter_basic_vertex_array,
+            filter_text_program,
+            filter_text_vertex_array,
             gamma_lut_texture,
 
             stencil_program,
@@ -757,12 +769,13 @@ where
         }
     }
 
-    fn push_layer(&mut self, effects: PostprocessOptions) {
+    fn push_layer(&mut self, effects: Effects) {
         let main_framebuffer_size = self.main_viewport().size();
-        let framebuffer_size = if effects.defringing_kernel.is_some() {
-            main_framebuffer_size.scale_xy(Vector2I::new(3, 1))
-        } else {
-            main_framebuffer_size
+        let framebuffer_size = match effects.filter {
+            Filter::Text { defringing_kernel: Some(_), .. } => {
+                main_framebuffer_size.scale_xy(Vector2I::new(3, 1))
+            }
+            _ => main_framebuffer_size,
         };
 
         let framebuffer = self.framebuffer_cache.create_framebuffer(&mut self.device,
@@ -780,45 +793,106 @@ where
                                          .pop()
                                          .expect("Where's the layer?");
 
-        let clear_color = self.clear_color_for_draw_operation();
+        match layer_framebuffer_info.effects.filter {
+            Filter::Composite(composite_op) => {
+                self.composite_layer(&layer_framebuffer_info, composite_op)
+            }
+            Filter::Text { fg_color, bg_color, defringing_kernel, gamma_correction } => {
+                self.draw_text_layer(&layer_framebuffer_info,
+                                     fg_color,
+                                     bg_color,
+                                     defringing_kernel,
+                                     gamma_correction)
+            }
+        }
 
-        let postprocess_source_framebuffer = &layer_framebuffer_info.framebuffer;
-        let source_texture = self
-            .device
-            .framebuffer_texture(postprocess_source_framebuffer);
+        self.preserve_draw_framebuffer();
+
+        self.framebuffer_cache.release_framebuffer(layer_framebuffer_info.framebuffer);
+    }
+
+    fn composite_layer(&self,
+                       layer_framebuffer_info: &LayerFramebufferInfo<D>,
+                       composite_op: CompositeOp) {
+        let clear_color = self.clear_color_for_draw_operation();
+        let source_framebuffer = &layer_framebuffer_info.framebuffer;
+        let source_texture = self.device.framebuffer_texture(source_framebuffer);
+        let source_texture_size = self.device.texture_size(source_texture);
+        let main_viewport = self.main_viewport();
+
+        let uniforms = vec![
+            (&self.filter_basic_program.framebuffer_size_uniform,
+             UniformData::Vec2(main_viewport.size().to_f32().0)),
+            (&self.filter_basic_program.source_uniform, UniformData::TextureUnit(0)),
+            (&self.filter_basic_program.source_size_uniform,
+             UniformData::Vec2(source_texture_size.0.to_f32x2())),
+        ];
+
+        let blend_state = match composite_op {
+            CompositeOp::SourceOver => {
+                BlendState {
+                    func: BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                    ..BlendState::default()
+                }
+            }
+        };
+
+        self.device.draw_elements(6, &RenderState {
+            target: &self.draw_render_target(),
+            program: &self.filter_basic_program.program,
+            vertex_array: &self.filter_basic_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[&source_texture],
+            uniforms: &uniforms,
+            viewport: main_viewport,
+            options: RenderOptions {
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                blend: Some(blend_state),
+                ..RenderOptions::default()
+            },
+        });
+    }
+
+    fn draw_text_layer(&self,
+                       layer_framebuffer_info: &LayerFramebufferInfo<D>,
+                       fg_color: ColorF,
+                       bg_color: ColorF,
+                       defringing_kernel: Option<DefringingKernel>,
+                       gamma_correction: bool) {
+        let clear_color = self.clear_color_for_draw_operation();
+        let source_framebuffer = &layer_framebuffer_info.framebuffer;
+        let source_texture = self.device.framebuffer_texture(source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
         let main_viewport = self.main_viewport();
 
         let mut uniforms = vec![
-            (&self.postprocess_program.framebuffer_size_uniform,
+            (&self.filter_text_program.framebuffer_size_uniform,
              UniformData::Vec2(main_viewport.size().to_f32().0)),
-            (&self.postprocess_program.source_uniform, UniformData::TextureUnit(0)),
-            (&self.postprocess_program.source_size_uniform,
+            (&self.filter_text_program.source_uniform, UniformData::TextureUnit(0)),
+            (&self.filter_text_program.source_size_uniform,
              UniformData::Vec2(source_texture_size.0.to_f32x2())),
-            (&self.postprocess_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
-            (&self.postprocess_program.fg_color_uniform,
-             UniformData::Vec4(layer_framebuffer_info.effects.fg_color.0)),
-            (&self.postprocess_program.bg_color_uniform,
-             UniformData::Vec4(layer_framebuffer_info.effects.bg_color.0)),
-            (&self.postprocess_program.gamma_correction_enabled_uniform,
-             UniformData::Int(layer_framebuffer_info.effects.gamma_correction as i32)),
+            (&self.filter_text_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
+            (&self.filter_text_program.fg_color_uniform, UniformData::Vec4(fg_color.0)),
+            (&self.filter_text_program.bg_color_uniform, UniformData::Vec4(bg_color.0)),
+            (&self.filter_text_program.gamma_correction_enabled_uniform,
+             UniformData::Int(gamma_correction as i32)),
         ];
 
-        match layer_framebuffer_info.effects.defringing_kernel {
+        match defringing_kernel {
             Some(ref kernel) => {
-                uniforms.push((&self.postprocess_program.kernel_uniform,
+                uniforms.push((&self.filter_text_program.kernel_uniform,
                                UniformData::Vec4(F32x4::from_slice(&kernel.0))));
             }
             None => {
-                uniforms.push((&self.postprocess_program.kernel_uniform,
+                uniforms.push((&self.filter_text_program.kernel_uniform,
                                UniformData::Vec4(F32x4::default())));
             }
         }
 
         self.device.draw_elements(6, &RenderState {
             target: &self.draw_render_target(),
-            program: &self.postprocess_program.program,
-            vertex_array: &self.postprocess_vertex_array.vertex_array,
+            program: &self.filter_text_program.program,
+            vertex_array: &self.filter_text_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &[&source_texture, &self.gamma_lut_texture],
             uniforms: &uniforms,
@@ -828,10 +902,6 @@ where
                 ..RenderOptions::default()
             },
         });
-
-        self.preserve_draw_framebuffer();
-
-        self.framebuffer_cache.release_framebuffer(layer_framebuffer_info.framebuffer);
     }
 
     fn stencil_state(&self) -> Option<StencilState> {
@@ -847,7 +917,7 @@ where
         })
     }
 
-    fn clear_color_for_draw_operation(&mut self) -> Option<ColorF> {
+    fn clear_color_for_draw_operation(&self) -> Option<ColorF> {
         let must_preserve_contents = match self.layer_framebuffer_stack.last() {
             Some(ref layer_framebuffer_info) => layer_framebuffer_info.must_preserve_contents,
             None => {
@@ -922,15 +992,6 @@ where
             self.device.end_timer_query(query);
         }
     }
-}
-
-// FIXME(pcwalton): Rename to `Effects` and move to `pathfinder_content`, perhaps?
-#[derive(Clone, Copy, Default, Debug)]
-pub struct PostprocessOptions {
-    pub fg_color: ColorF,
-    pub bg_color: ColorF,
-    pub defringing_kernel: Option<DefringingKernel>,
-    pub gamma_correction: bool,
 }
 
 // Render stats
@@ -1047,6 +1108,6 @@ impl<D> FramebufferCache<D> where D: Device {
 
 struct LayerFramebufferInfo<D> where D: Device {
     framebuffer: D::Framebuffer,
-    effects: PostprocessOptions,
+    effects: Effects,
     must_preserve_contents: bool,
 }

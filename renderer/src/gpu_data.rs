@@ -1,6 +1,6 @@
 // pathfinder/renderer/src/gpu_data.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -10,9 +10,9 @@
 
 //! Packed data ready to be sent to the GPU.
 
-use crate::gpu::renderer::PostprocessOptions;
 use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
+use pathfinder_content::effects::Effects;
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::Vector2I;
@@ -25,7 +25,7 @@ pub enum RenderCommand {
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
     RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
-    PushLayer { effects: PostprocessOptions },
+    PushLayer { effects: Effects },
     PopLayer,
     DrawAlphaTiles(Vec<AlphaTile>),
     DrawSolidTiles(Vec<SolidTileVertex>),

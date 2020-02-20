@@ -12,10 +12,10 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
-use crate::gpu::renderer::PostprocessOptions;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
+use pathfinder_content::effects::Effects;
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
@@ -70,7 +70,7 @@ impl Scene {
         clip_path_id
     }
 
-    pub fn push_layer(&mut self, effects: PostprocessOptions) {
+    pub fn push_layer(&mut self, effects: Effects) {
         self.display_list.push(DisplayItem::PushLayer { effects });
     }
 
@@ -234,7 +234,7 @@ pub struct ClipPathId(pub u32);
 #[derive(Clone, Debug)]
 pub enum DisplayItem {
     DrawPaths { start_index: u32, end_index: u32 },
-    PushLayer { effects: PostprocessOptions },
+    PushLayer { effects: Effects },
     PopLayer,
 }
 

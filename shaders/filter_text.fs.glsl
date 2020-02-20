@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/post.fs.glsl
+// pathfinder/shaders/filter_text.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -27,8 +27,8 @@ in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
-#include "post_gamma_correct.inc.glsl"
-#include "post_convolve.inc.glsl"
+#include "filter_text_gamma_correct.inc.glsl"
+#include "filter_text_convolve.inc.glsl"
 
 // Convolve horizontally in this pass.
 float sample1Tap(float offset) {

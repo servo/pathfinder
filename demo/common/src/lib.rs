@@ -22,6 +22,8 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
+use pathfinder_content::effects::{DEFRINGING_KERNEL_CORE_GRAPHICS, Effects};
+use pathfinder_content::effects::{Filter, STEM_DARKENING_FACTORS};
 use pathfinder_export::{Export, FileFormat};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -31,9 +33,8 @@ use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
-use pathfinder_renderer::gpu::renderer::{PostprocessOptions, RenderStats, RenderTime, Renderer};
+use pathfinder_renderer::gpu::renderer::{RenderStats, RenderTime, Renderer};
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
-use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
@@ -742,9 +743,7 @@ pub enum UIVisibility {
     All,
 }
 
-fn load_scene(resource_loader: &dyn ResourceLoader,
-              input_path: &SVGPath,
-              effects: Option<PostprocessOptions>)
+fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath, effects: Option<Effects>)
               -> (BuiltSVG, Tree) {
     let mut data;
     match *input_path {
@@ -761,7 +760,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
     (built_svg, tree)
 }
 
-fn build_svg_tree(tree: &Tree, effects: Option<PostprocessOptions>) -> BuiltSVG {
+fn build_svg_tree(tree: &Tree, effects: Option<Effects>) -> BuiltSVG {
     let mut scene = Scene::new();
     if let Some(effects) = effects {
         scene.push_layer(effects);
@@ -860,20 +859,22 @@ impl SceneMetadata {
     }
 }
 
-fn build_effects(ui_model: &DemoUIModel) -> Option<PostprocessOptions> {
+fn build_effects(ui_model: &DemoUIModel) -> Option<Effects> {
     if !ui_model.gamma_correction_effect_enabled && !ui_model.subpixel_aa_effect_enabled {
         return None;
     }
 
-    Some(PostprocessOptions {
-        fg_color: ui_model.foreground_color().to_f32(),
-        bg_color: ui_model.background_color().to_f32(),
-        gamma_correction: ui_model.gamma_correction_effect_enabled,
-        defringing_kernel: if ui_model.subpixel_aa_effect_enabled {
-            // TODO(pcwalton): Select FreeType defringing kernel as necessary.
-            Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
-        } else {
-            None
+    Some(Effects {
+        filter: Filter::Text {
+            fg_color: ui_model.foreground_color().to_f32(),
+            bg_color: ui_model.background_color().to_f32(),
+            gamma_correction: ui_model.gamma_correction_effect_enabled,
+            defringing_kernel: if ui_model.subpixel_aa_effect_enabled {
+                // TODO(pcwalton): Select FreeType defringing kernel as necessary.
+                Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
+            } else {
+                None
+            }
         },
     })
 }

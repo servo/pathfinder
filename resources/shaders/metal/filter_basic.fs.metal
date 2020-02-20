@@ -6,8 +6,8 @@ using namespace metal;
 
 struct spvDescriptorSetBuffer0
 {
-    constant float4* uGridlineColor [[id(0)]];
-    constant float4* uGroundColor [[id(1)]];
+    texture2d<float> uSource [[id(0)]];
+    sampler uSourceSmplr [[id(1)]];
 };
 
 struct main0_out
@@ -23,8 +23,7 @@ struct main0_in
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float2 texCoordPx = fract(in.vTexCoord) / fwidth(in.vTexCoord);
-    out.oFragColor = select((*spvDescriptorSet0.uGroundColor), (*spvDescriptorSet0.uGridlineColor), bool4(any(texCoordPx <= float2(1.0))));
+    out.oFragColor = spvDescriptorSet0.uSource.sample(spvDescriptorSet0.uSourceSmplr, in.vTexCoord);
     return out;
 }
 

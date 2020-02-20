@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu::renderer::{MASK_TILES_ACROSS, PostprocessOptions};
+use crate::gpu::renderer::MASK_TILES_ACROSS;
 use crate::gpu_data::{AlphaTile, AlphaTileVertex, FillBatchPrimitive, MaskTile, MaskTileVertex};
 use crate::gpu_data::{RenderCommand, SolidTileVertex, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
@@ -20,6 +20,7 @@ use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
+use pathfinder_content::effects::Effects;
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
@@ -358,7 +359,7 @@ struct CulledTiles {
 enum CulledDisplayItem {
     DrawSolidTiles(Vec<SolidTileVertex>),
     DrawAlphaTiles(Vec<AlphaTile>),
-    PushLayer { effects: PostprocessOptions },
+    PushLayer { effects: Effects },
     PopLayer,
 }
 

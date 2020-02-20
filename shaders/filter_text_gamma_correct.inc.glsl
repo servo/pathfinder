@@ -1,4 +1,4 @@
-// pathfinder/shaders/post_gamma_correct.inc.glsl
+// pathfinder/shaders/filter_text_gamma_correct.inc.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

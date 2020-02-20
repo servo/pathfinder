@@ -1658,6 +1658,7 @@ dependencies = [
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "metal 0.17.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_color 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_export 0.1.0",
  "pathfinder_geometry 0.4.0",
  "pathfinder_gl 0.1.0",
