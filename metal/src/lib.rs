@@ -437,6 +437,17 @@ impl Device for MetalDevice {
         &framebuffer.0
     }
 
+    fn texture_format(&self, texture: &MetalTexture) -> TextureFormat {
+        match texture.texture.pixel_format() {
+            MTLPixelFormat::R8Unorm => TextureFormat::R8,
+            MTLPixelFormat::R16Float => TextureFormat::R16F,
+            MTLPixelFormat::RGBA8Unorm => TextureFormat::RGBA8,
+            MTLPixelFormat::RGBA16Float => TextureFormat::RGBA16F,
+            MTLPixelFormat::RGBA32Float => TextureFormat::RGBA32F,
+            _ => panic!("Unexpected Metal texture format!"),
+        }
+    }
+
     fn texture_size(&self, texture: &MetalTexture) -> Vector2I {
         Vector2I::new(texture.texture.width() as i32, texture.texture.height() as i32)
     }

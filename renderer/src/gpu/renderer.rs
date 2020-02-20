@@ -19,7 +19,7 @@ use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileVertex};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_color::{self as color, ColorF, ColorU};
+use pathfinder_color::{self as color, ColorF};
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
@@ -42,6 +42,8 @@ static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 pub(crate) const MASK_TILES_ACROSS: u32 = 256;
 pub(crate) const MASK_TILES_DOWN: u32 = 256;
+
+const FRAMEBUFFER_CACHE_SIZE: usize = 8;
 
 // FIXME(pcwalton): Shrink this again!
 const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * MASK_TILES_ACROSS as i32;
@@ -75,9 +77,9 @@ where
     fill_framebuffer: D::Framebuffer,
     mask_framebuffer: D::Framebuffer,
     paint_texture: Option<D::Texture>,
+    layer_framebuffer_stack: Vec<LayerFramebufferInfo<D>>,
 
     // Postprocessing shader
-    postprocess_source_framebuffer: Option<D::Framebuffer>,
     postprocess_program: PostprocessProgram<D>,
     postprocess_vertex_array: PostprocessVertexArray<D>,
     gamma_lut_texture: D::Texture,
@@ -93,6 +95,7 @@ where
     // Rendering state
     framebuffer_flags: FramebufferFlags,
     buffered_fills: Vec<FillBatchPrimitive>,
+    framebuffer_cache: FramebufferCache<D>,
 
     // Debug
     pub stats: RenderStats,
@@ -102,7 +105,6 @@ where
     pub debug_ui_presenter: DebugUIPresenter<D>,
 
     // Extra info
-    postprocess_options: Option<PostprocessOptions>,
     use_depth: bool,
 }
 
@@ -225,8 +227,8 @@ where
             fill_framebuffer,
             mask_framebuffer,
             paint_texture: None,
+            layer_framebuffer_stack: vec![],
 
-            postprocess_source_framebuffer: None,
             postprocess_program,
             postprocess_vertex_array,
             gamma_lut_texture,
@@ -245,8 +247,8 @@ where
 
             framebuffer_flags: FramebufferFlags::empty(),
             buffered_fills: vec![],
+            framebuffer_cache: FramebufferCache::new(),
 
-            postprocess_options: None,
             use_depth: false,
         }
     }
@@ -254,7 +256,6 @@ where
     pub fn begin_scene(&mut self) {
         self.framebuffer_flags = FramebufferFlags::empty();
         self.device.begin_commands();
-        self.init_postprocessing_framebuffer();
         self.stats = RenderStats::default();
     }
 
@@ -277,6 +278,8 @@ where
                 self.upload_mask_tiles(mask_tiles, fill_rule);
                 self.draw_mask_tiles(count as u32, fill_rule);
             }
+            RenderCommand::PushLayer { effects } => self.push_layer(effects),
+            RenderCommand::PopLayer => self.pop_layer(),
             RenderCommand::DrawSolidTiles(ref solid_tile_vertices) => {
                 let count = solid_tile_vertices.len() / 4;
                 self.stats.solid_tile_count += count;
@@ -294,10 +297,6 @@ where
     }
 
     pub fn end_scene(&mut self) {
-        if self.postprocess_options.is_some() {
-            self.postprocess();
-        }
-
         self.end_composite_timer_query();
         self.pending_timers.push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
 
@@ -361,11 +360,6 @@ where
     }
 
     #[inline]
-    pub fn set_postprocess_options(&mut self, new_options: Option<PostprocessOptions>) {
-        self.postprocess_options = new_options;
-    }
-
-    #[inline]
     pub fn disable_depth(&mut self) {
         self.use_depth = false;
     }
@@ -386,17 +380,8 @@ where
     }
 
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
-        // FIXME(pcwalton): This is a hack. We shouldn't be generating paint data at all on the
-        // renderer side.
-        let (paint_size, paint_texels): (Vector2I, &[ColorU]);
-        let dummy_paint = [ColorU::white(); 1];
-        if self.postprocess_options.is_some() {
-            paint_size = Vector2I::splat(1);
-            paint_texels = &dummy_paint;
-        } else {
-            paint_size = paint_data.size;
-            paint_texels = &paint_data.texels;
-        };
+        let paint_size = paint_data.size;
+        let paint_texels = &paint_data.texels;
 
         match self.paint_texture {
             Some(ref paint_texture) if self.device.texture_size(paint_texture) == paint_size => {}
@@ -675,68 +660,6 @@ where
         self.preserve_draw_framebuffer();
     }
 
-    fn postprocess(&mut self) {
-        let mut clear_color = None;
-        if !self.framebuffer_flags
-                .contains(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS) {
-            clear_color = self.options.background_color;
-        }
-
-        let postprocess_options = match self.postprocess_options {
-            None => return,
-            Some(ref options) => options,
-        };
-
-        let postprocess_source_framebuffer = self.postprocess_source_framebuffer.as_ref().unwrap();
-        let source_texture = self
-            .device
-            .framebuffer_texture(postprocess_source_framebuffer);
-        let source_texture_size = self.device.texture_size(source_texture);
-        let main_viewport = self.main_viewport();
-
-        let mut uniforms = vec![
-            (&self.postprocess_program.framebuffer_size_uniform,
-             UniformData::Vec2(main_viewport.size().to_f32().0)),
-            (&self.postprocess_program.source_uniform, UniformData::TextureUnit(0)),
-            (&self.postprocess_program.source_size_uniform,
-             UniformData::Vec2(source_texture_size.0.to_f32x2())),
-            (&self.postprocess_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
-            (&self.postprocess_program.fg_color_uniform,
-             UniformData::Vec4(postprocess_options.fg_color.0)),
-            (&self.postprocess_program.bg_color_uniform,
-             UniformData::Vec4(postprocess_options.bg_color.0)),
-            (&self.postprocess_program.gamma_correction_enabled_uniform,
-             UniformData::Int(postprocess_options.gamma_correction as i32)),
-        ];
-
-        match postprocess_options.defringing_kernel {
-            Some(ref kernel) => {
-                uniforms.push((&self.postprocess_program.kernel_uniform,
-                               UniformData::Vec4(F32x4::from_slice(&kernel.0))));
-            }
-            None => {
-                uniforms.push((&self.postprocess_program.kernel_uniform,
-                               UniformData::Vec4(F32x4::default())));
-            }
-        }
-
-        self.device.draw_elements(6, &RenderState {
-            target: &self.dest_render_target(),
-            program: &self.postprocess_program.program,
-            vertex_array: &self.postprocess_vertex_array.vertex_array,
-            primitive: Primitive::Triangles,
-            textures: &[&source_texture, &self.gamma_lut_texture],
-            uniforms: &uniforms,
-            viewport: main_viewport,
-            options: RenderOptions {
-                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
-                ..RenderOptions::default()
-            },
-        });
-
-        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS);
-    }
-
     fn draw_stencil(&mut self, quad_positions: &[Vector4F]) {
         self.device.allocate_buffer(
             &self.stencil_vertex_array.vertex_buffer,
@@ -819,52 +742,96 @@ where
     }
 
     pub fn draw_render_target(&self) -> RenderTarget<D> {
-        if self.postprocess_options.is_some() {
-            RenderTarget::Framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap())
-        } else {
-            self.dest_render_target()
-        }
-    }
-
-    pub fn dest_render_target(&self) -> RenderTarget<D> {
-        match self.dest_framebuffer {
-            DestFramebuffer::Default { .. } => RenderTarget::Default,
-            DestFramebuffer::Other(ref framebuffer) => RenderTarget::Framebuffer(framebuffer),
-        }
-    }
-
-    fn init_postprocessing_framebuffer(&mut self) {
-        if !self.postprocess_options.is_some() {
-            self.postprocess_source_framebuffer = None;
-            return;
-        }
-
-        let source_framebuffer_size = self.draw_viewport().size();
-        match self.postprocess_source_framebuffer {
-            Some(ref framebuffer)
-                if self
-                    .device
-                    .texture_size(self.device.framebuffer_texture(framebuffer))
-                    == source_framebuffer_size => {}
-            _ => {
-                let texture = self
-                    .device
-                    .create_texture(TextureFormat::R8, source_framebuffer_size);
-                self.postprocess_source_framebuffer =
-                    Some(self.device.create_framebuffer(texture));
+        match self.layer_framebuffer_stack.last() {
+            Some(ref layer_framebuffer_info) => {
+                RenderTarget::Framebuffer(&layer_framebuffer_info.framebuffer)
             }
+            None => {
+                match self.dest_framebuffer {
+                    DestFramebuffer::Default { .. } => RenderTarget::Default,
+                    DestFramebuffer::Other(ref framebuffer) => {
+                        RenderTarget::Framebuffer(framebuffer)
+                    }
+                }
+            }
+        }
+    }
+
+    fn push_layer(&mut self, effects: PostprocessOptions) {
+        let main_framebuffer_size = self.main_viewport().size();
+        let framebuffer_size = if effects.defringing_kernel.is_some() {
+            main_framebuffer_size.scale_xy(Vector2I::new(3, 1))
+        } else {
+            main_framebuffer_size
         };
 
-        /*
-        self.device.clear(&RenderTarget::Framebuffer(self.postprocess_source_framebuffer
-                                                         .as_ref()
-                                                         .unwrap()),
-                          RectI::new(Vector2I::default(), source_framebuffer_size),
-                          &ClearParams {
-                            color: Some(ColorF::transparent_black()),
-                            ..ClearParams::default()
-                          });
-        */
+        let framebuffer = self.framebuffer_cache.create_framebuffer(&mut self.device,
+                                                                    TextureFormat::RGBA8,
+                                                                    framebuffer_size);
+        self.layer_framebuffer_stack.push(LayerFramebufferInfo {
+            framebuffer,
+            effects,
+            must_preserve_contents: false,
+        });
+    }
+
+    fn pop_layer(&mut self) {
+        let layer_framebuffer_info = self.layer_framebuffer_stack   
+                                         .pop()
+                                         .expect("Where's the layer?");
+
+        let clear_color = self.clear_color_for_draw_operation();
+
+        let postprocess_source_framebuffer = &layer_framebuffer_info.framebuffer;
+        let source_texture = self
+            .device
+            .framebuffer_texture(postprocess_source_framebuffer);
+        let source_texture_size = self.device.texture_size(source_texture);
+        let main_viewport = self.main_viewport();
+
+        let mut uniforms = vec![
+            (&self.postprocess_program.framebuffer_size_uniform,
+             UniformData::Vec2(main_viewport.size().to_f32().0)),
+            (&self.postprocess_program.source_uniform, UniformData::TextureUnit(0)),
+            (&self.postprocess_program.source_size_uniform,
+             UniformData::Vec2(source_texture_size.0.to_f32x2())),
+            (&self.postprocess_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
+            (&self.postprocess_program.fg_color_uniform,
+             UniformData::Vec4(layer_framebuffer_info.effects.fg_color.0)),
+            (&self.postprocess_program.bg_color_uniform,
+             UniformData::Vec4(layer_framebuffer_info.effects.bg_color.0)),
+            (&self.postprocess_program.gamma_correction_enabled_uniform,
+             UniformData::Int(layer_framebuffer_info.effects.gamma_correction as i32)),
+        ];
+
+        match layer_framebuffer_info.effects.defringing_kernel {
+            Some(ref kernel) => {
+                uniforms.push((&self.postprocess_program.kernel_uniform,
+                               UniformData::Vec4(F32x4::from_slice(&kernel.0))));
+            }
+            None => {
+                uniforms.push((&self.postprocess_program.kernel_uniform,
+                               UniformData::Vec4(F32x4::default())));
+            }
+        }
+
+        self.device.draw_elements(6, &RenderState {
+            target: &self.draw_render_target(),
+            program: &self.postprocess_program.program,
+            vertex_array: &self.postprocess_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[&source_texture, &self.gamma_lut_texture],
+            uniforms: &uniforms,
+            viewport: main_viewport,
+            options: RenderOptions {
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                ..RenderOptions::default()
+            },
+        });
+
+        self.preserve_draw_framebuffer();
+
+        self.framebuffer_cache.release_framebuffer(layer_framebuffer_info.framebuffer);
     }
 
     fn stencil_state(&self) -> Option<StencilState> {
@@ -881,16 +848,17 @@ where
     }
 
     fn clear_color_for_draw_operation(&mut self) -> Option<ColorF> {
-        let postprocessing_needed = self.postprocess_options.is_some();
-        let flag = if postprocessing_needed {
-            FramebufferFlags::MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS
-        } else {
-            FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS
+        let must_preserve_contents = match self.layer_framebuffer_stack.last() {
+            Some(ref layer_framebuffer_info) => layer_framebuffer_info.must_preserve_contents,
+            None => {
+                self.framebuffer_flags
+                    .contains(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS)
+            }
         };
 
-        if self.framebuffer_flags.contains(flag) {
+        if must_preserve_contents {
             None
-        } else if !postprocessing_needed {
+        } else if self.layer_framebuffer_stack.is_empty() {
             self.options.background_color
         } else {
             Some(ColorF::default())
@@ -898,21 +866,24 @@ where
     }
 
     fn preserve_draw_framebuffer(&mut self) {
-        let flag = if self.postprocess_options.is_some() {
-            FramebufferFlags::MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS
-        } else {
-            FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS
-        };
-        self.framebuffer_flags.insert(flag);
+        match self.layer_framebuffer_stack.last_mut() {
+            Some(ref mut layer_framebuffer_info) => {
+                layer_framebuffer_info.must_preserve_contents = true;
+            }
+            None => {
+                self.framebuffer_flags
+                    .insert(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS);
+            }
+        }
     }
 
     pub fn draw_viewport(&self) -> RectI {
-        let main_viewport = self.main_viewport();
-        match self.postprocess_options {
-            Some(PostprocessOptions { defringing_kernel: Some(_), .. }) => {
-                RectI::new(Vector2I::default(), main_viewport.size().scale_xy(Vector2I::new(3, 1)))
+        match self.layer_framebuffer_stack.last() {
+            Some(ref layer_framebuffer_info) => {
+                let texture = self.device.framebuffer_texture(&layer_framebuffer_info.framebuffer);
+                RectI::new(Vector2I::default(), self.device.texture_size(texture))
             }
-            _ => main_viewport,
+            None => self.main_viewport(),
         }
     }
 
@@ -953,7 +924,8 @@ where
     }
 }
 
-#[derive(Clone, Copy, Default)]
+// FIXME(pcwalton): Rename to `Effects` and move to `pathfinder_content`, perhaps?
+#[derive(Clone, Copy, Default, Debug)]
 pub struct PostprocessOptions {
     pub fg_color: ColorF,
     pub bg_color: ColorF,
@@ -1035,7 +1007,46 @@ bitflags! {
     struct FramebufferFlags: u8 {
         const MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS = 0x01;
         const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x02;
-        const MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS = 0x04;
-        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x08;
+        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x04;
     }
+}
+
+struct FramebufferCache<D> where D: Device {
+    framebuffers: Vec<D::Framebuffer>,
+}
+
+impl<D> FramebufferCache<D> where D: Device {
+    fn new() -> FramebufferCache<D> {
+        FramebufferCache { framebuffers: vec![] }
+    }
+
+    fn create_framebuffer(&mut self, device: &mut D, format: TextureFormat, size: Vector2I)
+                          -> D::Framebuffer {
+        for index in 0..self.framebuffers.len() {
+            {
+                let texture = device.framebuffer_texture(&self.framebuffers[index]);
+                if device.texture_size(texture) != size ||
+                        device.texture_format(texture) != format {
+                    continue;
+                }
+            }
+            return self.framebuffers.remove(index);
+        }
+
+        let texture = device.create_texture(format, size);
+        device.create_framebuffer(texture)
+    }
+
+    fn release_framebuffer(&mut self, framebuffer: D::Framebuffer) {
+        if self.framebuffers.len() == FRAMEBUFFER_CACHE_SIZE {
+            self.framebuffers.pop();
+        }
+        self.framebuffers.insert(0, framebuffer);
+    }
+}
+
+struct LayerFramebufferInfo<D> where D: Device {
+    framebuffer: D::Framebuffer,
+    effects: PostprocessOptions,
+    must_preserve_contents: bool,
 }

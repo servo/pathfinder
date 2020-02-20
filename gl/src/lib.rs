@@ -479,6 +479,11 @@ impl Device for GLDevice {
     }
 
     #[inline]
+    fn texture_format(&self, texture: &Self::Texture) -> TextureFormat {
+        texture.format
+    }
+
+    #[inline]
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I {
         texture.size
     }

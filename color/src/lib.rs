@@ -143,6 +143,11 @@ impl ColorF {
     }
 
     #[inline]
+    pub fn black() -> ColorF {
+        ColorF(F32x4::new(0.0, 0.0, 0.0, 1.0))
+    }
+
+    #[inline]
     pub fn white() -> ColorF {
         ColorF(F32x4::splat(1.0))
     }

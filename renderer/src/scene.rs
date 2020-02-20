@@ -12,10 +12,10 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
+use crate::gpu::renderer::PostprocessOptions;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
-use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
@@ -24,6 +24,7 @@ use pathfinder_content::outline::Outline;
 
 #[derive(Clone)]
 pub struct Scene {
+    pub(crate) display_list: Vec<DisplayItem>,
     pub(crate) paths: Vec<DrawPath>,
     pub(crate) clip_paths: Vec<ClipPath>,
     palette: Palette,
@@ -35,6 +36,7 @@ impl Scene {
     #[inline]
     pub fn new() -> Scene {
         Scene {
+            display_list: vec![],
             paths: vec![],
             clip_paths: vec![],
             palette: Palette::new(),
@@ -46,6 +48,19 @@ impl Scene {
     pub fn push_path(&mut self, path: DrawPath) {
         self.bounds = self.bounds.union_rect(path.outline.bounds());
         self.paths.push(path);
+
+        let new_path_count = self.paths.len() as u32;
+        if let Some(DisplayItem::DrawPaths {
+            start_index: _,
+            ref mut end_index
+        }) = self.display_list.last_mut() {
+            *end_index = new_path_count;
+        } else {
+            self.display_list.push(DisplayItem::DrawPaths {
+                start_index: new_path_count - 1,
+                end_index: new_path_count,
+            });
+        }
     }
 
     pub fn push_clip_path(&mut self, clip_path: ClipPath) -> ClipPathId {
@@ -53,6 +68,14 @@ impl Scene {
         let clip_path_id = ClipPathId(self.clip_paths.len() as u32);
         self.clip_paths.push(clip_path);
         clip_path_id
+    }
+
+    pub fn push_layer(&mut self, effects: PostprocessOptions) {
+        self.display_list.push(DisplayItem::PushLayer { effects });
+    }
+
+    pub fn pop_layer(&mut self) {
+        self.display_list.push(DisplayItem::PopLayer);
     }
 
     #[inline]
@@ -142,27 +165,6 @@ impl Scene {
         outline
     }
 
-    pub fn monochrome_color(&self) -> Option<ColorU> {
-        if self.paths.is_empty() {
-            return None;
-        }
-
-        let first_paint_id = self.paths[0].paint;
-        if self
-            .paths
-            .iter()
-            .skip(1)
-            .any(|path_object| path_object.paint != first_paint_id) {
-            return None;
-        }
-
-        match self.palette.paints[first_paint_id.0 as usize] {
-            Paint::Color(color) => Some(color),
-            Paint::Gradient(_) => None,
-            Paint::Pattern(_) => None,
-        }
-    }
-
     #[inline]
     pub(crate) fn effective_view_box(&self, render_options: &PreparedBuildOptions) -> RectF {
         if render_options.subpixel_aa_enabled {
@@ -228,6 +230,13 @@ pub struct ClipPath {
 
 #[derive(Clone, Copy, Debug)]
 pub struct ClipPathId(pub u32);
+
+#[derive(Clone, Debug)]
+pub enum DisplayItem {
+    DrawPaths { start_index: u32, end_index: u32 },
+    PushLayer { effects: PostprocessOptions },
+    PopLayer,
+}
 
 impl DrawPath {
     #[inline]

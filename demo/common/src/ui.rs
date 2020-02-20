@@ -11,8 +11,9 @@
 use crate::camera::Mode;
 use crate::window::Window;
 use crate::{BackgroundColor, Options};
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::gpu::debug::DebugUIPresenter;
@@ -38,6 +39,10 @@ const SCREENSHOT_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 2;
 
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
+
+const LIGHT_BG_COLOR:       ColorU = ColorU { r: 248, g: 248, b: 248, a: 255, };
+const DARK_BG_COLOR:        ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255, };
+const TRANSPARENT_BG_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 0,   };
 
 static EFFECTS_PNG_NAME: &'static str = "demo-effects";
 static OPEN_PNG_NAME: &'static str = "demo-open";
@@ -74,6 +79,22 @@ impl DemoUIModel {
     fn rotation(&self) -> f32 {
         (self.rotation as f32 / SLIDER_WIDTH as f32 * 2.0 - 1.0) * PI
     }
+
+    // Only relevant if in monochrome mode.
+    pub fn foreground_color(&self) -> ColorU {
+        match self.background_color {
+            BackgroundColor::Light | BackgroundColor::Transparent => ColorU::black(), 
+            BackgroundColor::Dark => ColorU::white(),
+        }
+    }
+
+    pub fn background_color(&self) -> ColorU {
+        match self.background_color {
+            BackgroundColor::Light => LIGHT_BG_COLOR,
+            BackgroundColor::Dark => DARK_BG_COLOR,
+            BackgroundColor::Transparent => TRANSPARENT_BG_COLOR,
+        }
+    }
 }
 
 pub struct DemoUIPresenter<D>
@@ -93,8 +114,6 @@ where
     background_panel_visible: bool,
     screenshot_panel_visible: bool,
     rotate_panel_visible: bool,
-
-    show_text_effects: bool,
 }
 
 impl<D> DemoUIPresenter<D>
@@ -126,13 +145,7 @@ where
             background_panel_visible: false,
             screenshot_panel_visible: false,
             rotate_panel_visible: false,
-
-            show_text_effects: true,
         }
-    }
-
-    pub fn set_show_text_effects(&mut self, show_text_effects: bool) {
-        self.show_text_effects = show_text_effects;
     }
 
     pub fn update<W>(
@@ -156,22 +169,18 @@ where
 
         let button_size = Vector2I::new(BUTTON_WIDTH, BUTTON_HEIGHT);
 
-        // Draw text effects button.
-        if self.show_text_effects {
-            if debug_ui_presenter.ui_presenter.draw_button(device,
-                                                           position,
-                                                           &self.effects_texture) {
-                self.effects_panel_visible = !self.effects_panel_visible;
-            }
-            if !self.effects_panel_visible {
-                debug_ui_presenter.ui_presenter.draw_tooltip(
-                    device,
-                    "Text Effects",
-                    RectI::new(position, button_size),
-                );
-            }
-            position += Vector2I::new(button_size.x() + PADDING, 0);
+        // Draw effects button.
+        if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.effects_texture) {
+            self.effects_panel_visible = !self.effects_panel_visible;
         }
+        if !self.effects_panel_visible {
+            debug_ui_presenter.ui_presenter.draw_tooltip(
+                device,
+                "Effects",
+                RectI::new(position, button_size),
+            );
+        }
+        position += Vector2I::new(button_size.x() + PADDING, 0);
 
         // Draw open button.
         if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.open_texture) {
@@ -245,7 +254,7 @@ where
         position += Vector2I::new(button_size.x() + PADDING, 0);
 
         // Draw effects panel, if necessary.
-        self.draw_effects_panel(device, debug_ui_presenter, model);
+        self.draw_effects_panel(device, debug_ui_presenter, model, action);
 
         // Draw rotate and zoom buttons, if applicable.
         if model.mode != Mode::TwoD {
@@ -324,7 +333,8 @@ where
     fn draw_effects_panel(&mut self,
                           device: &D,
                           debug_ui_presenter: &mut DebugUIPresenter<D>,
-                          model: &mut DemoUIModel) {
+                          model: &mut DemoUIModel,
+                          action: &mut UIAction) {
         if !self.effects_panel_visible {
             return;
         }
@@ -340,30 +350,30 @@ where
             WINDOW_COLOR,
         );
 
-        model.gamma_correction_effect_enabled = self.draw_effects_switch(
+        self.draw_effects_switch(
             device,
+            action,
             debug_ui_presenter,
             "Gamma Correction",
             0,
             effects_panel_y,
-            model.gamma_correction_effect_enabled,
-        );
-        model.stem_darkening_effect_enabled = self.draw_effects_switch(
+            &mut model.gamma_correction_effect_enabled);
+        self.draw_effects_switch(
             device,
+            action,
             debug_ui_presenter,
             "Stem Darkening",
             1,
             effects_panel_y,
-            model.stem_darkening_effect_enabled,
-        );
-        model.subpixel_aa_effect_enabled = self.draw_effects_switch(
+            &mut model.stem_darkening_effect_enabled);
+        self.draw_effects_switch(
             device,
+            action,
             debug_ui_presenter,
             "Subpixel AA",
             2,
             effects_panel_y,
-            model.subpixel_aa_effect_enabled,
-        );
+            &mut model.subpixel_aa_effect_enabled);
     }
 
     fn draw_screenshot_panel<W>(
@@ -592,12 +602,12 @@ where
     fn draw_effects_switch(
         &self,
         device: &D,
+        action: &mut UIAction,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         text: &str,
         index: i32,
         window_y: i32,
-        value: bool,
-    ) -> bool {
+        value: &mut bool) {
         let text_x = PADDING * 2;
         let text_y = window_y + PADDING + BUTTON_TEXT_OFFSET + (BUTTON_HEIGHT + PADDING) * index;
         debug_ui_presenter
@@ -608,10 +618,16 @@ where
         let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (switch_width + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
         let switch_position = Vector2I::new(switch_x, switch_y);
-        debug_ui_presenter
-            .ui_presenter
-            .draw_text_switch(device, switch_position, &["Off", "On"], value as u8)
-            != 0
+
+        let new_value =
+            debug_ui_presenter
+                .ui_presenter
+                .draw_text_switch(device, switch_position, &["Off", "On"], *value as u8) != 0;
+
+        if new_value != *value {
+            *action = UIAction::EffectsChanged;
+            *value = new_value;
+        }
     }
 }
 
@@ -619,6 +635,7 @@ where
 pub enum UIAction {
     None,
     ModelChanged,
+    EffectsChanged,
     TakeScreenshot(ScreenshotInfo),
     ZoomIn,
     ZoomActualSize,

@@ -10,6 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
+use crate::gpu::renderer::PostprocessOptions;
 use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
 use pathfinder_content::fill::FillRule;
@@ -24,6 +25,8 @@ pub enum RenderCommand {
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
     RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
+    PushLayer { effects: PostprocessOptions },
+    PopLayer,
     DrawAlphaTiles(Vec<AlphaTile>),
     DrawSolidTiles(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
@@ -125,6 +128,8 @@ impl Debug for RenderCommand {
             RenderCommand::RenderMaskTiles { ref tiles, fill_rule } => {
                 write!(formatter, "RenderMaskTiles(x{}, {:?})", tiles.len(), fill_rule)
             }
+            RenderCommand::PushLayer { .. } => write!(formatter, "PushLayer"),
+            RenderCommand::PopLayer => write!(formatter, "PopLayer"),
             RenderCommand::DrawAlphaTiles(ref tiles) => {
                 write!(formatter, "DrawAlphaTiles(x{})", tiles.len())
             }

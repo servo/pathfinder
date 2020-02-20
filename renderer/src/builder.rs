@@ -11,12 +11,12 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu::renderer::MASK_TILES_ACROSS;
+use crate::gpu::renderer::{MASK_TILES_ACROSS, PostprocessOptions};
 use crate::gpu_data::{AlphaTile, AlphaTileVertex, FillBatchPrimitive, MaskTile, MaskTileVertex};
-use crate::gpu_data::{RenderCommand, TileObjectPrimitive};
+use crate::gpu_data::{RenderCommand, SolidTileVertex, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
-use crate::scene::Scene;
+use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
@@ -37,7 +37,6 @@ pub(crate) struct SceneBuilder<'a> {
     next_alpha_tile_index: AtomicUsize,
     next_mask_tile_index: AtomicUsize,
 
-    pub(crate) z_buffer: ZBuffer,
     pub(crate) listener: Box<dyn RenderCommandListener>,
 }
 
@@ -52,8 +51,14 @@ pub(crate) struct ObjectBuilder {
 pub(crate) struct BuiltPath {
     pub mask_tiles: Vec<MaskTile>,
     pub alpha_tiles: Vec<AlphaTile>,
+    pub solid_tiles: Vec<SolidTile>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
     pub fill_rule: FillRule,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SolidTile {
+    pub(crate) coords: Vector2I,
 }
 
 impl<'a> SceneBuilder<'a> {
@@ -62,7 +67,6 @@ impl<'a> SceneBuilder<'a> {
         built_options: &'a PreparedBuildOptions,
         listener: Box<dyn RenderCommandListener>,
     ) -> SceneBuilder<'a> {
-        let effective_view_box = scene.effective_view_box(built_options);
         SceneBuilder {
             scene,
             built_options,
@@ -70,7 +74,6 @@ impl<'a> SceneBuilder<'a> {
             next_alpha_tile_index: AtomicUsize::new(0),
             next_mask_tile_index: AtomicUsize::new(0),
 
-            z_buffer: ZBuffer::new(effective_view_box),
             listener,
         }
     }
@@ -167,26 +170,84 @@ impl<'a> SceneBuilder<'a> {
         tiler.object_builder.built_path
     }
 
-    fn cull_tiles(&self, built_clip_paths: Vec<BuiltPath>, built_draw_paths: Vec<BuiltPath>)
+    fn cull_tiles(&self,
+                  paint_metadata: &[PaintMetadata],
+                  built_clip_paths: Vec<BuiltPath>,
+                  built_draw_paths: Vec<BuiltPath>)
                   -> CulledTiles {
         let mut culled_tiles = CulledTiles {
             mask_winding_tiles: vec![],
             mask_evenodd_tiles: vec![],
-            alpha_tiles: vec![],
+            display_list: vec![],
         };
 
         for built_clip_path in built_clip_paths {
             culled_tiles.push_mask_tiles(&built_clip_path);
         }
 
-        for built_draw_path in built_draw_paths {
-            culled_tiles.push_mask_tiles(&built_draw_path);
+        let mut remaining_layer_z_buffers = self.build_solid_tiles(&built_draw_paths);
+        remaining_layer_z_buffers.reverse();
 
-            for alpha_tile in built_draw_path.alpha_tiles {
-                let alpha_tile_coords = alpha_tile.upper_left.tile_position();
-                if self.z_buffer.test(alpha_tile_coords,
-                                      alpha_tile.upper_left.object_index as u32) {
-                    culled_tiles.alpha_tiles.push(alpha_tile);
+        // Process first Z-buffer.
+        let first_z_buffer = remaining_layer_z_buffers.pop().unwrap();
+        let first_solid_tiles = first_z_buffer.build_solid_tiles(&self.scene.paths,
+                                                                 paint_metadata);
+        if !first_solid_tiles.is_empty() {
+            culled_tiles.display_list
+                        .push(CulledDisplayItem::DrawSolidTiles(first_solid_tiles));
+        }
+
+        let mut layer_z_buffers_stack = vec![first_z_buffer];
+
+        for display_item in &self.scene.display_list {
+            // Just pass through `PushLayer` and `PopLayer` commands.
+            let (start_draw_path_index, end_draw_path_index) = match *display_item {
+                DisplayItem::PushLayer { effects } => {
+                    culled_tiles.display_list.push(CulledDisplayItem::PushLayer { effects });
+
+                    let z_buffer = remaining_layer_z_buffers.pop().unwrap();
+                    let solid_tiles = z_buffer.build_solid_tiles(&self.scene.paths,
+                                                                 paint_metadata);
+                    if !solid_tiles.is_empty() {
+                        culled_tiles.display_list
+                                    .push(CulledDisplayItem::DrawSolidTiles(solid_tiles));
+                    }
+                    layer_z_buffers_stack.push(z_buffer);
+                    continue;
+                }
+                DisplayItem::PopLayer => {
+                    culled_tiles.display_list.push(CulledDisplayItem::PopLayer);
+                    layer_z_buffers_stack.pop();
+                    continue;
+                }
+                DisplayItem::DrawPaths { start_index, end_index } => (start_index, end_index),
+            };
+
+            for draw_path_index in start_draw_path_index..end_draw_path_index {
+                let built_draw_path = &built_draw_paths[draw_path_index as usize];
+                culled_tiles.push_mask_tiles(built_draw_path);
+
+                // Create a `DrawAlphaTiles` display item if necessary.
+                match culled_tiles.display_list.last() {
+                    Some(&CulledDisplayItem::DrawAlphaTiles(_)) => {}
+                    _ => culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles(vec![])),
+                }
+
+                // Fetch the destination alpha tiles buffer.
+                let culled_alpha_tiles = match *culled_tiles.display_list.last_mut().unwrap() {
+                    CulledDisplayItem::DrawAlphaTiles(ref mut culled_alpha_tiles) => {
+                        culled_alpha_tiles
+                    }
+                    _ => unreachable!(),
+                };
+
+                let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
+                for alpha_tile in &built_draw_path.alpha_tiles {
+                    let alpha_tile_coords = alpha_tile.upper_left.tile_position();
+                    if layer_z_buffer.test(alpha_tile_coords,
+                                           alpha_tile.upper_left.object_index as u32) {
+                        culled_alpha_tiles.push(*alpha_tile);
+                    }
                 }
             }
         }
@@ -194,12 +255,37 @@ impl<'a> SceneBuilder<'a> {
         culled_tiles
     }
 
-    fn pack_tiles(&mut self, paint_metadata: &[PaintMetadata], culled_tiles: CulledTiles) {
-        let path_count = self.scene.paths.len() as u32;
-        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
-                                                          paint_metadata,
-                                                          0..path_count);
+    fn build_solid_tiles(&self, built_draw_paths: &[BuiltPath]) -> Vec<ZBuffer> {
+        let effective_view_box = self.scene.effective_view_box(self.built_options);
+        let mut z_buffers = vec![ZBuffer::new(effective_view_box)];
+        let mut z_buffer_index_stack = vec![0];
 
+        // Create Z-buffers.
+        for display_item in &self.scene.display_list {
+            match *display_item {
+                DisplayItem::PushLayer { .. } => {
+                    z_buffer_index_stack.push(z_buffers.len());
+                    z_buffers.push(ZBuffer::new(effective_view_box));
+                }
+                DisplayItem::PopLayer => {
+                    z_buffer_index_stack.pop();
+                }
+                DisplayItem::DrawPaths { start_index, end_index } => {
+                    let (start_index, end_index) = (start_index as usize, end_index as usize);
+                    let z_buffer = &mut z_buffers[*z_buffer_index_stack.last().unwrap()];
+                    for (path_index, built_draw_path) in
+                            built_draw_paths[start_index..end_index].iter().enumerate() {
+                        z_buffer.update(&built_draw_path.solid_tiles, path_index as u32);
+                    }
+                }
+            }
+        }
+        debug_assert_eq!(z_buffer_index_stack.len(), 1);
+
+        z_buffers
+    }
+
+    fn pack_tiles(&mut self, culled_tiles: CulledTiles) {
         if !culled_tiles.mask_winding_tiles.is_empty() {
             self.listener.send(RenderCommand::RenderMaskTiles {
                 tiles: culled_tiles.mask_winding_tiles,
@@ -213,11 +299,19 @@ impl<'a> SceneBuilder<'a> {
             });
         }
 
-        if !solid_tiles.is_empty() {
-            self.listener.send(RenderCommand::DrawSolidTiles(solid_tiles));
-        }
-        if !culled_tiles.alpha_tiles.is_empty() {
-            self.listener.send(RenderCommand::DrawAlphaTiles(culled_tiles.alpha_tiles));
+        for display_item in culled_tiles.display_list {
+            match display_item {
+                CulledDisplayItem::DrawSolidTiles(tiles) => {
+                    self.listener.send(RenderCommand::DrawSolidTiles(tiles))
+                }
+                CulledDisplayItem::DrawAlphaTiles(tiles) => {
+                    self.listener.send(RenderCommand::DrawAlphaTiles(tiles))
+                }
+                CulledDisplayItem::PushLayer { effects } => {
+                    self.listener.send(RenderCommand::PushLayer { effects })
+                }
+                CulledDisplayItem::PopLayer => self.listener.send(RenderCommand::PopLayer),
+            }
         }
     }
 
@@ -226,8 +320,8 @@ impl<'a> SceneBuilder<'a> {
                        built_clip_paths: Vec<BuiltPath>,
                        built_draw_paths: Vec<BuiltPath>) {
         self.listener.send(RenderCommand::FlushFills);
-        let culled_tiles = self.cull_tiles(built_clip_paths, built_draw_paths);
-        self.pack_tiles(paint_metadata, culled_tiles);
+        let culled_tiles = self.cull_tiles(paint_metadata, built_clip_paths, built_draw_paths);
+        self.pack_tiles(culled_tiles);
     }
 
     pub(crate) fn allocate_mask_tile_index(&self) -> u16 {
@@ -236,10 +330,36 @@ impl<'a> SceneBuilder<'a> {
     }
 }
 
+impl BuiltPath {
+    fn new(bounds: RectF, fill_rule: FillRule) -> BuiltPath {
+        BuiltPath {
+            mask_tiles: vec![],
+            alpha_tiles: vec![],
+            solid_tiles: vec![],
+            tiles: DenseTileMap::new(tiles::round_rect_out_to_tile_bounds(bounds)),
+            fill_rule,
+        }
+    }
+}
+
+impl SolidTile {
+    #[inline]
+    pub(crate) fn new(coords: Vector2I) -> SolidTile {
+        SolidTile { coords }
+    }
+}
+
 struct CulledTiles {
     mask_winding_tiles: Vec<MaskTile>,
     mask_evenodd_tiles: Vec<MaskTile>,
-    alpha_tiles: Vec<AlphaTile>,
+    display_list: Vec<CulledDisplayItem>,
+}
+
+enum CulledDisplayItem {
+    DrawSolidTiles(Vec<SolidTileVertex>),
+    DrawAlphaTiles(Vec<AlphaTile>),
+    PushLayer { effects: PostprocessOptions },
+    PopLayer,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -252,13 +372,7 @@ pub struct TileStats {
 
 impl ObjectBuilder {
     pub(crate) fn new(bounds: RectF, fill_rule: FillRule) -> ObjectBuilder {
-        let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
-        let tiles = DenseTileMap::new(tile_rect);
-        ObjectBuilder {
-            built_path: BuiltPath { mask_tiles: vec![], alpha_tiles: vec![], tiles, fill_rule },
-            bounds,
-            fills: vec![],
-        }
+        ObjectBuilder { built_path: BuiltPath::new(bounds, fill_rule), bounds, fills: vec![] }
     }
 
     #[inline]

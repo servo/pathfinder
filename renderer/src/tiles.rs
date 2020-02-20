@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder};
+use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder, SolidTile};
 use crate::gpu_data::TileObjectPrimitive;
 use crate::paint::PaintMetadata;
 use pathfinder_content::fill::FillRule;
@@ -174,10 +174,9 @@ impl<'a> Tiler<'a> {
                     (FillRule::EvenOdd, _) => {}
                 }
 
-                // Next, if this is a solid tile, just poke it into the Z-buffer. We don't need
-                // to do anything else here.
+                // Next, if this is a solid tile, record that fact and stop here.
                 if paint_metadata.is_opaque {
-                    self.scene_builder.z_buffer.update(tile_coords, self.object_index);
+                    self.object_builder.built_path.solid_tiles.push(SolidTile::new(tile_coords));
                     continue;
                 }
             }

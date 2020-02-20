@@ -10,6 +10,7 @@
 
 //! Software occlusion culling.
 
+use crate::builder::SolidTile;
 use crate::gpu_data::SolidTileVertex;
 use crate::paint::PaintMetadata;
 use crate::scene::DrawPath;
@@ -17,62 +18,43 @@ use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2I;
-use std::ops::Range;
-use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
-pub struct ZBuffer {
-    buffer: DenseTileMap<AtomicUsize>,
+pub(crate) struct ZBuffer {
+    buffer: DenseTileMap<u32>,
 }
 
 impl ZBuffer {
-    pub fn new(view_box: RectF) -> ZBuffer {
+    pub(crate) fn new(view_box: RectF) -> ZBuffer {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
         ZBuffer {
-            buffer: DenseTileMap::from_builder(|_| AtomicUsize::new(0), tile_rect),
+            buffer: DenseTileMap::from_builder(|_| 0, tile_rect),
         }
     }
 
-    pub fn test(&self, coords: Vector2I, object_index: u32) -> bool {
+    pub(crate) fn test(&self, coords: Vector2I, object_index: u32) -> bool {
         let tile_index = self.buffer.coords_to_index_unchecked(coords);
-        let existing_depth = self.buffer.data[tile_index as usize].load(AtomicOrdering::SeqCst);
-        existing_depth < object_index as usize + 1
+        self.buffer.data[tile_index as usize] < object_index + 1
     }
 
-    pub fn update(&self, coords: Vector2I, object_index: u16) {
-        let tile_index = self.buffer.coords_to_index_unchecked(coords);
-        let mut old_depth = self.buffer.data[tile_index].load(AtomicOrdering::SeqCst);
-        let new_depth = (object_index + 1) as usize;
-        while old_depth < new_depth {
-            let prev_depth = self.buffer.data[tile_index].compare_and_swap(
-                old_depth,
-                new_depth,
-                AtomicOrdering::SeqCst,
-            );
-            if prev_depth == old_depth {
-                // Successfully written.
-                return;
-            }
-            old_depth = prev_depth;
+    pub(crate) fn update(&mut self, solid_tiles: &[SolidTile], object_index: u32) {
+        for solid_tile in solid_tiles {
+            let tile_index = self.buffer.coords_to_index_unchecked(solid_tile.coords);
+            let z_dest = &mut self.buffer.data[tile_index as usize];
+            *z_dest = u32::max(*z_dest, object_index + 1);
         }
     }
 
-    pub fn build_solid_tiles(&self,
-                             paths: &[DrawPath],
-                             paint_metadata: &[PaintMetadata],
-                             object_range: Range<u32>)
-                             -> Vec<SolidTileVertex> {
+    pub(crate) fn build_solid_tiles(&self, paths: &[DrawPath], paint_metadata: &[PaintMetadata])
+                                    -> Vec<SolidTileVertex> {
         let mut solid_tiles = vec![];
         for tile_index in 0..self.buffer.data.len() {
-            let depth = self.buffer.data[tile_index].load(AtomicOrdering::Relaxed);
+            let depth = self.buffer.data[tile_index];
             if depth == 0 {
                 continue;
             }
 
             let tile_coords = self.buffer.index_to_coords(tile_index);
             let object_index = (depth - 1) as u32;
-            if object_index < object_range.start || object_index >= object_range.end {
-                continue;
-            }
 
             let paint_id = paths[object_index as usize].paint();
             let paint_metadata = &paint_metadata[paint_id.0 as usize];

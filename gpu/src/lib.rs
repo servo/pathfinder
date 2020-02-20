@@ -70,6 +70,7 @@ pub trait Device: Sized {
         mode: BufferUploadMode,
     );
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
+    fn texture_format(&self, texture: &Self::Texture) -> TextureFormat;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI)
