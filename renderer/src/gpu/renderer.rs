@@ -26,7 +26,7 @@ use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendFunc, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
 use pathfinder_gpu::{TextureFormat, UniformData};
@@ -525,7 +525,10 @@ where
             viewport: self.mask_viewport(),
             options: RenderOptions {
                 blend: Some(BlendState {
-                    func: BlendFunc::RGBOneAlphaOne,
+                    src_rgb_factor: BlendFactor::One,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_rgb_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::One,
                     ..BlendState::default()
                 }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
@@ -577,7 +580,10 @@ where
             viewport: self.mask_viewport(),
             options: RenderOptions {
                 blend: Some(BlendState {
-                    func: BlendFunc::RGBOneAlphaOne,
+                    src_rgb_factor: BlendFactor::One,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_rgb_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::One,
                     op: BlendOp::Min,
                     ..BlendState::default()
                 }),
@@ -623,10 +629,7 @@ where
             uniforms: &uniforms,
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: Some(BlendState {
-                    func: BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha,
-                    ..BlendState::default()
-                }),
+                blend: Some(alpha_blend_state()),
                 stencil: self.stencil_state(),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
@@ -740,10 +743,7 @@ where
             ],
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: Some(BlendState {
-                    func: BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha,
-                    ..BlendState::default()
-                }),
+                blend: Some(alpha_blend_state()),
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
@@ -829,12 +829,7 @@ where
         ];
 
         let blend_state = match composite_op {
-            CompositeOp::SourceOver => {
-                BlendState {
-                    func: BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha,
-                    ..BlendState::default()
-                }
-            }
+            CompositeOp::SourceOver => alpha_blend_state(),
         };
 
         self.device.draw_elements(6, &RenderState {
@@ -1110,4 +1105,14 @@ struct LayerFramebufferInfo<D> where D: Device {
     framebuffer: D::Framebuffer,
     effects: Effects,
     must_preserve_contents: bool,
+}
+
+fn alpha_blend_state() -> BlendState {
+    BlendState {
+        src_rgb_factor: BlendFactor::SrcAlpha,
+        dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+        src_alpha_factor: BlendFactor::One,
+        dest_alpha_factor: BlendFactor::One,
+        ..BlendState::default()
+    }
 }

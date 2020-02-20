@@ -44,7 +44,7 @@ use objc::runtime::{Class, Object};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
+use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
 use pathfinder_gpu::{Device, Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc};
 use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
@@ -993,45 +993,17 @@ impl MetalDevice {
             None => pipeline_color_attachment.set_blending_enabled(false),
             Some(ref blend) => {
                 pipeline_color_attachment.set_blending_enabled(true);
-                match blend.func {
-                    BlendFunc::RGBOneAlphaOne => {
-                        pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-                        pipeline_color_attachment.set_destination_rgb_blend_factor(
-                            MTLBlendFactor::One);
-                        pipeline_color_attachment.set_source_alpha_blend_factor(
-                            MTLBlendFactor::One);
-                        pipeline_color_attachment.set_destination_alpha_blend_factor(
-                            MTLBlendFactor::One);
-                    }
-                    BlendFunc::RGBOneAlphaOneMinusSrcAlpha => {
-                        pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
-                        pipeline_color_attachment.set_destination_rgb_blend_factor(
-                            MTLBlendFactor::OneMinusSourceAlpha);
-                        pipeline_color_attachment.set_source_alpha_blend_factor(
-                            MTLBlendFactor::One);
-                        pipeline_color_attachment.set_destination_alpha_blend_factor(
-                            MTLBlendFactor::One);
-                    }
-                    BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
-                        pipeline_color_attachment.set_source_rgb_blend_factor(
-                            MTLBlendFactor::SourceAlpha);
-                        pipeline_color_attachment.set_destination_rgb_blend_factor(
-                            MTLBlendFactor::OneMinusSourceAlpha);
-                        pipeline_color_attachment.set_source_alpha_blend_factor(
-                            MTLBlendFactor::One);
-                        pipeline_color_attachment.set_destination_alpha_blend_factor(
-                            MTLBlendFactor::One);
-                    }
-                }
 
-                let blend_op = match blend.op {
-                    BlendOp::Add => MTLBlendOperation::Add,
-                    BlendOp::Subtract => MTLBlendOperation::Subtract,
-                    BlendOp::ReverseSubtract => MTLBlendOperation::ReverseSubtract,
-                    BlendOp::Min => MTLBlendOperation::Min,
-                    BlendOp::Max => MTLBlendOperation::Max,
-                };
+                pipeline_color_attachment.set_source_rgb_blend_factor(
+                    blend.src_rgb_factor.to_metal_blend_factor());
+                pipeline_color_attachment.set_destination_rgb_blend_factor(
+                    blend.dest_rgb_factor.to_metal_blend_factor());
+                pipeline_color_attachment.set_source_alpha_blend_factor(
+                    blend.src_alpha_factor.to_metal_blend_factor());
+                pipeline_color_attachment.set_destination_alpha_blend_factor(
+                    blend.dest_alpha_factor.to_metal_blend_factor());
 
+                let blend_op = blend.op.to_metal_blend_op();
                 pipeline_color_attachment.set_rgb_blend_operation(blend_op);
                 pipeline_color_attachment.set_alpha_blend_operation(blend_op);
             }
@@ -1185,6 +1157,39 @@ impl DeviceExtra for metal::Device {
 }
 
 // Conversion helpers
+
+trait BlendFactorExt {
+    fn to_metal_blend_factor(self) -> MTLBlendFactor;
+}
+
+impl BlendFactorExt for BlendFactor {
+    #[inline]
+    fn to_metal_blend_factor(self) -> MTLBlendFactor {
+        match self {
+            BlendFactor::Zero => MTLBlendFactor::Zero,
+            BlendFactor::One => MTLBlendFactor::One,
+            BlendFactor::SrcAlpha => MTLBlendFactor::SourceAlpha,
+            BlendFactor::OneMinusSrcAlpha => MTLBlendFactor::OneMinusSourceAlpha,
+        }
+    }
+}
+
+trait BlendOpExt {
+    fn to_metal_blend_op(self) -> MTLBlendOperation;
+}
+
+impl BlendOpExt for BlendOp {
+    #[inline]
+    fn to_metal_blend_op(self) -> MTLBlendOperation {
+        match self {
+            BlendOp::Add => MTLBlendOperation::Add,
+            BlendOp::Subtract => MTLBlendOperation::Subtract,
+            BlendOp::ReverseSubtract => MTLBlendOperation::ReverseSubtract,
+            BlendOp::Min => MTLBlendOperation::Min,
+            BlendOp::Max => MTLBlendOperation::Max,
+        }
+    }
+}
 
 trait DepthFuncExt {
     fn to_metal_compare_function(self) -> MTLCompareFunction;

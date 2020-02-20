@@ -1,6 +1,6 @@
 // pathfinder/ui/src/lib.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -21,7 +21,7 @@ use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendFunc, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
+use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
 use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
@@ -187,10 +187,7 @@ impl<D> UIPresenter<D> where D: Device {
             textures: &[],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
-                blend: Some(BlendState {
-                    func: BlendFunc::RGBOneAlphaOneMinusSrcAlpha,
-                    ..BlendState::default()
-                }),
+                blend: Some(alpha_blend_state()),
                 ..RenderOptions::default()
             },
         });
@@ -425,10 +422,7 @@ impl<D> UIPresenter<D> where D: Device {
             ],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
-                blend: Some(BlendState {
-                    func: BlendFunc::RGBOneAlphaOneMinusSrcAlpha,
-                    ..BlendState::default()
-                }),
+                blend: Some(alpha_blend_state()),
                 ..RenderOptions::default()
             },
         });
@@ -828,5 +822,15 @@ impl DebugFont {
     #[inline]
     fn load(resources: &dyn ResourceLoader) -> DebugFont {
         serde_json::from_slice(&resources.slurp(FONT_JSON_VIRTUAL_PATH).unwrap()).unwrap()
+    }
+}
+
+fn alpha_blend_state() -> BlendState {
+    BlendState {
+        src_rgb_factor: BlendFactor::One,
+        dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+        src_alpha_factor: BlendFactor::One,
+        dest_alpha_factor: BlendFactor::One,
+        ..BlendState::default()
     }
 }
