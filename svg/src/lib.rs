@@ -15,6 +15,7 @@ extern crate bitflags;
 
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
@@ -235,7 +236,12 @@ impl BuiltSVG {
                                                                  opacity,
                                                                  &mut self.result_flags));
         let fill_rule = FillRule::from_usvg_fill_rule(fill_rule);
-        self.scene.push_path(DrawPath::new(outline, style, state.clip_path, fill_rule, name));
+        self.scene.push_path(DrawPath::new(outline,
+                                           style,
+                                           state.clip_path,
+                                           fill_rule,
+                                           BlendMode::SourceOver,
+                                           name));
     }
 }
 

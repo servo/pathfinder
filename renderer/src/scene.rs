@@ -15,7 +15,7 @@ use crate::concurrent::executor::Executor;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
-use pathfinder_content::effects::Effects;
+use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
@@ -218,6 +218,7 @@ pub struct DrawPath {
     paint: PaintId,
     clip_path: Option<ClipPathId>,
     fill_rule: FillRule,
+    blend_mode: BlendMode,
     name: String,
 }
 
@@ -244,9 +245,10 @@ impl DrawPath {
                paint: PaintId,
                clip_path: Option<ClipPathId>,
                fill_rule: FillRule,
+               blend_mode: BlendMode,
                name: String)
                -> DrawPath {
-        DrawPath { outline, paint, clip_path, fill_rule, name }
+        DrawPath { outline, paint, clip_path, fill_rule, blend_mode, name }
     }
 
     #[inline]
@@ -267,6 +269,11 @@ impl DrawPath {
     #[inline]
     pub(crate) fn fill_rule(&self) -> FillRule {
         self.fill_rule
+    }
+
+    #[inline]
+    pub(crate) fn blend_mode(&self) -> BlendMode {
+        self.blend_mode
     }
 }
 

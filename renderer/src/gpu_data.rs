@@ -12,7 +12,7 @@
 
 use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
-use pathfinder_content::effects::Effects;
+use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::Vector2I;
@@ -27,7 +27,7 @@ pub enum RenderCommand {
     RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
     PushLayer { effects: Effects },
     PopLayer,
-    DrawAlphaTiles(Vec<AlphaTile>),
+    DrawAlphaTiles { tiles: Vec<AlphaTile>, blend_mode: BlendMode },
     DrawSolidTiles(Vec<SolidTileVertex>),
     Finish { build_time: Duration },
 }
@@ -130,8 +130,8 @@ impl Debug for RenderCommand {
             }
             RenderCommand::PushLayer { .. } => write!(formatter, "PushLayer"),
             RenderCommand::PopLayer => write!(formatter, "PopLayer"),
-            RenderCommand::DrawAlphaTiles(ref tiles) => {
-                write!(formatter, "DrawAlphaTiles(x{})", tiles.len())
+            RenderCommand::DrawAlphaTiles { ref tiles, blend_mode } => {
+                write!(formatter, "DrawAlphaTiles(x{}, {:?})", tiles.len(), blend_mode)
             }
             RenderCommand::DrawSolidTiles(ref tiles) => {
                 write!(formatter, "DrawSolidTiles(x{})", tiles.len())

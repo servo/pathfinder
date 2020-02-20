@@ -20,7 +20,7 @@ use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileVertex};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF};
-use pathfinder_content::effects::{CompositeOp, DefringingKernel, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, CompositeOp, DefringingKernel, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
@@ -298,11 +298,11 @@ where
                 self.upload_solid_tiles(solid_tile_vertices);
                 self.draw_solid_tiles(count as u32);
             }
-            RenderCommand::DrawAlphaTiles(ref alpha_tiles) => {
+            RenderCommand::DrawAlphaTiles { tiles: ref alpha_tiles, blend_mode } => {
                 let count = alpha_tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
-                self.draw_alpha_tiles(count as u32);
+                self.draw_alpha_tiles(count as u32, blend_mode);
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -595,7 +595,7 @@ where
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
     }
 
-    fn draw_alpha_tiles(&mut self, tile_count: u32) {
+    fn draw_alpha_tiles(&mut self, tile_count: u32, blend_mode: BlendMode) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
@@ -629,7 +629,7 @@ where
             uniforms: &uniforms,
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: Some(alpha_blend_state()),
+                blend: Some(blend_mode.to_blend_state()),
                 stencil: self.stencil_state(),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
@@ -743,7 +743,7 @@ where
             ],
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: Some(alpha_blend_state()),
+                blend: Some(BlendMode::SourceOver.to_blend_state()),
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
@@ -829,7 +829,7 @@ where
         ];
 
         let blend_state = match composite_op {
-            CompositeOp::SourceOver => alpha_blend_state(),
+            CompositeOp::SourceOver => BlendMode::SourceOver.to_blend_state(),
         };
 
         self.device.draw_elements(6, &RenderState {
@@ -1107,12 +1107,31 @@ struct LayerFramebufferInfo<D> where D: Device {
     must_preserve_contents: bool,
 }
 
-fn alpha_blend_state() -> BlendState {
-    BlendState {
-        src_rgb_factor: BlendFactor::SrcAlpha,
-        dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
-        src_alpha_factor: BlendFactor::One,
-        dest_alpha_factor: BlendFactor::One,
-        ..BlendState::default()
+trait BlendModeExt {
+    fn to_blend_state(self) -> BlendState;
+}
+
+impl BlendModeExt for BlendMode {
+    fn to_blend_state(self) -> BlendState {
+        match self {
+            BlendMode::SourceOver => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::SrcAlpha,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::One,
+                    ..BlendState::default()
+                }
+            }
+            BlendMode::Clear => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::Zero,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::Zero,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                }
+            }
+        }
     }
 }

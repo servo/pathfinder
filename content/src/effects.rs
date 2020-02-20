@@ -61,6 +61,13 @@ pub enum CompositeOp {
     SourceOver,
 }
 
+/// Blend modes that can be applied to individual paths without creating layers for them.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum BlendMode {
+    SourceOver,
+    Clear,
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DefringingKernel(pub [f32; 4]);
 
@@ -68,5 +75,12 @@ impl Default for CompositeOp {
     #[inline]
     fn default() -> CompositeOp {
         CompositeOp::SourceOver
+    }
+}
+
+impl Default for BlendMode {
+    #[inline]
+    fn default() -> BlendMode {
+        BlendMode::SourceOver
     }
 }

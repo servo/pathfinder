@@ -20,7 +20,7 @@ use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
-use pathfinder_content::effects::Effects;
+use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
@@ -46,6 +46,12 @@ pub(crate) struct ObjectBuilder {
     pub built_path: BuiltPath,
     pub fills: Vec<FillBatchPrimitive>,
     pub bounds: RectF,
+}
+
+#[derive(Debug)]
+struct BuiltDrawPath {
+    path: BuiltPath,
+    blend_mode: BlendMode,
 }
 
 #[derive(Debug)]
@@ -147,7 +153,7 @@ impl<'a> SceneBuilder<'a> {
         scene: &Scene,
         paint_metadata: &[PaintMetadata],
         built_clip_paths: &[BuiltPath],
-    ) -> BuiltPath {
+    ) -> BuiltDrawPath {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
         let paint_id = path_object.paint();
@@ -168,13 +174,17 @@ impl<'a> SceneBuilder<'a> {
         tiler.generate_tiles();
 
         self.listener.send(RenderCommand::AddFills(tiler.object_builder.fills));
-        tiler.object_builder.built_path
+
+        BuiltDrawPath {
+            path: tiler.object_builder.built_path,
+            blend_mode: path_object.blend_mode(),
+        }
     }
 
     fn cull_tiles(&self,
                   paint_metadata: &[PaintMetadata],
                   built_clip_paths: Vec<BuiltPath>,
-                  built_draw_paths: Vec<BuiltPath>)
+                  built_draw_paths: Vec<BuiltDrawPath>)
                   -> CulledTiles {
         let mut culled_tiles = CulledTiles {
             mask_winding_tiles: vec![],
@@ -226,24 +236,37 @@ impl<'a> SceneBuilder<'a> {
 
             for draw_path_index in start_draw_path_index..end_draw_path_index {
                 let built_draw_path = &built_draw_paths[draw_path_index as usize];
-                culled_tiles.push_mask_tiles(built_draw_path);
+                culled_tiles.push_mask_tiles(&built_draw_path.path);
 
-                // Create a `DrawAlphaTiles` display item if necessary.
+                // Create a new `DrawAlphaTiles` display item if we don't have one or if we have to
+                // break a batch due to blend mode differences.
+                //
+                // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid batch
+                // breaks in some cases…
                 match culled_tiles.display_list.last() {
-                    Some(&CulledDisplayItem::DrawAlphaTiles(_)) => {}
-                    _ => culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles(vec![])),
+                    Some(&CulledDisplayItem::DrawAlphaTiles {
+                        tiles: _,
+                        blend_mode
+                    }) if blend_mode == built_draw_path.blend_mode => {}
+                    _ => {
+                        culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles {
+                            tiles: vec![],
+                            blend_mode: built_draw_path.blend_mode,
+                        })
+                    }
                 }
 
                 // Fetch the destination alpha tiles buffer.
                 let culled_alpha_tiles = match *culled_tiles.display_list.last_mut().unwrap() {
-                    CulledDisplayItem::DrawAlphaTiles(ref mut culled_alpha_tiles) => {
-                        culled_alpha_tiles
-                    }
+                    CulledDisplayItem::DrawAlphaTiles {
+                        tiles: ref mut culled_alpha_tiles,
+                        ..
+                    } => culled_alpha_tiles,
                     _ => unreachable!(),
                 };
 
                 let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
-                for alpha_tile in &built_draw_path.alpha_tiles {
+                for alpha_tile in &built_draw_path.path.alpha_tiles {
                     let alpha_tile_coords = alpha_tile.upper_left.tile_position();
                     if layer_z_buffer.test(alpha_tile_coords,
                                            alpha_tile.upper_left.object_index as u32) {
@@ -256,7 +279,7 @@ impl<'a> SceneBuilder<'a> {
         culled_tiles
     }
 
-    fn build_solid_tiles(&self, built_draw_paths: &[BuiltPath]) -> Vec<ZBuffer> {
+    fn build_solid_tiles(&self, built_draw_paths: &[BuiltDrawPath]) -> Vec<ZBuffer> {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let mut z_buffers = vec![ZBuffer::new(effective_view_box)];
         let mut z_buffer_index_stack = vec![0];
@@ -276,7 +299,7 @@ impl<'a> SceneBuilder<'a> {
                     let z_buffer = &mut z_buffers[*z_buffer_index_stack.last().unwrap()];
                     for (path_index, built_draw_path) in
                             built_draw_paths[start_index..end_index].iter().enumerate() {
-                        z_buffer.update(&built_draw_path.solid_tiles, path_index as u32);
+                        z_buffer.update(&built_draw_path.path.solid_tiles, path_index as u32);
                     }
                 }
             }
@@ -305,8 +328,8 @@ impl<'a> SceneBuilder<'a> {
                 CulledDisplayItem::DrawSolidTiles(tiles) => {
                     self.listener.send(RenderCommand::DrawSolidTiles(tiles))
                 }
-                CulledDisplayItem::DrawAlphaTiles(tiles) => {
-                    self.listener.send(RenderCommand::DrawAlphaTiles(tiles))
+                CulledDisplayItem::DrawAlphaTiles { tiles, blend_mode } => {
+                    self.listener.send(RenderCommand::DrawAlphaTiles { tiles, blend_mode })
                 }
                 CulledDisplayItem::PushLayer { effects } => {
                     self.listener.send(RenderCommand::PushLayer { effects })
@@ -319,7 +342,7 @@ impl<'a> SceneBuilder<'a> {
     fn finish_building(&mut self,
                        paint_metadata: &[PaintMetadata],
                        built_clip_paths: Vec<BuiltPath>,
-                       built_draw_paths: Vec<BuiltPath>) {
+                       built_draw_paths: Vec<BuiltDrawPath>) {
         self.listener.send(RenderCommand::FlushFills);
         let culled_tiles = self.cull_tiles(paint_metadata, built_clip_paths, built_draw_paths);
         self.pack_tiles(culled_tiles);
@@ -358,7 +381,7 @@ struct CulledTiles {
 
 enum CulledDisplayItem {
     DrawSolidTiles(Vec<SolidTileVertex>),
-    DrawAlphaTiles(Vec<AlphaTile>),
+    DrawAlphaTiles { tiles: Vec<AlphaTile>, blend_mode: BlendMode },
     PushLayer { effects: Effects },
     PopLayer,
 }

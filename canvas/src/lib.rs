@@ -12,6 +12,7 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
@@ -89,6 +90,25 @@ impl CanvasRenderingContext2D {
         let mut path = Path2D::new();
         path.rect(rect);
         self.stroke_path(path);
+    }
+
+    pub fn clear_rect(&mut self, rect: RectF) {
+        let mut path = Path2D::new();
+        path.rect(rect);
+
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
+
+        let paint = Paint::black();
+        let paint = self.current_state.resolve_paint(&paint);
+        let paint_id = self.scene.push_paint(&paint);
+
+        self.scene.push_path(DrawPath::new(outline,
+                                           paint_id,
+                                           None,
+                                           FillRule::Winding,
+                                           BlendMode::Clear,
+                                           String::new()))
     }
 
     // Line styles
@@ -223,10 +243,16 @@ impl CanvasRenderingContext2D {
                                                paint_id,
                                                clip_path,
                                                fill_rule,
+                                               BlendMode::SourceOver,
                                                String::new()))
         }
 
-        self.scene.push_path(DrawPath::new(outline, paint_id, clip_path, fill_rule, String::new()))
+        self.scene.push_path(DrawPath::new(outline,
+                                           paint_id,
+                                           clip_path,
+                                           fill_rule,
+                                           BlendMode::SourceOver,
+                                           String::new()))
     }
 
     // Transformations
