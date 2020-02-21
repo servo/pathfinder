@@ -51,8 +51,8 @@ impl GLDevice {
     fn set_texture_parameters(&self, texture: &GLTexture) {
         self.bind_texture(texture, 0);
         unsafe {
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint); ck();
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint); ck();
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as GLint); ck();
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as GLint); ck();
             gl::TexParameteri(gl::TEXTURE_2D,
                               gl::TEXTURE_WRAP_S,
                               gl::CLAMP_TO_EDGE as GLint); ck();

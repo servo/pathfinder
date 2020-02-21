@@ -68,12 +68,12 @@ impl WebGlDevice {
         self.context.tex_parameteri(
             WebGl::TEXTURE_2D,
             WebGl::TEXTURE_MIN_FILTER,
-            WebGl::LINEAR as i32,
+            WebGl::NEAREST as i32,
         );
         self.context.tex_parameteri(
             WebGl::TEXTURE_2D,
             WebGl::TEXTURE_MAG_FILTER,
-            WebGl::LINEAR as i32,
+            WebGl::NEAREST as i32,
         );
         self.context.tex_parameteri(
             WebGl::TEXTURE_2D,
