@@ -1170,6 +1170,7 @@ impl BlendFactorExt for BlendFactor {
             BlendFactor::One => MTLBlendFactor::One,
             BlendFactor::SrcAlpha => MTLBlendFactor::SourceAlpha,
             BlendFactor::OneMinusSrcAlpha => MTLBlendFactor::OneMinusSourceAlpha,
+            BlendFactor::DestColor => MTLBlendFactor::DestinationColor,
         }
     }
 }

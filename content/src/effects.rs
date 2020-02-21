@@ -66,6 +66,8 @@ pub enum CompositeOp {
 pub enum BlendMode {
     SourceOver,
     Clear,
+    Lighten,
+    Darken,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -92,6 +94,7 @@ impl BlendMode {
     pub fn occludes_backdrop(self) -> bool {
         match self {
             BlendMode::SourceOver | BlendMode::Clear => true,
+            BlendMode::Lighten | BlendMode::Darken => false,
         }
     }
 }

@@ -965,6 +965,7 @@ impl BlendFactorExt for BlendFactor {
             BlendFactor::One => gl::ONE,
             BlendFactor::SrcAlpha => gl::SRC_ALPHA,
             BlendFactor::OneMinusSrcAlpha => gl::ONE_MINUS_SRC_ALPHA,
+            BlendFactor::DestColor => gl::DST_COLOR,
         }
     }
 }

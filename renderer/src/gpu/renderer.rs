@@ -1151,6 +1151,24 @@ impl BlendModeExt for BlendMode {
                     ..BlendState::default()
                 }
             }
+            BlendMode::Lighten => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::SrcAlpha,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::One,
+                    op: BlendOp::Max,
+                }
+            }
+            BlendMode::Darken => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::SrcAlpha,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::One,
+                    op: BlendOp::Min,
+                }
+            }
         }
     }
 }

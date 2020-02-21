@@ -219,7 +219,7 @@ dependencies = [
 name = "canvas_metal_minimal"
 version = "0.1.0"
 dependencies = [
- "foreign-types 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "foreign-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "metal 0.17.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "objc 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",

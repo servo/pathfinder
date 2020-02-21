@@ -232,6 +232,7 @@ impl CanvasRenderingContext2D {
 
     fn push_path(&mut self, outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
         let clip_path = self.current_state.clip_path;
+        let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
 
         if !self.current_state.shadow_paint.is_fully_transparent() {
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
@@ -243,7 +244,7 @@ impl CanvasRenderingContext2D {
                                                paint_id,
                                                clip_path,
                                                fill_rule,
-                                               BlendMode::SourceOver,
+                                               blend_mode,
                                                String::new()))
         }
 
@@ -251,7 +252,7 @@ impl CanvasRenderingContext2D {
                                            paint_id,
                                            clip_path,
                                            fill_rule,
-                                           BlendMode::SourceOver,
+                                           blend_mode,
                                            String::new()))
     }
 
@@ -282,6 +283,16 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn set_global_alpha(&mut self, new_global_alpha: f32) {
         self.current_state.global_alpha = new_global_alpha;
+    }
+
+    #[inline]
+    pub fn global_composite_operation(&self) -> CompositeOperation {
+        self.current_state.global_composite_operation
+    }
+
+    #[inline]
+    pub fn set_global_composite_operation(&mut self, new_composite_operation: CompositeOperation) {
+        self.current_state.global_composite_operation = new_composite_operation;
     }
 
     // The canvas state
@@ -316,6 +327,7 @@ struct State {
     shadow_offset: Vector2F,
     text_align: TextAlign,
     global_alpha: f32,
+    global_composite_operation: CompositeOperation,
     clip_path: Option<ClipPathId>,
 }
 
@@ -337,6 +349,7 @@ impl State {
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
             global_alpha: 1.0,
+            global_composite_operation: CompositeOperation::SourceOver,
             clip_path: None,
         }
     }
@@ -506,4 +519,21 @@ pub enum LineJoin {
     Miter,
     Bevel,
     Round,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CompositeOperation {
+    SourceOver,
+    Lighten,
+    Darken,
+}
+
+impl CompositeOperation {
+    fn to_blend_mode(self) -> BlendMode {
+        match self {
+            CompositeOperation::SourceOver => BlendMode::SourceOver,
+            CompositeOperation::Lighten => BlendMode::Lighten,
+            CompositeOperation::Darken => BlendMode::Darken,
+        }
+    }
 }
