@@ -12,6 +12,7 @@ members = [
     "examples/canvas_metal_minimal",
     "examples/canvas_minimal",
     "examples/canvas_moire",
+    "examples/canvas_nanovg",
     "examples/canvas_text",
     "examples/lottie_basic",
     "examples/swf_basic",

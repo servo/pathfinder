@@ -30,5 +30,6 @@ optional = true
 git = "https://github.com/linebender/skribo.git"
 rev = "f306037c36f596bba45cb9fd698ea53b6ca65e2e"
 optional = true
+
 [features]
 pf-text = ["pathfinder_text", "skribo", "font-kit"]

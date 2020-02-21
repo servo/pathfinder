@@ -14,8 +14,9 @@ SHADERS=\
 	mask.vs.glsl \
 	mask_evenodd.fs.glsl \
 	mask_winding.fs.glsl \
-	post.fs.glsl \
-	post.vs.glsl \
+	filter.vs.glsl \
+	filter_basic.fs.glsl \
+	filter_text.fs.glsl \
 	reproject.fs.glsl \
 	reproject.vs.glsl \
 	stencil.fs.glsl \
@@ -27,8 +28,8 @@ SHADERS=\
 	$(EMPTY)
 
 INCLUDES=\
-	post_convolve.inc.glsl \
-	post_gamma_correct.inc.glsl \
+	filter_text_convolve.inc.glsl \
+	filter_text_gamma_correct.inc.glsl \
 	$(EMPTY)
 
 OUT=\

@@ -70,6 +70,7 @@ pub trait Device: Sized {
         mode: BufferUploadMode,
     );
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
+    fn texture_format(&self, texture: &Self::Texture) -> TextureFormat;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI)
@@ -210,17 +211,24 @@ pub enum RenderTarget<'a, D> where D: Device {
     Framebuffer(&'a D::Framebuffer),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlendState {
-    pub func: BlendFunc,
+    pub dest_rgb_factor: BlendFactor,
+    pub dest_alpha_factor: BlendFactor,
+    pub src_rgb_factor: BlendFactor,
+    pub src_alpha_factor: BlendFactor,
     pub op: BlendOp,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum BlendFunc {
-    RGBOneAlphaOne,
-    RGBOneAlphaOneMinusSrcAlpha,
-    RGBSrcAlphaAlphaOneMinusSrcAlpha,
+pub enum BlendFactor {
+    Zero,
+    One,
+    SrcAlpha,
+    OneMinusSrcAlpha,
+    DestAlpha,
+    OneMinusDestAlpha,
+    DestColor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -268,13 +276,6 @@ impl Default for RenderOptions {
             clear_ops: ClearOps::default(),
             color_mask: true,
         }
-    }
-}
-
-impl Default for BlendFunc {
-    #[inline]
-    fn default() -> BlendFunc {
-        BlendFunc::RGBOneAlphaOneMinusSrcAlpha
     }
 }
 
@@ -376,6 +377,19 @@ impl ClearOps {
     #[inline]
     pub fn has_ops(&self) -> bool {
         self.color.is_some() || self.depth.is_some() || self.stencil.is_some()
+    }
+}
+
+impl Default for BlendState {
+    #[inline]
+    fn default() -> BlendState {
+        BlendState {
+            src_rgb_factor: BlendFactor::One,
+            dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+            src_alpha_factor: BlendFactor::One,
+            dest_alpha_factor: BlendFactor::One,
+            op: BlendOp::Add,
+        }
     }
 }
 

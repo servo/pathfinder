@@ -19,7 +19,7 @@ use half::f16;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
+use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderOptions, RenderState, RenderTarget};
 use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
@@ -92,40 +92,11 @@ impl GLDevice {
                     gl::Disable(gl::BLEND); ck();
                 }
                 Some(ref blend) => {
-                    match blend.func {
-                        BlendFunc::RGBOneAlphaOne => {
-                            gl::BlendFunc(gl::ONE, gl::ONE); ck();
-                        }
-                        BlendFunc::RGBOneAlphaOneMinusSrcAlpha => {
-                            gl::BlendFuncSeparate(gl::ONE,
-                                                  gl::ONE_MINUS_SRC_ALPHA,
-                                                  gl::ONE,
-                                                  gl::ONE); ck();
-                        }
-                        BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
-                            gl::BlendFuncSeparate(gl::SRC_ALPHA,
-                                                  gl::ONE_MINUS_SRC_ALPHA,
-                                                  gl::ONE,
-                                                  gl::ONE); ck();
-                        }
-                    }
-                    match blend.op {
-                        BlendOp::Add => {
-                            gl::BlendEquation(gl::FUNC_ADD); ck();
-                        }
-                        BlendOp::Subtract => {
-                            gl::BlendEquation(gl::FUNC_SUBTRACT); ck();
-                        }
-                        BlendOp::ReverseSubtract => {
-                            gl::BlendEquation(gl::FUNC_REVERSE_SUBTRACT); ck();
-                        }
-                        BlendOp::Min => {
-                            gl::BlendEquation(gl::MIN); ck();
-                        }
-                        BlendOp::Max => {
-                            gl::BlendEquation(gl::MAX); ck();
-                        }
-                    }
+                    gl::BlendFuncSeparate(blend.src_rgb_factor.to_gl_blend_factor(),
+                                          blend.dest_rgb_factor.to_gl_blend_factor(),
+                                          blend.src_alpha_factor.to_gl_blend_factor(),
+                                          blend.dest_alpha_factor.to_gl_blend_factor()); ck();
+                    gl::BlendEquation(blend.op.to_gl_blend_op()); ck();
                     gl::Enable(gl::BLEND); ck();
                 }
             }
@@ -476,6 +447,11 @@ impl Device for GLDevice {
     #[inline]
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture {
         &framebuffer.texture
+    }
+
+    #[inline]
+    fn texture_format(&self, texture: &Self::Texture) -> TextureFormat {
+        texture.format
     }
 
     #[inline]
@@ -973,6 +949,42 @@ impl Drop for GLTimerQuery {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteQueries(1, &mut self.gl_query); ck();
+        }
+    }
+}
+
+trait BlendFactorExt {
+    fn to_gl_blend_factor(self) -> GLenum;
+}
+
+impl BlendFactorExt for BlendFactor {
+    #[inline]
+    fn to_gl_blend_factor(self) -> GLenum {
+        match self {
+            BlendFactor::Zero => gl::ZERO,
+            BlendFactor::One => gl::ONE,
+            BlendFactor::SrcAlpha => gl::SRC_ALPHA,
+            BlendFactor::OneMinusSrcAlpha => gl::ONE_MINUS_SRC_ALPHA,
+            BlendFactor::DestAlpha => gl::DST_ALPHA,
+            BlendFactor::OneMinusDestAlpha => gl::ONE_MINUS_DST_ALPHA,
+            BlendFactor::DestColor => gl::DST_COLOR,
+        }
+    }
+}
+
+trait BlendOpExt {
+    fn to_gl_blend_op(self) -> GLenum;
+}
+
+impl BlendOpExt for BlendOp {
+    #[inline]
+    fn to_gl_blend_op(self) -> GLenum {
+        match self {
+            BlendOp::Add => gl::FUNC_ADD,
+            BlendOp::Subtract => gl::FUNC_SUBTRACT,
+            BlendOp::ReverseSubtract => gl::FUNC_REVERSE_SUBTRACT,
+            BlendOp::Min => gl::MIN,
+            BlendOp::Max => gl::MAX,
         }
     }
 }

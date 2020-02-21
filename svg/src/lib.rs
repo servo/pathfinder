@@ -15,6 +15,7 @@ extern crate bitflags;
 
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
@@ -63,11 +64,18 @@ bitflags! {
 }
 
 impl BuiltSVG {
-    pub fn from_tree(tree: Tree) -> BuiltSVG {
+    // TODO(pcwalton): Allow a global transform to be set.
+    #[inline]
+    pub fn from_tree(tree: &Tree) -> BuiltSVG {
+        BuiltSVG::from_tree_and_scene(tree, Scene::new())
+    }
+
+    // TODO(pcwalton): Allow a global transform to be set.
+    pub fn from_tree_and_scene(tree: &Tree, scene: Scene) -> BuiltSVG {
         // TODO(pcwalton): Maybe have a `SVGBuilder` type to hold the clip path IDs and other
         // transient data separate from `BuiltSVG`?
         let mut built_svg = BuiltSVG {
-            scene: Scene::new(),
+            scene,
             result_flags: BuildResultFlags::empty(),
             clip_paths: HashMap::new(),
         };
@@ -81,7 +89,7 @@ impl BuiltSVG {
                 }
             }
             _ => unreachable!(),
-        };
+        }
 
         built_svg
     }
@@ -228,7 +236,12 @@ impl BuiltSVG {
                                                                  opacity,
                                                                  &mut self.result_flags));
         let fill_rule = FillRule::from_usvg_fill_rule(fill_rule);
-        self.scene.push_path(DrawPath::new(outline, style, state.clip_path, fill_rule, name));
+        self.scene.push_path(DrawPath::new(outline,
+                                           style,
+                                           state.clip_path,
+                                           fill_rule,
+                                           BlendMode::SrcOver,
+                                           name));
     }
 }
 

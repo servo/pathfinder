@@ -19,6 +19,7 @@ extern crate log;
 
 pub mod clip;
 pub mod dash;
+pub mod effects;
 pub mod fill;
 pub mod gradient;
 pub mod orientation;

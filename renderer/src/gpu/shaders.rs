@@ -388,69 +388,44 @@ impl<D> AlphaTileProgram<D> where D: Device {
     }
 }
 
-pub struct PostprocessProgram<D>
-where
-    D: Device,
-{
+pub struct FilterBasicProgram<D> where D: Device {
     pub program: D::Program,
     pub source_uniform: D::Uniform,
     pub source_size_uniform: D::Uniform,
     pub framebuffer_size_uniform: D::Uniform,
-    pub kernel_uniform: D::Uniform,
-    pub gamma_lut_uniform: D::Uniform,
-    pub gamma_correction_enabled_uniform: D::Uniform,
-    pub fg_color_uniform: D::Uniform,
-    pub bg_color_uniform: D::Uniform,
 }
 
-impl<D> PostprocessProgram<D>
-where
-    D: Device,
-{
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> PostprocessProgram<D> {
-        let program = device.create_program(resources, "post");
+impl<D> FilterBasicProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterBasicProgram<D> {
+        let program = device.create_program_from_shader_names(resources,
+                                                              "filter_basic",
+                                                              "filter",
+                                                              "filter_basic");
         let source_uniform = device.get_uniform(&program, "Source");
         let source_size_uniform = device.get_uniform(&program, "SourceSize");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let kernel_uniform = device.get_uniform(&program, "Kernel");
-        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
-        let gamma_correction_enabled_uniform = device.get_uniform(&program,
-                                                                  "GammaCorrectionEnabled");
-        let fg_color_uniform = device.get_uniform(&program, "FGColor");
-        let bg_color_uniform = device.get_uniform(&program, "BGColor");
-        PostprocessProgram {
+        FilterBasicProgram {
             program,
             source_uniform,
             source_size_uniform,
             framebuffer_size_uniform,
-            kernel_uniform,
-            gamma_lut_uniform,
-            gamma_correction_enabled_uniform,
-            fg_color_uniform,
-            bg_color_uniform,
         }
     }
 }
 
-pub struct PostprocessVertexArray<D>
-where
-    D: Device,
-{
+pub struct FilterBasicVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
 }
 
-impl<D> PostprocessVertexArray<D>
-where
-    D: Device,
-{
+impl<D> FilterBasicVertexArray<D> where D: Device {
     pub fn new(
         device: &D,
-        postprocess_program: &PostprocessProgram<D>,
+        fill_basic_program: &FilterBasicProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
         quad_vertex_indices_buffer: &D::Buffer,
-    ) -> PostprocessVertexArray<D> {
+    ) -> FilterBasicVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position")
+        let position_attr = device.get_vertex_attr(&fill_basic_program.program, "Position")
                                   .unwrap();
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
@@ -465,7 +440,79 @@ where
         });
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
-        PostprocessVertexArray { vertex_array }
+        FilterBasicVertexArray { vertex_array }
+    }
+}
+
+pub struct FilterTextProgram<D> where D: Device {
+    pub program: D::Program,
+    pub source_uniform: D::Uniform,
+    pub source_size_uniform: D::Uniform,
+    pub framebuffer_size_uniform: D::Uniform,
+    pub kernel_uniform: D::Uniform,
+    pub gamma_lut_uniform: D::Uniform,
+    pub gamma_correction_enabled_uniform: D::Uniform,
+    pub fg_color_uniform: D::Uniform,
+    pub bg_color_uniform: D::Uniform,
+}
+
+impl<D> FilterTextProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterTextProgram<D> {
+        let program = device.create_program_from_shader_names(resources,
+                                                              "filter_text",
+                                                              "filter",
+                                                              "filter_text");
+        let source_uniform = device.get_uniform(&program, "Source");
+        let source_size_uniform = device.get_uniform(&program, "SourceSize");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let kernel_uniform = device.get_uniform(&program, "Kernel");
+        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
+        let gamma_correction_enabled_uniform = device.get_uniform(&program,
+                                                                  "GammaCorrectionEnabled");
+        let fg_color_uniform = device.get_uniform(&program, "FGColor");
+        let bg_color_uniform = device.get_uniform(&program, "BGColor");
+        FilterTextProgram {
+            program,
+            source_uniform,
+            source_size_uniform,
+            framebuffer_size_uniform,
+            kernel_uniform,
+            gamma_lut_uniform,
+            gamma_correction_enabled_uniform,
+            fg_color_uniform,
+            bg_color_uniform,
+        }
+    }
+}
+
+pub struct FilterTextVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+}
+
+impl<D> FilterTextVertexArray<D> where D: Device {
+    pub fn new(
+        device: &D,
+        fill_text_program: &FilterTextProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
+    ) -> FilterTextVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let position_attr = device.get_vertex_attr(&fill_text_program.program, "Position")
+                                  .unwrap();
+
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: 4,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+
+        FilterTextVertexArray { vertex_array }
     }
 }
 

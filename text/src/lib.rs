@@ -14,6 +14,7 @@ use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder, Build};
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
@@ -77,7 +78,13 @@ impl SceneExt for Scene {
             outline = stroke_to_fill.into_outline();
         }
 
-        self.push_path(DrawPath::new(outline, paint_id, None, FillRule::Winding, String::new()));
+        self.push_path(DrawPath::new(outline,
+                                     paint_id,
+                                     None,
+                                     FillRule::Winding,
+                                     BlendMode::SrcOver,
+                                     String::new()));
+
         Ok(())
     }
 

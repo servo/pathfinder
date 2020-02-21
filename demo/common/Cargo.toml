@@ -24,6 +24,9 @@ version = "0.4"
 [dependencies.pathfinder_color]
 path = "../../color"
 
+[dependencies.pathfinder_content]
+path = "../../content"
+
 [dependencies.pathfinder_export]
 path = "../../export"
 

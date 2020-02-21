@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/tile_alpha.fs.glsl
+// pathfinder/shaders/filter_basic.fs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -10,22 +10,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// TODO(pcwalton): This could be significantly optimized by operating on a
+// sparse per-tile basis.
+
+#extension GL_GOOGLE_include_directive : enable
+
 precision highp float;
 
-uniform sampler2D uStencilTexture;
-uniform sampler2D uPaintTexture;
-uniform vec2 uPaintTextureSize;
+uniform sampler2D uSource;
+uniform vec2 uSourceSize;
 
-in vec2 vColorTexCoord;
-in vec2 vMaskTexCoord;
-in vec4 vColor;
+in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
 void main() {
-    float coverage = texture(uStencilTexture, vMaskTexCoord).r;
-    vec4 color = texture(uPaintTexture, vColorTexCoord);
-    color.a *= coverage;
-    color.rgb *= color.a;
-    oFragColor = color;
+    oFragColor = texture(uSource, vTexCoord);
 }

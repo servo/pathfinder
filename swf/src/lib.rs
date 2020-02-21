@@ -10,6 +10,7 @@
 
 use std::ops::Add;
 use pathfinder_color::{ColorF, ColorU};
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Outline, Contour};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
@@ -200,6 +201,7 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
                     paint_id,
                     None,
                     FillRule::EvenOdd,
+                    BlendMode::SrcOver,
                     String::new()
                 ));
             }

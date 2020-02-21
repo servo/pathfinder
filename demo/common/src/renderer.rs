@@ -21,10 +21,8 @@ use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
-use pathfinder_renderer::gpu::renderer::PostprocessOptions;
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
-use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
 use std::path::PathBuf;
 
 const GROUND_SOLID_COLOR: ColorU = ColorU {
@@ -88,7 +86,7 @@ impl<W> DemoApp<W> where W: Window {
 
         // Clear to the appropriate color.
         let clear_color = match mode {
-            Mode::TwoD => Some(self.background_color().to_f32()),
+            Mode::TwoD => Some(self.ui_model.background_color().to_f32()),
             Mode::ThreeD => None,
             Mode::VR => Some(ColorF::transparent_black()),
         };
@@ -221,7 +219,7 @@ impl<W> DemoApp<W> where W: Window {
 
         // Don't clear the first scene after drawing it.
         let clear_color = if render_scene_index == 0 {
-            Some(self.background_color().to_f32())
+            Some(self.ui_model.background_color().to_f32())
         } else {
             None
         };
@@ -251,23 +249,6 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn render_vector_scene(&mut self) {
-        match self.scene_metadata.monochrome_color {
-            None => self.renderer.set_postprocess_options(None),
-            Some(fg_color) => {
-                self.renderer.set_postprocess_options(Some(PostprocessOptions {
-                    fg_color: fg_color.to_f32(),
-                    bg_color: self.background_color().to_f32(),
-                    gamma_correction: self.ui_model.gamma_correction_effect_enabled,
-                    defringing_kernel: if self.ui_model.subpixel_aa_effect_enabled {
-                        // TODO(pcwalton): Select FreeType defringing kernel as necessary.
-                        Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
-                    } else {
-                        None
-                    },
-                }))
-            }
-        }
-
         if self.ui_model.mode == Mode::TwoD {
             self.renderer.disable_depth();
         } else {

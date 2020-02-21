@@ -10,6 +10,7 @@
 
 //! Basic geometry and linear algebra primitives, optimized with SIMD.
 
+pub mod angle;
 pub mod line_segment;
 pub mod rect;
 pub mod transform2d;

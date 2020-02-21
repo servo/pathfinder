@@ -1,8 +1,8 @@
 #version 330
 
-// pathfinder/shaders/post.vs.glsl
+// pathfinder/shaders/filter.vs.glsl
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
