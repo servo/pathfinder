@@ -762,7 +762,7 @@ where
             ],
             viewport: self.draw_viewport(),
             options: RenderOptions {
-                blend: Some(BlendMode::SourceOver.to_blend_state()),
+                blend: Some(BlendMode::SrcOver.to_blend_state()),
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
@@ -848,7 +848,7 @@ where
         ];
 
         let blend_state = match composite_op {
-            CompositeOp::SourceOver => BlendMode::SourceOver.to_blend_state(),
+            CompositeOp::SrcOver => BlendMode::SrcOver.to_blend_state(),
         };
 
         self.device.draw_elements(6, &RenderState {
@@ -1133,15 +1133,6 @@ trait BlendModeExt {
 impl BlendModeExt for BlendMode {
     fn to_blend_state(self) -> BlendState {
         match self {
-            BlendMode::SourceOver => {
-                BlendState {
-                    src_rgb_factor: BlendFactor::SrcAlpha,
-                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
-                    src_alpha_factor: BlendFactor::One,
-                    dest_alpha_factor: BlendFactor::One,
-                    ..BlendState::default()
-                }
-            }
             BlendMode::Clear => {
                 BlendState {
                     src_rgb_factor: BlendFactor::Zero,
@@ -1151,9 +1142,63 @@ impl BlendModeExt for BlendMode {
                     ..BlendState::default()
                 }
             }
+            BlendMode::SrcOver => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::One,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                }
+            }
+            BlendMode::DestOver => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_rgb_factor: BlendFactor::DestAlpha,
+                    src_alpha_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_alpha_factor: BlendFactor::One,
+                    ..BlendState::default()
+                }
+            }
+            BlendMode::DestOut => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::Zero,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::Zero,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                }
+            }
+            BlendMode::SrcAtop => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::DestAlpha,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::DestAlpha,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                }
+            }
+            BlendMode::Xor => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                }
+            }
+            BlendMode::Lighter => {
+                BlendState {
+                    src_rgb_factor: BlendFactor::One,
+                    dest_rgb_factor: BlendFactor::One,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::One,
+                    ..BlendState::default()
+                }
+            }
             BlendMode::Lighten => {
                 BlendState {
-                    src_rgb_factor: BlendFactor::SrcAlpha,
+                    src_rgb_factor: BlendFactor::One,
                     dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
                     src_alpha_factor: BlendFactor::One,
                     dest_alpha_factor: BlendFactor::One,
@@ -1162,7 +1207,7 @@ impl BlendModeExt for BlendMode {
             }
             BlendMode::Darken => {
                 BlendState {
-                    src_rgb_factor: BlendFactor::SrcAlpha,
+                    src_rgb_factor: BlendFactor::One,
                     dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
                     src_alpha_factor: BlendFactor::One,
                     dest_alpha_factor: BlendFactor::One,

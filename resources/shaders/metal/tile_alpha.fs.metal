@@ -28,7 +28,10 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     main0_out out = {};
     float coverage = spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord).x;
     float4 color = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
-    out.oFragColor = float4(color.xyz, color.w * coverage);
+    color.w *= coverage;
+    float3 _41 = color.xyz * color.w;
+    color = float4(_41.x, _41.y, _41.z, color.w);
+    out.oFragColor = color;
     return out;
 }
 

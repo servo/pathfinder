@@ -240,7 +240,7 @@ impl BuiltSVG {
                                            style,
                                            state.clip_path,
                                            fill_rule,
-                                           BlendMode::SourceOver,
+                                           BlendMode::SrcOver,
                                            name));
     }
 }

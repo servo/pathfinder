@@ -524,6 +524,11 @@ pub enum LineJoin {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CompositeOperation {
     SourceOver,
+    DestinationOver,
+    DestinationOut,
+    SourceAtop,
+    Xor,
+    Lighter,
     Lighten,
     Darken,
 }
@@ -531,7 +536,12 @@ pub enum CompositeOperation {
 impl CompositeOperation {
     fn to_blend_mode(self) -> BlendMode {
         match self {
-            CompositeOperation::SourceOver => BlendMode::SourceOver,
+            CompositeOperation::SourceOver => BlendMode::SrcOver,
+            CompositeOperation::DestinationOver => BlendMode::DestOver,
+            CompositeOperation::DestinationOut => BlendMode::DestOut,
+            CompositeOperation::SourceAtop => BlendMode::SrcAtop,
+            CompositeOperation::Xor => BlendMode::Xor,
+            CompositeOperation::Lighter => BlendMode::Lighter,
             CompositeOperation::Lighten => BlendMode::Lighten,
             CompositeOperation::Darken => BlendMode::Darken,
         }

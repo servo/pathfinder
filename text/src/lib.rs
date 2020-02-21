@@ -82,7 +82,7 @@ impl SceneExt for Scene {
                                      paint_id,
                                      None,
                                      FillRule::Winding,
-                                     BlendMode::SourceOver,
+                                     BlendMode::SrcOver,
                                      String::new()));
 
         Ok(())

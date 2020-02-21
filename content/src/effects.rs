@@ -58,14 +58,19 @@ pub enum Filter {
 #[derive(Clone, Copy, Debug)]
 pub enum CompositeOp {
     /// The default.
-    SourceOver,
+    SrcOver,
 }
 
 /// Blend modes that can be applied to individual paths without creating layers for them.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlendMode {
-    SourceOver,
     Clear,
+    SrcOver,
+    DestOver,
+    DestOut,
+    SrcAtop,
+    Xor,
+    Lighter,
     Lighten,
     Darken,
 }
@@ -76,25 +81,31 @@ pub struct DefringingKernel(pub [f32; 4]);
 impl Default for CompositeOp {
     #[inline]
     fn default() -> CompositeOp {
-        CompositeOp::SourceOver
+        CompositeOp::SrcOver
     }
 }
 
 impl Default for BlendMode {
     #[inline]
     fn default() -> BlendMode {
-        BlendMode::SourceOver
+        BlendMode::SrcOver
     }
 }
 
 impl BlendMode {
     /// Whether the backdrop is irrelevant when applying this blend mode (i.e. destination blend
-    /// factor is zero).
+    /// factor is zero when source alpha is one).
     #[inline]
     pub fn occludes_backdrop(self) -> bool {
         match self {
-            BlendMode::SourceOver | BlendMode::Clear => true,
-            BlendMode::Lighten | BlendMode::Darken => false,
+            BlendMode::SrcOver | BlendMode::Clear => true,
+            BlendMode::DestOver |
+            BlendMode::DestOut |
+            BlendMode::SrcAtop |
+            BlendMode::Xor |
+            BlendMode::Lighter |
+            BlendMode::Lighten |
+            BlendMode::Darken => false,
         }
     }
 }

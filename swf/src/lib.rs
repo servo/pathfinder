@@ -201,7 +201,7 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
                     paint_id,
                     None,
                     FillRule::EvenOdd,
-                    BlendMode::SourceOver,
+                    BlendMode::SrcOver,
                     String::new()
                 ));
             }

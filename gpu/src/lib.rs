@@ -226,6 +226,8 @@ pub enum BlendFactor {
     One,
     SrcAlpha,
     OneMinusSrcAlpha,
+    DestAlpha,
+    OneMinusDestAlpha,
     DestColor,
 }
 
