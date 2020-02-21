@@ -168,6 +168,7 @@ impl<'a> SceneBuilder<'a> {
                                    path_index as u16,
                                    TilingPathInfo::Draw {
             paint_metadata: &paint_metadata[paint_id.0 as usize],
+            blend_mode: path_object.blend_mode(),
             built_clip_path,
         });
 

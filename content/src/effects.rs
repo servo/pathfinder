@@ -84,3 +84,14 @@ impl Default for BlendMode {
         BlendMode::SourceOver
     }
 }
+
+impl BlendMode {
+    /// Whether the backdrop is irrelevant when applying this blend mode (i.e. destination blend
+    /// factor is zero).
+    #[inline]
+    pub fn occludes_backdrop(self) -> bool {
+        match self {
+            BlendMode::SourceOver | BlendMode::Clear => true,
+        }
+    }
+}

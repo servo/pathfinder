@@ -80,6 +80,11 @@ where
     paint_texture: Option<D::Texture>,
     layer_framebuffer_stack: Vec<LayerFramebufferInfo<D>>,
 
+    // This is a dummy texture consisting solely of a single `rgba(0, 0, 0, 255)` texel. It serves
+    // as the paint texture when drawing alpha tiles with the Clear blend mode. If this weren't
+    // used, then the transparent black paint would zero out the alpha mask.
+    clear_paint_texture: D::Texture,
+
     // Filter shaders
     filter_basic_program: FilterBasicProgram<D>,
     filter_basic_vertex_array: FilterBasicVertexArray<D>,
@@ -211,6 +216,11 @@ where
             device.create_texture(TextureFormat::R8, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
+        let clear_paint_texture =
+            device.create_texture_from_data(TextureFormat::RGBA8,
+                                            Vector2I::splat(1),
+                                            TextureDataRef::U8(&[0, 0, 0, 255]));
+
         let window_size = dest_framebuffer.window_size(&device);
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
@@ -238,6 +248,7 @@ where
             mask_framebuffer,
             paint_texture: None,
             layer_framebuffer_stack: vec![],
+            clear_paint_texture,
 
             filter_basic_program,
             filter_basic_vertex_array,
@@ -610,7 +621,15 @@ where
                                           MASK_FRAMEBUFFER_HEIGHT as f32))),
         ];
 
-        let paint_texture = self.paint_texture.as_ref().unwrap();
+        let paint_texture = match blend_mode {
+            BlendMode::Clear => {
+                // Use a special dummy paint texture containing `rgba(0, 0, 0, 255)` so that the
+                // transparent black paint color doesn't zero out the mask.
+                &self.clear_paint_texture
+            }
+            _ => self.paint_texture.as_ref().unwrap(),
+        };
+
         textures.push(paint_texture);
         uniforms.push((&self.alpha_tile_program.paint_texture_uniform,
                         UniformData::TextureUnit(1)));

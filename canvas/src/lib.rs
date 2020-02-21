@@ -99,7 +99,7 @@ impl CanvasRenderingContext2D {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
-        let paint = Paint::black();
+        let paint = Paint::transparent_black();
         let paint = self.current_state.resolve_paint(&paint);
         let paint_id = self.scene.push_paint(&paint);
 

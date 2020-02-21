@@ -11,6 +11,7 @@
 use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder, SolidTile};
 use crate::gpu_data::TileObjectPrimitive;
 use crate::paint::PaintMetadata;
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
@@ -42,7 +43,11 @@ pub(crate) struct Tiler<'a> {
 #[derive(Clone, Copy)]
 pub(crate) enum TilingPathInfo<'a> {
     Clip,
-    Draw { paint_metadata: &'a PaintMetadata, built_clip_path: Option<&'a BuiltPath> },
+    Draw {
+        paint_metadata: &'a PaintMetadata,
+        blend_mode: BlendMode,
+        built_clip_path: Option<&'a BuiltPath>,
+    },
 }
 
 impl<'a> Tiler<'a> {
@@ -122,10 +127,10 @@ impl<'a> Tiler<'a> {
     }
 
     fn pack_and_cull_draw_path(&mut self) {
-        let (paint_metadata, built_clip_path) = match self.path_info {
+        let (paint_metadata, blend_mode, built_clip_path) = match self.path_info {
             TilingPathInfo::Clip => unreachable!(),
-            TilingPathInfo::Draw { paint_metadata, built_clip_path } => {
-                (paint_metadata, built_clip_path)
+            TilingPathInfo::Draw { paint_metadata, blend_mode, built_clip_path } => {
+                (paint_metadata, blend_mode, built_clip_path)
             }
         };
 
@@ -174,8 +179,9 @@ impl<'a> Tiler<'a> {
                     (FillRule::EvenOdd, _) => {}
                 }
 
-                // Next, if this is a solid tile, record that fact and stop here.
-                if paint_metadata.is_opaque {
+                // Next, if this is a solid tile that completely occludes the background, record
+                // that fact and stop here.
+                if paint_metadata.is_opaque && blend_mode.occludes_backdrop() {
                     self.object_builder.built_path.solid_tiles.push(SolidTile::new(tile_coords));
                     continue;
                 }
