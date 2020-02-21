@@ -533,12 +533,12 @@ fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut mouse_position = Vector2F::default();
     let start_time = Instant::now();
+    let font_context = CanvasFontContext::from_system_source();
 
     // Enter the main loop.
     loop {
         // Make a canvas.
-        let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::from_system_source(),
-                                                       window_size.to_f32());
+        let mut canvas = CanvasRenderingContext2D::new(font_context.clone(), window_size.to_f32());
 
         // Render the demo.
         let time = (Instant::now() - start_time).as_secs_f32();

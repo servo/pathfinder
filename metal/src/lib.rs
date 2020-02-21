@@ -433,8 +433,14 @@ impl Device for MetalDevice {
         }
     }
 
+    #[inline]
     fn framebuffer_texture<'f>(&self, framebuffer: &'f MetalFramebuffer) -> &'f MetalTexture {
         &framebuffer.0
+    }
+
+    #[inline]
+    fn destroy_framebuffer(&self, framebuffer: MetalFramebuffer) -> MetalTexture {
+        framebuffer.0
     }
 
     fn texture_format(&self, texture: &MetalTexture) -> TextureFormat {

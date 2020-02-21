@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::allocator::{TextureAllocator, TextureLocation};
-use crate::gpu_data::PaintData;
+use crate::gpu_data::{PaintData, PaintPageData};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
@@ -21,8 +21,6 @@ use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
-
-const INITIAL_PAINT_TEXTURE_LENGTH: u32 = 1024;
 
 // The size of a gradient tile.
 //
@@ -174,6 +172,8 @@ pub struct PaintInfo {
 // TODO(pcwalton): Add clamp/repeat options.
 #[derive(Debug)]
 pub struct PaintMetadata {
+    /// The index of the texture page.
+    pub tex_page: u32,
     /// The rectangle within the texture atlas.
     pub tex_rect: RectI,
     /// The transform to apply to screen coordinates to translate them into UVs.
@@ -196,7 +196,7 @@ impl Palette {
     }
 
     pub fn build_paint_info(&self, view_box_size: Vector2I) -> PaintInfo {
-        let mut allocator = TextureAllocator::new(INITIAL_PAINT_TEXTURE_LENGTH);
+        let mut allocator = TextureAllocator::new();
         let mut metadata = vec![];
 
         // Assign paint locations.
@@ -210,15 +210,14 @@ impl Palette {
                     // 2. Choose an optimal size for the gradient that minimizes memory usage while
                     //    retaining quality.
                     allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32))
-                             .expect("Failed to allocate space for the gradient!")
                 }
                 Paint::Pattern(ref pattern) => {
                     allocator.allocate(pattern.image.size())
-                             .expect("Failed to allocate space for the image!")
                 }
             };
 
             metadata.push(PaintMetadata {
+                tex_page: tex_location.page,
                 tex_rect: tex_location.rect,
                 tex_transform: Transform2F::default(),
                 is_opaque: paint.is_opaque(),
@@ -226,25 +225,23 @@ impl Palette {
         }
 
         // Calculate texture transforms.
-        let texture_length = allocator.size();
-        let texture_scale = allocator.scale();
         for (paint, metadata) in self.paints.iter().zip(metadata.iter_mut()) {
+            let texture_scale = allocator.page_scale(metadata.tex_page);
             metadata.tex_transform = match paint {
                 Paint::Color(_) => {
-                    let vector = rect_to_inset_uv(metadata.tex_rect, texture_length).origin();
+                    let vector = rect_to_inset_uv(metadata.tex_rect, texture_scale).origin();
                     Transform2F { matrix: Matrix2x2F(F32x4::default()), vector }
                 }
                 Paint::Gradient(_) => {
-                    let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_length).origin();
-                    let gradient_tile_scale = GRADIENT_TILE_LENGTH as f32 * texture_scale;
+                    let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_scale).origin();
+                    let gradient_tile_scale = texture_scale.scale(GRADIENT_TILE_LENGTH as f32);
                     Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(Vector2F::splat(gradient_tile_scale) /
-                                                view_box_size.to_f32())
+                        Transform2F::from_scale(gradient_tile_scale / view_box_size.to_f32())
                 }
                 Paint::Pattern(_) => {
-                    let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_length).origin();
+                    let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_scale).origin();
                     Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_uniform_scale(texture_scale)
+                        Transform2F::from_scale(texture_scale)
                 }
             }
         }
@@ -252,28 +249,40 @@ impl Palette {
         // Render the actual texels.
         //
         // TODO(pcwalton): This is slow. Do more on GPU.
-        let texture_area = texture_length as usize * texture_length as usize;
-        let mut texels = vec![ColorU::default(); texture_area];
+        let mut paint_data = PaintData { pages: vec![] }; 
+        for page_index in 0..allocator.page_count() {
+            let page_size = allocator.page_size(page_index);
+            let page_area = page_size.x() as usize * page_size.y() as usize;
+            let texels = vec![ColorU::default(); page_area];
+            paint_data.pages.push(PaintPageData { size: page_size, texels });
+        }
+
         for (paint, metadata) in self.paints.iter().zip(metadata.iter()) {
+            let tex_page = metadata.tex_page;
+            let PaintPageData {
+                size: page_size,
+                ref mut texels,
+            } = paint_data.pages[tex_page as usize];
+            let page_scale = allocator.page_scale(tex_page);
             match paint {
                 Paint::Color(color) => {
-                    put_pixel(metadata.tex_rect.origin(), *color, &mut texels, texture_length);
+                    put_pixel(metadata.tex_rect.origin(), *color, texels, page_size);
                 }
                 Paint::Gradient(ref gradient) => {
                     self.render_gradient(gradient,
                                          metadata.tex_rect,
                                          &metadata.tex_transform,
-                                         &mut texels,
-                                         texture_length);
+                                         texels,
+                                         page_size,
+                                         page_scale);
                 }
                 Paint::Pattern(ref pattern) => {
-                    self.render_pattern(pattern, metadata.tex_rect, &mut texels, texture_length);
+                    self.render_pattern(pattern, metadata.tex_rect, texels, page_size);
                 }
             }
         }
 
-        let size = Vector2I::splat(texture_length as i32);
-        return PaintInfo { data: PaintData { size, texels }, metadata };
+        return PaintInfo { data: paint_data, metadata };
     }
 
     // TODO(pcwalton): This is slow. Do on GPU instead.
@@ -282,7 +291,8 @@ impl Palette {
                        tex_rect: RectI,
                        tex_transform: &Transform2F,
                        texels: &mut [ColorU],
-                       texture_length: u32) {
+                       tex_size: Vector2I,
+                       tex_scale: Vector2F) {
         match *gradient.geometry() {
             GradientGeometry::Linear(gradient_line) => {
                 // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
@@ -294,13 +304,12 @@ impl Palette {
                 for y in 0..(GRADIENT_TILE_LENGTH as i32) {
                     for x in 0..(GRADIENT_TILE_LENGTH as i32) {
                         let point = tex_rect.origin() + Vector2I::new(x, y);
-                        let vector = point.to_f32().scale(1.0 / texture_length as f32) -
-                            gradient_line.from();
+                        let vector = point.to_f32().scale_xy(tex_scale) - gradient_line.from();
 
                         let mut t = gradient_line.vector().projection_coefficient(vector);
                         t = util::clamp(t, 0.0, 1.0);
 
-                        put_pixel(point, gradient.sample(t), texels, texture_length);
+                        put_pixel(point, gradient.sample(t), texels, tex_size);
                     }
                 }
             }
@@ -319,13 +328,12 @@ impl Palette {
                 for y in 0..(GRADIENT_TILE_LENGTH as i32) {
                     for x in 0..(GRADIENT_TILE_LENGTH as i32) {
                         let point = tex_rect.origin() + Vector2I::new(x, y);
-                        let vector = tex_transform_inv *
-                            point.to_f32().scale(1.0 / texture_length as f32);
+                        let vector = tex_transform_inv * point.to_f32().scale_xy(tex_scale);
 
                         let t = util::clamp((vector - center).length(), start_radius, end_radius) /
                             (end_radius - start_radius);
 
-                        put_pixel(point, gradient.sample(t), texels, texture_length);
+                        put_pixel(point, gradient.sample(t), texels, tex_size);
                     }
                 }
             }
@@ -336,11 +344,11 @@ impl Palette {
                       pattern: &Pattern,
                       tex_rect: RectI,
                       texels: &mut [ColorU],
-                      texture_length: u32) {
+                      tex_size: Vector2I) {
         let image_size = pattern.image.size();
         for y in 0..image_size.y() {
             let dest_origin = tex_rect.origin() + Vector2I::new(0, y);
-            let dest_start_index = paint_texel_index(dest_origin, texture_length);
+            let dest_start_index = paint_texel_index(dest_origin, tex_size);
             let src_start_index = y as usize * image_size.x() as usize;
             let dest_end_index = dest_start_index + image_size.x() as usize;
             let src_end_index = src_start_index + image_size.x() as usize;
@@ -359,20 +367,20 @@ impl PaintMetadata {
     }
 }
 
-fn paint_texel_index(position: Vector2I, texture_length: u32) -> usize {
-    position.y() as usize * texture_length as usize + position.x() as usize
+fn paint_texel_index(position: Vector2I, tex_size: Vector2I) -> usize {
+    position.y() as usize * tex_size.x() as usize + position.x() as usize
 }
 
-fn put_pixel(position: Vector2I, color: ColorU, texels: &mut [ColorU], texture_length: u32) {
-    texels[paint_texel_index(position, texture_length)] = color
+fn put_pixel(position: Vector2I, color: ColorU, texels: &mut [ColorU], tex_size: Vector2I) {
+    texels[paint_texel_index(position, tex_size)] = color
 }
 
-fn rect_to_uv(rect: RectI, texture_length: u32) -> RectF {
-    rect.to_f32().scale(1.0 / texture_length as f32)
+fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
+    rect.to_f32().scale_xy(texture_scale)
 }
 
-fn rect_to_inset_uv(rect: RectI, texture_length: u32) -> RectF {
-    rect_to_uv(rect, texture_length).contract(Vector2F::splat(0.5 / texture_length as f32))
+fn rect_to_inset_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
+    rect_to_uv(rect, texture_scale).contract(texture_scale.scale(0.5))
 }
 
 // Solid color allocation
@@ -393,8 +401,7 @@ impl SolidColorTileBuilder {
         if self.0.is_none() {
             // TODO(pcwalton): Handle allocation failure gracefully!
             self.0 = Some(SolidColorTileBuilderData {
-                tile_location: allocator.allocate(Vector2I::splat(SOLID_COLOR_TILE_LENGTH as i32))
-                                        .expect("Failed to allocate a solid color tile!"),
+                tile_location: allocator.allocate(Vector2I::splat(SOLID_COLOR_TILE_LENGTH as i32)),
                 next_index: 0,
             });
         }
@@ -405,6 +412,7 @@ impl SolidColorTileBuilder {
             let subtile_origin = Vector2I::new((data.next_index % SOLID_COLOR_TILE_LENGTH) as i32,
                                                (data.next_index / SOLID_COLOR_TILE_LENGTH) as i32);
             location = TextureLocation {
+                page: data.tile_location.page,
                 rect: RectI::new(data.tile_location.rect.origin() + subtile_origin,
                                  Vector2I::splat(1)),
             };

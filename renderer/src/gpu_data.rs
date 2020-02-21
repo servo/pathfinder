@@ -27,15 +27,26 @@ pub enum RenderCommand {
     RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
     PushLayer { effects: Effects },
     PopLayer,
-    DrawAlphaTiles { tiles: Vec<AlphaTile>, blend_mode: BlendMode },
-    DrawSolidTiles(Vec<SolidTileVertex>),
+    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: u32, blend_mode: BlendMode },
+    DrawSolidTiles(SolidTileBatch),
     Finish { build_time: Duration },
 }
 
 #[derive(Clone, Debug)]
 pub struct PaintData {
+    pub pages: Vec<PaintPageData>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PaintPageData {
     pub size: Vector2I,
     pub texels: Vec<ColorU>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SolidTileBatch {
+    pub vertices: Vec<SolidTileVertex>,
+    pub paint_page: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -121,7 +132,7 @@ impl Debug for RenderCommand {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
             RenderCommand::AddPaintData(ref paint_data) => {
-                write!(formatter, "AddPaintData({}x{})", paint_data.size.x(), paint_data.size.y())
+                write!(formatter, "AddPaintData(x{})", paint_data.pages.len())
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
@@ -130,11 +141,18 @@ impl Debug for RenderCommand {
             }
             RenderCommand::PushLayer { .. } => write!(formatter, "PushLayer"),
             RenderCommand::PopLayer => write!(formatter, "PopLayer"),
-            RenderCommand::DrawAlphaTiles { ref tiles, blend_mode } => {
-                write!(formatter, "DrawAlphaTiles(x{}, {:?})", tiles.len(), blend_mode)
+            RenderCommand::DrawAlphaTiles { ref tiles, paint_page, blend_mode } => {
+                write!(formatter,
+                       "DrawAlphaTiles(x{}, {}, {:?})",
+                       tiles.len(),
+                       paint_page,
+                       blend_mode)
             }
-            RenderCommand::DrawSolidTiles(ref tiles) => {
-                write!(formatter, "DrawSolidTiles(x{})", tiles.len())
+            RenderCommand::DrawSolidTiles(ref batch) => {
+                write!(formatter,
+                       "DrawSolidTiles(x{}, {})",
+                       batch.vertices.len(),
+                       batch.paint_page)
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

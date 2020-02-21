@@ -450,6 +450,17 @@ impl Device for GLDevice {
     }
 
     #[inline]
+    fn destroy_framebuffer(&self, framebuffer: Self::Framebuffer) -> Self::Texture {
+        let texture = GLTexture {
+            gl_texture: framebuffer.texture.gl_texture,
+            size: framebuffer.texture.size,
+            format: framebuffer.texture.format,
+        };
+        mem::forget(framebuffer);
+        texture
+    }
+
+    #[inline]
     fn texture_format(&self, texture: &Self::Texture) -> TextureFormat {
         texture.format
     }

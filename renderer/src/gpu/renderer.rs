@@ -44,7 +44,7 @@ static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 pub(crate) const MASK_TILES_ACROSS: u32 = 256;
 pub(crate) const MASK_TILES_DOWN: u32 = 256;
 
-const FRAMEBUFFER_CACHE_SIZE: usize = 8;
+const TEXTURE_CACHE_SIZE: usize = 8;
 
 // FIXME(pcwalton): Shrink this again!
 const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * MASK_TILES_ACROSS as i32;
@@ -77,7 +77,7 @@ where
     fill_vertex_array: FillVertexArray<D>,
     fill_framebuffer: D::Framebuffer,
     mask_framebuffer: D::Framebuffer,
-    paint_texture: Option<D::Texture>,
+    paint_textures: Vec<D::Texture>,
     layer_framebuffer_stack: Vec<LayerFramebufferInfo<D>>,
 
     // This is a dummy texture consisting solely of a single `rgba(0, 0, 0, 255)` texel. It serves
@@ -103,7 +103,7 @@ where
     // Rendering state
     framebuffer_flags: FramebufferFlags,
     buffered_fills: Vec<FillBatchPrimitive>,
-    framebuffer_cache: FramebufferCache<D>,
+    texture_cache: TextureCache<D>,
 
     // Debug
     pub stats: RenderStats,
@@ -246,7 +246,7 @@ where
             fill_vertex_array,
             fill_framebuffer,
             mask_framebuffer,
-            paint_texture: None,
+            paint_textures: vec![],
             layer_framebuffer_stack: vec![],
             clear_paint_texture,
 
@@ -270,7 +270,7 @@ where
 
             framebuffer_flags: FramebufferFlags::empty(),
             buffered_fills: vec![],
-            framebuffer_cache: FramebufferCache::new(),
+            texture_cache: TextureCache::new(),
 
             use_depth: false,
         }
@@ -283,6 +283,7 @@ where
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
+        //println!("{:?}", command);
         match *command {
             RenderCommand::Start { bounding_quad, path_count } => {
                 if self.use_depth {
@@ -303,17 +304,17 @@ where
             }
             RenderCommand::PushLayer { effects } => self.push_layer(effects),
             RenderCommand::PopLayer => self.pop_layer(),
-            RenderCommand::DrawSolidTiles(ref solid_tile_vertices) => {
-                let count = solid_tile_vertices.len() / 4;
+            RenderCommand::DrawSolidTiles(ref batch) => {
+                let count = batch.vertices.len() / 4;
                 self.stats.solid_tile_count += count;
-                self.upload_solid_tiles(solid_tile_vertices);
-                self.draw_solid_tiles(count as u32);
+                self.upload_solid_tiles(&batch.vertices);
+                self.draw_solid_tiles(count as u32, batch.paint_page);
             }
-            RenderCommand::DrawAlphaTiles { tiles: ref alpha_tiles, blend_mode } => {
+            RenderCommand::DrawAlphaTiles { tiles: ref alpha_tiles, paint_page, blend_mode } => {
                 let count = alpha_tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
-                self.draw_alpha_tiles(count as u32, blend_mode);
+                self.draw_alpha_tiles(count as u32, paint_page, blend_mode);
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -403,21 +404,25 @@ where
     }
 
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
-        let paint_size = paint_data.size;
-        let paint_texels = &paint_data.texels;
-
-        match self.paint_texture {
-            Some(ref paint_texture) if self.device.texture_size(paint_texture) == paint_size => {}
-            _ => {
-                let texture = self.device.create_texture(TextureFormat::RGBA8, paint_size);
-                self.paint_texture = Some(texture)
-            }
+        for paint_texture in self.paint_textures.drain(..) {
+            self.texture_cache.release_texture(paint_texture);
         }
 
-        let texels = color::color_slice_to_u8_slice(paint_texels);
-        self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
-                                      RectI::new(Vector2I::default(), paint_size),
-                                      TextureDataRef::U8(texels));
+        for paint_page_data in &paint_data.pages {
+            let paint_size = paint_page_data.size;
+            let paint_texels = &paint_page_data.texels;
+
+            let paint_texture = self.texture_cache.create_texture(&mut self.device,
+                                                                  TextureFormat::RGBA8,
+                                                                  paint_size);
+
+            let texels = color::color_slice_to_u8_slice(paint_texels);
+            self.device.upload_to_texture(&paint_texture,
+                                          RectI::new(Vector2I::default(), paint_size),
+                                          TextureDataRef::U8(texels));
+
+            self.paint_textures.push(paint_texture);
+        }
     }
 
     fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile], fill_rule: FillRule) {
@@ -606,7 +611,7 @@ where
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
     }
 
-    fn draw_alpha_tiles(&mut self, tile_count: u32, blend_mode: BlendMode) {
+    fn draw_alpha_tiles(&mut self, tile_count: u32, paint_page: u32, blend_mode: BlendMode) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
@@ -627,7 +632,7 @@ where
                 // transparent black paint color doesn't zero out the mask.
                 &self.clear_paint_texture
             }
-            _ => self.paint_texture.as_ref().unwrap(),
+            _ => &self.paint_textures[paint_page as usize],
         };
 
         textures.push(paint_texture);
@@ -658,7 +663,7 @@ where
         self.preserve_draw_framebuffer();
     }
 
-    fn draw_solid_tiles(&mut self, tile_count: u32) {
+    fn draw_solid_tiles(&mut self, tile_count: u32, paint_page: u32) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![];
@@ -669,7 +674,7 @@ where
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
 
-        let paint_texture = self.paint_texture.as_ref().unwrap();
+        let paint_texture = &self.paint_textures[paint_page as usize];
         textures.push(paint_texture);
         uniforms.push((&self.solid_tile_program.paint_texture_uniform,
                         UniformData::TextureUnit(0)));
@@ -797,9 +802,11 @@ where
             _ => main_framebuffer_size,
         };
 
-        let framebuffer = self.framebuffer_cache.create_framebuffer(&mut self.device,
-                                                                    TextureFormat::RGBA8,
-                                                                    framebuffer_size);
+        let texture = self.texture_cache.create_texture(&mut self.device,
+                                                        TextureFormat::RGBA8,
+                                                        framebuffer_size);
+        let framebuffer = self.device.create_framebuffer(texture);
+
         self.layer_framebuffer_stack.push(LayerFramebufferInfo {
             framebuffer,
             effects,
@@ -827,7 +834,8 @@ where
 
         self.preserve_draw_framebuffer();
 
-        self.framebuffer_cache.release_framebuffer(layer_framebuffer_info.framebuffer);
+        let texture = self.device.destroy_framebuffer(layer_framebuffer_info.framebuffer);
+        self.texture_cache.release_texture(texture);
     }
 
     fn composite_layer(&self,
@@ -1086,37 +1094,33 @@ bitflags! {
     }
 }
 
-struct FramebufferCache<D> where D: Device {
-    framebuffers: Vec<D::Framebuffer>,
+struct TextureCache<D> where D: Device {
+    textures: Vec<D::Texture>,
 }
 
-impl<D> FramebufferCache<D> where D: Device {
-    fn new() -> FramebufferCache<D> {
-        FramebufferCache { framebuffers: vec![] }
+impl<D> TextureCache<D> where D: Device {
+    fn new() -> TextureCache<D> {
+        TextureCache { textures: vec![] }
     }
 
-    fn create_framebuffer(&mut self, device: &mut D, format: TextureFormat, size: Vector2I)
-                          -> D::Framebuffer {
-        for index in 0..self.framebuffers.len() {
-            {
-                let texture = device.framebuffer_texture(&self.framebuffers[index]);
-                if device.texture_size(texture) != size ||
-                        device.texture_format(texture) != format {
-                    continue;
-                }
+    fn create_texture(&mut self, device: &mut D, format: TextureFormat, size: Vector2I)
+                      -> D::Texture {
+        for index in 0..self.textures.len() {
+            if device.texture_size(&self.textures[index]) != size ||
+                    device.texture_format(&self.textures[index]) != format {
+                continue;
             }
-            return self.framebuffers.remove(index);
+            return self.textures.remove(index);
         }
 
-        let texture = device.create_texture(format, size);
-        device.create_framebuffer(texture)
+        device.create_texture(format, size)
     }
 
-    fn release_framebuffer(&mut self, framebuffer: D::Framebuffer) {
-        if self.framebuffers.len() == FRAMEBUFFER_CACHE_SIZE {
-            self.framebuffers.pop();
+    fn release_texture(&mut self, texture: D::Texture) {
+        if self.textures.len() == TEXTURE_CACHE_SIZE {
+            self.textures.pop();
         }
-        self.framebuffers.insert(0, framebuffer);
+        self.textures.insert(0, texture);
     }
 }
 
