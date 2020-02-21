@@ -18,7 +18,7 @@ use web_sys::WebGl2RenderingContext as WebGl;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{RenderTarget, BlendFunc, BlendOp, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{RenderTarget, BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};
 use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
@@ -215,29 +215,22 @@ impl WebGlDevice {
                 self.context.blend_equation(func);
                 self.ck();
 
-                match blend.func {
-                    BlendFunc::RGBOneAlphaOne => {
-                        self.context.blend_func(WebGl::ONE, WebGl::ONE);
-                    }
-                    BlendFunc::RGBOneAlphaOneMinusSrcAlpha => {
-                        self.context.blend_equation(WebGl::FUNC_ADD);
-                        self.context.blend_func_separate(
-                            WebGl::ONE,
-                            WebGl::ONE_MINUS_SRC_ALPHA,
-                            WebGl::ONE,
-                            WebGl::ONE,
-                        );
-                    }
-                    BlendFunc::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
-                        self.context.blend_equation(WebGl::FUNC_ADD);
-                        self.context.blend_func_separate(
-                            WebGl::SRC_ALPHA,
-                            WebGl::ONE_MINUS_SRC_ALPHA,
-                            WebGl::ONE,
-                            WebGl::ONE,
-                        );
-                    }
-                }
+                let func = |f| match f {
+                    BlendFactor::Zero => WebGl::ZERO,
+                    BlendFactor::One => WebGl::ONE,
+                    BlendFactor::SrcAlpha => WebGl::SRC_ALPHA,
+                    BlendFactor::OneMinusSrcAlpha => WebGl::ONE_MINUS_SRC_ALPHA,
+                    BlendFactor::DestAlpha => WebGl::DST_ALPHA,
+                    BlendFactor::OneMinusDestAlpha => WebGl::ONE_MINUS_DST_ALPHA,
+                    BlendFactor::DestColor => WebGl::DST_COLOR,
+                };
+
+                self.context.blend_func_separate(
+                    func(blend.src_rgb_factor),
+                    func(blend.dest_rgb_factor),
+                    func(blend.src_alpha_factor),
+                    func(blend.dest_alpha_factor)
+                );
                 self.context.enable(WebGl::BLEND);
                 self.ck();
             }
@@ -459,6 +452,11 @@ impl Device for WebGlDevice {
 
         self.set_texture_parameters(&texture);
         texture
+    }
+
+    #[inline]
+    fn texture_format(&self, texture: &Self::Texture) -> TextureFormat {
+        texture.format
     }
 
     fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind) -> WebGlShader {
