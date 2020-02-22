@@ -17,10 +17,11 @@ use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_content::outline::Outline;
+use pathfinder_content::pattern::RenderTargetId;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_content::outline::Outline;
 
 #[derive(Clone)]
 pub struct Scene {
@@ -70,12 +71,18 @@ impl Scene {
         clip_path_id
     }
 
-    pub fn push_layer(&mut self, effects: Effects) {
-        self.display_list.push(DisplayItem::PushLayer { effects });
+    pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
+        let render_target_id = self.palette.push_render_target(render_target);
+        self.display_list.push(DisplayItem::PushRenderTarget(render_target_id));
+        render_target_id
     }
 
-    pub fn pop_layer(&mut self) {
-        self.display_list.push(DisplayItem::PopLayer);
+    pub fn pop_render_target(&mut self) {
+        self.display_list.push(DisplayItem::PopRenderTarget);
+    }
+
+    pub fn draw_render_target(&mut self, render_target: RenderTargetId, effects: Effects) {
+        self.display_list.push(DisplayItem::DrawRenderTarget { render_target, effects });
     }
 
     #[inline]
@@ -233,10 +240,29 @@ pub struct ClipPath {
 pub struct ClipPathId(pub u32);
 
 #[derive(Clone, Debug)]
+pub struct RenderTarget {
+    size: Vector2I,
+    name: String,
+}
+
+/// Drawing commands.
+#[derive(Clone, Debug)]
 pub enum DisplayItem {
+    /// Draws paths to the render target on top of the stack.
     DrawPaths { start_index: u32, end_index: u32 },
-    PushLayer { effects: Effects },
-    PopLayer,
+
+    /// Draws an entire render target to the render target on top of the stack.
+    ///
+    /// FIXME(pcwalton): This draws the entire render target, so it's inefficient. We should get
+    /// rid of this command and transition all uses to `DrawPaths`. The reason it exists is that we
+    /// don't have logic to create tiles for blur bounding regions yet.
+    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+
+    /// Pushes a render target onto the top of the stack.
+    PushRenderTarget(RenderTargetId),
+
+    /// Pops a render target from the stack.
+    PopRenderTarget,
 }
 
 impl DrawPath {
@@ -291,5 +317,17 @@ impl ClipPath {
     #[inline]
     pub(crate) fn fill_rule(&self) -> FillRule {
         self.fill_rule
+    }
+}
+
+impl RenderTarget {
+    #[inline]
+    pub fn new(size: Vector2I, name: String) -> RenderTarget {
+        RenderTarget { size, name }
+    }
+
+    #[inline]
+    pub fn size(&self) -> Vector2I {
+        self.size
     }
 }

@@ -13,7 +13,7 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::MASK_TILES_ACROSS;
 use crate::gpu_data::{AlphaTile, AlphaTileVertex, FillBatchPrimitive, MaskTile, MaskTileVertex};
-use crate::gpu_data::{RenderCommand, SolidTileBatch, TileObjectPrimitive};
+use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileBatch, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
@@ -22,6 +22,7 @@ use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
+use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -52,7 +53,7 @@ pub(crate) struct ObjectBuilder {
 struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
-    paint_page: u32,
+    paint_page: PaintPageId,
 }
 
 #[derive(Debug)]
@@ -213,10 +214,11 @@ impl<'a> SceneBuilder<'a> {
         let mut layer_z_buffers_stack = vec![first_z_buffer];
 
         for display_item in &self.scene.display_list {
-            // Just pass through `PushLayer` and `PopLayer` commands.
+            // Pass all commands except `DrawPaths` through.
             let (start_draw_path_index, end_draw_path_index) = match *display_item {
-                DisplayItem::PushLayer { effects } => {
-                    culled_tiles.display_list.push(CulledDisplayItem::PushLayer { effects });
+                DisplayItem::PushRenderTarget(render_target_id) => {
+                    culled_tiles.display_list
+                                .push(CulledDisplayItem::PushRenderTarget(render_target_id));
 
                     let z_buffer = remaining_layer_z_buffers.pop().unwrap();
                     let solid_tiles = z_buffer.build_solid_tiles(&self.scene.paths,
@@ -227,9 +229,16 @@ impl<'a> SceneBuilder<'a> {
                     layer_z_buffers_stack.push(z_buffer);
                     continue;
                 }
-                DisplayItem::PopLayer => {
-                    culled_tiles.display_list.push(CulledDisplayItem::PopLayer);
+                DisplayItem::PopRenderTarget => {
+                    culled_tiles.display_list.push(CulledDisplayItem::PopRenderTarget);
                     layer_z_buffers_stack.pop();
+                    continue;
+                }
+                DisplayItem::DrawRenderTarget { render_target, effects } => {
+                    culled_tiles.display_list.push(CulledDisplayItem::DrawRenderTarget {
+                        render_target,
+                        effects,
+                    });
                     continue;
                 }
                 DisplayItem::DrawPaths { start_index, end_index } => (start_index, end_index),
@@ -291,11 +300,11 @@ impl<'a> SceneBuilder<'a> {
         // Create Z-buffers.
         for display_item in &self.scene.display_list {
             match *display_item {
-                DisplayItem::PushLayer { .. } => {
+                DisplayItem::PushRenderTarget { .. } => {
                     z_buffer_index_stack.push(z_buffers.len());
                     z_buffers.push(ZBuffer::new(effective_view_box));
                 }
-                DisplayItem::PopLayer => {
+                DisplayItem::PopRenderTarget => {
                     z_buffer_index_stack.pop();
                 }
                 DisplayItem::DrawPaths { start_index, end_index } => {
@@ -305,6 +314,9 @@ impl<'a> SceneBuilder<'a> {
                             built_draw_paths[start_index..end_index].iter().enumerate() {
                         z_buffer.update(&built_draw_path.path.solid_tiles, path_index as u32);
                     }
+                }
+                DisplayItem::DrawRenderTarget { .. } => {
+                    // FIXME(pcwalton): Not great that this doesn't participate in Z-buffering!
                 }
             }
         }
@@ -339,10 +351,15 @@ impl<'a> SceneBuilder<'a> {
                         blend_mode,
                     })
                 }
-                CulledDisplayItem::PushLayer { effects } => {
-                    self.listener.send(RenderCommand::PushLayer { effects })
+                CulledDisplayItem::DrawRenderTarget { render_target, effects } => {
+                    self.listener.send(RenderCommand::DrawRenderTarget { render_target, effects })
                 }
-                CulledDisplayItem::PopLayer => self.listener.send(RenderCommand::PopLayer),
+                CulledDisplayItem::PushRenderTarget(render_target_id) => {
+                    self.listener.send(RenderCommand::PushRenderTarget(render_target_id))
+                }
+                CulledDisplayItem::PopRenderTarget => {
+                    self.listener.send(RenderCommand::PopRenderTarget)
+                }
             }
         }
     }
@@ -389,9 +406,10 @@ struct CulledTiles {
 
 enum CulledDisplayItem {
     DrawSolidTiles(SolidTileBatch),
-    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: u32, blend_mode: BlendMode },
-    PushLayer { effects: Effects },
-    PopLayer,
+    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: PaintPageId, blend_mode: BlendMode },
+    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+    PushRenderTarget(RenderTargetId),
+    PopRenderTarget,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

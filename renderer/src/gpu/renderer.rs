@@ -16,12 +16,13 @@ use crate::gpu::shaders::{FilterTextVertexArray, MAX_FILLS_PER_BATCH, MaskTilePr
 use crate::gpu::shaders::{MaskTileVertexArray, ReprojectionProgram, ReprojectionVertexArray};
 use crate::gpu::shaders::{SolidTileProgram, SolidTileVertexArray};
 use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
-use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData};
-use crate::gpu_data::{RenderCommand, SolidTileVertex};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
+use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileVertex};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF};
 use pathfinder_content::effects::{BlendMode, CompositeOp, DefringingKernel, Effects, Filter};
 use pathfinder_content::fill::FillRule;
+use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
@@ -77,8 +78,9 @@ where
     fill_vertex_array: FillVertexArray<D>,
     fill_framebuffer: D::Framebuffer,
     mask_framebuffer: D::Framebuffer,
-    paint_textures: Vec<D::Texture>,
-    layer_framebuffer_stack: Vec<LayerFramebufferInfo<D>>,
+    paint_textures: Vec<PaintTexture<D>>,
+    render_targets: Vec<RenderTargetInfo<D>>,
+    render_target_stack: Vec<RenderTargetId>,
 
     // This is a dummy texture consisting solely of a single `rgba(0, 0, 0, 255)` texel. It serves
     // as the paint texture when drawing alpha tiles with the Clear blend mode. If this weren't
@@ -247,7 +249,8 @@ where
             fill_framebuffer,
             mask_framebuffer,
             paint_textures: vec![],
-            layer_framebuffer_stack: vec![],
+            render_targets: vec![],
+            render_target_stack: vec![],
             clear_paint_texture,
 
             filter_basic_program,
@@ -283,7 +286,6 @@ where
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
-        //println!("{:?}", command);
         match *command {
             RenderCommand::Start { bounding_quad, path_count } => {
                 if self.use_depth {
@@ -302,8 +304,13 @@ where
                 self.upload_mask_tiles(mask_tiles, fill_rule);
                 self.draw_mask_tiles(count as u32, fill_rule);
             }
-            RenderCommand::PushLayer { effects } => self.push_layer(effects),
-            RenderCommand::PopLayer => self.pop_layer(),
+            RenderCommand::PushRenderTarget(render_target_id) => {
+                self.push_render_target(render_target_id)
+            }
+            RenderCommand::PopRenderTarget => self.pop_render_target(),
+            RenderCommand::DrawRenderTarget { render_target, effects } => {
+                self.draw_entire_render_target(render_target, effects)
+            }
             RenderCommand::DrawSolidTiles(ref batch) => {
                 let count = batch.vertices.len() / 4;
                 self.stats.solid_tile_count += count;
@@ -404,24 +411,47 @@ where
     }
 
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
+        // Clear out old paint textures.
         for paint_texture in self.paint_textures.drain(..) {
-            self.texture_cache.release_texture(paint_texture);
+            match paint_texture {
+                PaintTexture::Texture(paint_texture) => {
+                    self.texture_cache.release_texture(paint_texture);
+                }
+                PaintTexture::RenderTarget(_) => {}
+            }
         }
 
+        // Clear out old render targets.
+        for render_target in self.render_targets.drain(..) {
+            let texture = self.device.destroy_framebuffer(render_target.framebuffer);
+            self.texture_cache.release_texture(texture);
+        }
+
+        // Build up new paint textures and render targets.
         for paint_page_data in &paint_data.pages {
             let paint_size = paint_page_data.size;
-            let paint_texels = &paint_page_data.texels;
-
             let paint_texture = self.texture_cache.create_texture(&mut self.device,
                                                                   TextureFormat::RGBA8,
                                                                   paint_size);
+            match paint_page_data.contents {
+                PaintPageContents::RenderTarget(render_target_id) => {
+                    let framebuffer = self.device.create_framebuffer(paint_texture);
+                    self.render_targets.push(RenderTargetInfo {
+                        framebuffer,
+                        must_preserve_contents: false
+                    });
 
-            let texels = color::color_slice_to_u8_slice(paint_texels);
-            self.device.upload_to_texture(&paint_texture,
-                                          RectI::new(Vector2I::default(), paint_size),
-                                          TextureDataRef::U8(texels));
+                    self.paint_textures.push(PaintTexture::RenderTarget(render_target_id));
+                }
+                PaintPageContents::Texels(ref paint_texels) => {
+                    let texels = color::color_slice_to_u8_slice(paint_texels);
+                    self.device.upload_to_texture(&paint_texture,
+                                                  RectI::new(Vector2I::default(), paint_size),
+                                                  TextureDataRef::U8(texels));
 
-            self.paint_textures.push(paint_texture);
+                    self.paint_textures.push(PaintTexture::Texture(paint_texture));
+                }
+            }
         }
     }
 
@@ -611,7 +641,10 @@ where
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
     }
 
-    fn draw_alpha_tiles(&mut self, tile_count: u32, paint_page: u32, blend_mode: BlendMode) {
+    fn draw_alpha_tiles(&mut self,
+                        tile_count: u32,
+                        paint_page: PaintPageId,
+                        blend_mode: BlendMode) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
@@ -632,7 +665,7 @@ where
                 // transparent black paint color doesn't zero out the mask.
                 &self.clear_paint_texture
             }
-            _ => &self.paint_textures[paint_page as usize],
+            _ => self.paint_texture(paint_page),
         };
 
         textures.push(paint_texture);
@@ -663,7 +696,7 @@ where
         self.preserve_draw_framebuffer();
     }
 
-    fn draw_solid_tiles(&mut self, tile_count: u32, paint_page: u32) {
+    fn draw_solid_tiles(&mut self, tile_count: u32, paint_page: PaintPageId) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![];
@@ -674,7 +707,7 @@ where
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
 
-        let paint_texture = &self.paint_textures[paint_page as usize];
+        let paint_texture = self.paint_texture(paint_page);
         textures.push(paint_texture);
         uniforms.push((&self.solid_tile_program.paint_texture_uniform,
                         UniformData::TextureUnit(0)));
@@ -778,9 +811,10 @@ where
     }
 
     pub fn draw_render_target(&self) -> RenderTarget<D> {
-        match self.layer_framebuffer_stack.last() {
-            Some(ref layer_framebuffer_info) => {
-                RenderTarget::Framebuffer(&layer_framebuffer_info.framebuffer)
+        match self.render_target_stack.last() {
+            Some(&render_target_id) => {
+                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
+                RenderTarget::Framebuffer(framebuffer)
             }
             None => {
                 match self.dest_framebuffer {
@@ -793,56 +827,37 @@ where
         }
     }
 
-    fn push_layer(&mut self, effects: Effects) {
-        let main_framebuffer_size = self.main_viewport().size();
-        let framebuffer_size = match effects.filter {
-            Filter::Text { defringing_kernel: Some(_), .. } => {
-                main_framebuffer_size.scale_xy(Vector2I::new(3, 1))
-            }
-            _ => main_framebuffer_size,
-        };
-
-        let texture = self.texture_cache.create_texture(&mut self.device,
-                                                        TextureFormat::RGBA8,
-                                                        framebuffer_size);
-        let framebuffer = self.device.create_framebuffer(texture);
-
-        self.layer_framebuffer_stack.push(LayerFramebufferInfo {
-            framebuffer,
-            effects,
-            must_preserve_contents: false,
-        });
+    fn push_render_target(&mut self, render_target_id: RenderTargetId) {
+        self.render_target_stack.push(render_target_id);
     }
 
-    fn pop_layer(&mut self) {
-        let layer_framebuffer_info = self.layer_framebuffer_stack   
-                                         .pop()
-                                         .expect("Where's the layer?");
+    fn pop_render_target(&mut self) {
+        self.render_target_stack.pop().expect("Render target stack underflow!");
+    }
 
-        match layer_framebuffer_info.effects.filter {
+    // FIXME(pcwalton): This is inefficient and should eventually go away.
+    fn draw_entire_render_target(&mut self, render_target_id: RenderTargetId, effects: Effects) {
+        match effects.filter {
             Filter::Composite(composite_op) => {
-                self.composite_layer(&layer_framebuffer_info, composite_op)
+                self.composite_render_target(render_target_id, composite_op)
             }
             Filter::Text { fg_color, bg_color, defringing_kernel, gamma_correction } => {
-                self.draw_text_layer(&layer_framebuffer_info,
-                                     fg_color,
-                                     bg_color,
-                                     defringing_kernel,
-                                     gamma_correction)
+                self.draw_text_render_target(render_target_id,
+                                             fg_color,
+                                             bg_color,
+                                             defringing_kernel,
+                                             gamma_correction)
             }
         }
 
         self.preserve_draw_framebuffer();
-
-        let texture = self.device.destroy_framebuffer(layer_framebuffer_info.framebuffer);
-        self.texture_cache.release_texture(texture);
     }
 
-    fn composite_layer(&self,
-                       layer_framebuffer_info: &LayerFramebufferInfo<D>,
-                       composite_op: CompositeOp) {
+    fn composite_render_target(&self,
+                               render_target_id: RenderTargetId,
+                               composite_op: CompositeOp) {
         let clear_color = self.clear_color_for_draw_operation();
-        let source_framebuffer = &layer_framebuffer_info.framebuffer;
+        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
         let source_texture = self.device.framebuffer_texture(source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
         let main_viewport = self.main_viewport();
@@ -875,14 +890,14 @@ where
         });
     }
 
-    fn draw_text_layer(&self,
-                       layer_framebuffer_info: &LayerFramebufferInfo<D>,
-                       fg_color: ColorF,
-                       bg_color: ColorF,
-                       defringing_kernel: Option<DefringingKernel>,
-                       gamma_correction: bool) {
+    fn draw_text_render_target(&self,
+                               render_target_id: RenderTargetId,
+                               fg_color: ColorF,
+                               bg_color: ColorF,
+                               defringing_kernel: Option<DefringingKernel>,
+                               gamma_correction: bool) {
         let clear_color = self.clear_color_for_draw_operation();
-        let source_framebuffer = &layer_framebuffer_info.framebuffer;
+        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
         let source_texture = self.device.framebuffer_texture(source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
         let main_viewport = self.main_viewport();
@@ -940,8 +955,10 @@ where
     }
 
     fn clear_color_for_draw_operation(&self) -> Option<ColorF> {
-        let must_preserve_contents = match self.layer_framebuffer_stack.last() {
-            Some(ref layer_framebuffer_info) => layer_framebuffer_info.must_preserve_contents,
+        let must_preserve_contents = match self.render_target_stack.last() {
+            Some(render_target_id) => {
+                self.render_targets[render_target_id.0 as usize].must_preserve_contents
+            }
             None => {
                 self.framebuffer_flags
                     .contains(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS)
@@ -950,7 +967,7 @@ where
 
         if must_preserve_contents {
             None
-        } else if self.layer_framebuffer_stack.is_empty() {
+        } else if self.render_target_stack.is_empty() {
             self.options.background_color
         } else {
             Some(ColorF::default())
@@ -958,9 +975,9 @@ where
     }
 
     fn preserve_draw_framebuffer(&mut self) {
-        match self.layer_framebuffer_stack.last_mut() {
-            Some(ref mut layer_framebuffer_info) => {
-                layer_framebuffer_info.must_preserve_contents = true;
+        match self.render_target_stack.last() {
+            Some(render_target_id) => {
+                self.render_targets[render_target_id.0 as usize].must_preserve_contents = true;
             }
             None => {
                 self.framebuffer_flags
@@ -970,9 +987,10 @@ where
     }
 
     pub fn draw_viewport(&self) -> RectI {
-        match self.layer_framebuffer_stack.last() {
-            Some(ref layer_framebuffer_info) => {
-                let texture = self.device.framebuffer_texture(&layer_framebuffer_info.framebuffer);
+        match self.render_target_stack.last() {
+            Some(render_target_id) => {
+                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
+                let texture = self.device.framebuffer_texture(framebuffer);
                 RectI::new(Vector2I::default(), self.device.texture_size(texture))
             }
             None => self.main_viewport(),
@@ -994,6 +1012,16 @@ where
     fn mask_viewport(&self) -> RectI {
         RectI::new(Vector2I::default(),
                    Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
+    }
+
+    fn paint_texture(&self, paint_page: PaintPageId) -> &D::Texture {
+        match self.paint_textures[paint_page.0 as usize] {
+            PaintTexture::Texture(ref texture) => texture,
+            PaintTexture::RenderTarget(render_target_id) => {
+                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
+                self.device.framebuffer_texture(framebuffer)
+            }
+        }
     }
 
     fn allocate_timer_query(&mut self) -> D::TimerQuery {
@@ -1124,9 +1152,13 @@ impl<D> TextureCache<D> where D: Device {
     }
 }
 
-struct LayerFramebufferInfo<D> where D: Device {
+enum PaintTexture<D> where D: Device {
+    Texture(D::Texture),
+    RenderTarget(RenderTargetId),
+}
+
+struct RenderTargetInfo<D> where D: Device {
     framebuffer: D::Framebuffer,
-    effects: Effects,
     must_preserve_contents: bool,
 }
 

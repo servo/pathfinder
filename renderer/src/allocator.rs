@@ -10,6 +10,8 @@
 
 //! A simple quadtree-based texture allocator.
 
+use crate::gpu_data::PaintPageId;
+use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 
@@ -27,6 +29,8 @@ pub enum TexturePageAllocator {
     Atlas(TextureAtlasAllocator),
     // A single image.
     Image { size: Vector2I },
+    // A render target.
+    RenderTarget { size: Vector2I, id: RenderTargetId },
 }
 
 #[derive(Debug)]
@@ -37,7 +41,7 @@ pub struct TextureAtlasAllocator {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TextureLocation {
-    pub page: u32,
+    pub page: PaintPageId,
     pub rect: RectI,
 }
 
@@ -55,51 +59,72 @@ impl TextureAllocator {
         TextureAllocator { pages: vec![] }
     }
 
-    #[inline]
     pub fn allocate(&mut self, requested_size: Vector2I) -> TextureLocation {
         // If too big, the image gets its own page.
         if requested_size.x() > ATLAS_TEXTURE_LENGTH as i32 ||
                 requested_size.y() > ATLAS_TEXTURE_LENGTH as i32 {
-            let page = self.pages.len() as u32;
-            let rect = RectI::new(Vector2I::default(), requested_size);
-            self.pages.push(TexturePageAllocator::Image { size: rect.size() });
-            return TextureLocation { page, rect };
+            return self.allocate_image(requested_size);
         }
 
         // Try to add to each atlas.
         for (page_index, page) in self.pages.iter_mut().enumerate() {
             match *page {
-                TexturePageAllocator::Image { .. } => {}
+                TexturePageAllocator::Image { .. } |
+                TexturePageAllocator::RenderTarget { .. } => {}
                 TexturePageAllocator::Atlas(ref mut allocator) => {
                     if let Some(rect) = allocator.allocate(requested_size) {
-                        return TextureLocation { page: page_index as u32, rect };
+                        return TextureLocation { page: PaintPageId(page_index as u32), rect };
                     }
                 }
             }
         }
 
         // Add a new atlas.
-        let page = self.pages.len() as u32;
+        let page = PaintPageId(self.pages.len() as u32);
         let mut allocator = TextureAtlasAllocator::new();
         let rect = allocator.allocate(requested_size).expect("Allocation failed!");
         self.pages.push(TexturePageAllocator::Atlas(allocator));
         TextureLocation { page, rect }
     }
 
-    pub fn page_size(&self, page_index: u32) -> Vector2I {
-        match self.pages[page_index as usize] {
+    fn allocate_image(&mut self, requested_size: Vector2I) -> TextureLocation {
+        let page = PaintPageId(self.pages.len() as u32);
+        let rect = RectI::new(Vector2I::default(), requested_size);
+        self.pages.push(TexturePageAllocator::Image { size: rect.size() });
+        TextureLocation { page, rect }
+    }
+
+    pub fn allocate_render_target(&mut self, requested_size: Vector2I, id: RenderTargetId)  
+                                  -> TextureLocation {
+        let page = PaintPageId(self.pages.len() as u32);
+        let rect = RectI::new(Vector2I::default(), requested_size);
+        self.pages.push(TexturePageAllocator::RenderTarget { size: rect.size(), id });
+        TextureLocation { page, rect }
+    }
+
+    pub fn page_size(&self, page_index: PaintPageId) -> Vector2I {
+        match self.pages[page_index.0 as usize] {
             TexturePageAllocator::Atlas(ref atlas) => Vector2I::splat(atlas.size as i32),
-            TexturePageAllocator::Image { size } => size,
+            TexturePageAllocator::Image { size } |
+            TexturePageAllocator::RenderTarget { size, .. } => size,
         }
     }
 
-    pub fn page_scale(&self, page_index: u32) -> Vector2F {
+    pub fn page_scale(&self, page_index: PaintPageId) -> Vector2F {
         Vector2F::splat(1.0) / self.page_size(page_index).to_f32()
     }
 
     #[inline]
     pub fn page_count(&self) -> u32 {
         self.pages.len() as u32
+    }
+
+    #[inline]
+    pub fn page_render_target_id(&self, page_index: PaintPageId) -> Option<RenderTargetId> {
+        match self.pages[page_index.0 as usize] {
+            TexturePageAllocator::RenderTarget { id, .. } => Some(id),
+            TexturePageAllocator::Atlas(_) | TexturePageAllocator::Image { .. } => None,
+        }
     }
 }
 

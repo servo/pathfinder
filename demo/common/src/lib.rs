@@ -35,7 +35,7 @@ use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, ScenePro
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::{RenderStats, RenderTime, Renderer};
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
-use pathfinder_renderer::scene::Scene;
+use pathfinder_renderer::scene::{RenderTarget, Scene};
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::File;
@@ -138,10 +138,14 @@ impl<W> DemoApp<W> where W: Window {
 
         let effects = build_effects(&ui_model);
 
-        let (mut built_svg, svg_tree) = load_scene(resources, &options.input_path, effects);
+        let viewport = window.viewport(options.mode.view(0));
+        let (mut built_svg, svg_tree) = load_scene(resources,
+                                                   &options.input_path,
+                                                   viewport.size(),
+                                                   effects);
+
         let message = get_svg_building_message(&built_svg);
 
-        let viewport = window.viewport(options.mode.view(0));
         let dest_framebuffer = DestFramebuffer::Default {
             viewport,
             window_size: window_size.device_size(),
@@ -428,9 +432,11 @@ impl<W> DemoApp<W> where W: Window {
                 }
 
                 Event::OpenSVG(ref svg_path) => {
+                    let viewport = self.window.viewport(self.ui_model.mode.view(0));
                     let effects = build_effects(&self.ui_model);
                     let (mut built_svg, svg_tree) = load_scene(self.window.resource_loader(),
                                                                svg_path,
+                                                               viewport.size(),
                                                                effects);
 
                     self.ui_model.message = get_svg_building_message(&built_svg);
@@ -586,9 +592,9 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::None => {}
             UIAction::ModelChanged => self.dirty = true,
             UIAction::EffectsChanged => {
-                let effects = build_effects(&self.ui_model);
-                let mut built_svg = build_svg_tree(&self.svg_tree, effects);
                 let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
+                let effects = build_effects(&self.ui_model);
+                let mut built_svg = build_svg_tree(&self.svg_tree, viewport_size, effects);
                 self.scene_metadata =
                     SceneMetadata::new_clipping_view_box(&mut built_svg.scene, viewport_size);
                 self.scene_proxy.replace_scene(built_svg.scene);
@@ -743,7 +749,10 @@ pub enum UIVisibility {
     All,
 }
 
-fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath, effects: Option<Effects>)
+fn load_scene(resource_loader: &dyn ResourceLoader,
+              input_path: &SVGPath,
+              viewport_size: Vector2I,
+              effects: Option<Effects>)
               -> (BuiltSVG, Tree) {
     let mut data;
     match *input_path {
@@ -756,22 +765,32 @@ fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath, effect
     };
 
     let tree = Tree::from_data(&data, &UsvgOptions::default()).expect("Failed to parse the SVG!");
-    let built_svg = build_svg_tree(&tree, effects);
+    let built_svg = build_svg_tree(&tree, viewport_size, effects);
     (built_svg, tree)
 }
 
-fn build_svg_tree(tree: &Tree, effects: Option<Effects>) -> BuiltSVG {
+fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, effects: Option<Effects>) -> BuiltSVG {
     let mut scene = Scene::new();
-    if let Some(effects) = effects {
-        scene.push_layer(effects);
-    }
+
+    let render_target_id = match effects {
+        None => None,
+        Some(effects) => {
+            let scale = match effects.filter {
+                Filter::Text { defringing_kernel: Some(_), .. } => Vector2I::new(3, 1),
+                _ => Vector2I::splat(1),
+            };
+            let name = "Text".to_owned();
+            let render_target = RenderTarget::new(viewport_size.scale_xy(scale), name);
+            Some(scene.push_render_target(render_target))
+        }
+    };
 
     let mut built_svg = BuiltSVG::from_tree_and_scene(&tree, scene);
 
-    if effects.is_some() {
-        built_svg.scene.pop_layer();
+    if let (Some(render_target_id), Some(effects)) = (render_target_id, effects) {
+        built_svg.scene.pop_render_target();
+        built_svg.scene.draw_render_target(render_target_id, effects);
     }
-
     built_svg
 }
 

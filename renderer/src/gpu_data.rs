@@ -14,21 +14,49 @@ use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
+use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
 
 pub enum RenderCommand {
+    // Starts rendering a frame.
     Start { path_count: usize, bounding_quad: BoundingQuad },
+
+    // Uploads paint data for use with subsequent rendering commands to the GPU.
     AddPaintData(PaintData),
+
+    // Adds fills to the queue.
     AddFills(Vec<FillBatchPrimitive>),
+
+    // Flushes the queue of fills.
     FlushFills,
+
+    // Render fills to a set of mask tiles.
     RenderMaskTiles { tiles: Vec<MaskTile>, fill_rule: FillRule },
-    PushLayer { effects: Effects },
-    PopLayer,
-    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: u32, blend_mode: BlendMode },
+
+    // Pushes a render target onto the stack. Draw commands go to the render target on top of the
+    // stack.
+    PushRenderTarget(RenderTargetId),
+
+    // Pops a render target from the stack.
+    PopRenderTarget,
+
+    // Draws a batch of alpha tiles to the render target on top of the stack.
+    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: PaintPageId, blend_mode: BlendMode },
+
+    // Draws a batch of solid tiles to the render target on top of the stack.
     DrawSolidTiles(SolidTileBatch),
+
+    // Draws an entire render target to the render target on top of the stack.
+    //
+    // FIXME(pcwalton): This draws the entire render target, so it's inefficient. We should get rid
+    // of this command and transition all uses to `DrawAlphaTiles`/`DrawSolidTiles`. The reason it
+    // exists is that we don't have logic to create tiles for blur bounding regions yet.
+    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+
+    // Presents a rendered frame.
     Finish { build_time: Duration },
 }
 
@@ -37,16 +65,25 @@ pub struct PaintData {
     pub pages: Vec<PaintPageData>,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct PaintPageId(pub u32);
+
 #[derive(Clone, Debug)]
 pub struct PaintPageData {
     pub size: Vector2I,
-    pub texels: Vec<ColorU>,
+    pub contents: PaintPageContents,
+}
+
+#[derive(Clone, Debug)]
+pub enum PaintPageContents {
+    Texels(Vec<ColorU>),
+    RenderTarget(RenderTargetId),
 }
 
 #[derive(Clone, Debug)]
 pub struct SolidTileBatch {
     pub vertices: Vec<SolidTileVertex>,
-    pub paint_page: u32,
+    pub paint_page: PaintPageId,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -139,18 +176,23 @@ impl Debug for RenderCommand {
             RenderCommand::RenderMaskTiles { ref tiles, fill_rule } => {
                 write!(formatter, "RenderMaskTiles(x{}, {:?})", tiles.len(), fill_rule)
             }
-            RenderCommand::PushLayer { .. } => write!(formatter, "PushLayer"),
-            RenderCommand::PopLayer => write!(formatter, "PopLayer"),
+            RenderCommand::PushRenderTarget(render_target_id) => {
+                write!(formatter, "PushRenderTarget({:?})", render_target_id)
+            }
+            RenderCommand::PopRenderTarget => write!(formatter, "PopRenderTarget"),
+            RenderCommand::DrawRenderTarget { render_target, .. } => {
+                write!(formatter, "DrawRenderTarget({:?})", render_target)
+            }
             RenderCommand::DrawAlphaTiles { ref tiles, paint_page, blend_mode } => {
                 write!(formatter,
-                       "DrawAlphaTiles(x{}, {}, {:?})",
+                       "DrawAlphaTiles(x{}, {:?}, {:?})",
                        tiles.len(),
                        paint_page,
                        blend_mode)
             }
             RenderCommand::DrawSolidTiles(ref batch) => {
                 write!(formatter,
-                       "DrawSolidTiles(x{}, {})",
+                       "DrawSolidTiles(x{}, {:?})",
                        batch.vertices.len(),
                        batch.paint_page)
             }

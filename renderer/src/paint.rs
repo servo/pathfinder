@@ -9,12 +9,13 @@
 // except according to those terms.
 
 use crate::allocator::{TextureAllocator, TextureLocation};
-use crate::gpu_data::{PaintData, PaintPageData};
+use crate::gpu_data::{PaintData, PaintPageContents, PaintPageData, PaintPageId};
+use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::gradient::{Gradient, GradientGeometry};
-use pathfinder_content::pattern::Pattern;
+use pathfinder_content::pattern::{Image, Pattern, PatternSource, RenderTargetId};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::util;
@@ -33,6 +34,7 @@ const MAX_SOLID_COLORS_PER_TILE: u32 = SOLID_COLOR_TILE_LENGTH * SOLID_COLOR_TIL
 #[derive(Clone)]
 pub struct Palette {
     pub(crate) paints: Vec<Paint>,
+    pub(crate) render_targets: Vec<RenderTarget>,
     cache: HashMap<Paint, PaintId>,
 }
 
@@ -65,7 +67,7 @@ impl Debug for Paint {
 impl Palette {
     #[inline]
     pub fn new() -> Palette {
-        Palette { paints: vec![], cache: HashMap::new() }
+        Palette { paints: vec![], render_targets: vec![], cache: HashMap::new() }
     }
 }
 
@@ -86,7 +88,7 @@ impl Paint {
             Paint::Gradient(ref gradient) => {
                 gradient.stops().iter().all(|stop| stop.color.is_opaque())
             }
-            Paint::Pattern(ref pattern) => pattern.image.is_opaque(),
+            Paint::Pattern(ref pattern) => pattern.source.is_opaque(),
         }
     }
 
@@ -119,7 +121,7 @@ impl Paint {
         match *self {
             Paint::Color(ref mut color) => color.a = (color.a as f32 * alpha).round() as u8,
             Paint::Gradient(ref mut gradient) => gradient.set_opacity(alpha),
-            Paint::Pattern(ref mut pattern) => pattern.image.set_opacity(alpha),
+            Paint::Pattern(ref mut pattern) => pattern.source.set_opacity(alpha),
         }
     }
 
@@ -172,8 +174,8 @@ pub struct PaintInfo {
 // TODO(pcwalton): Add clamp/repeat options.
 #[derive(Debug)]
 pub struct PaintMetadata {
-    /// The index of the texture page.
-    pub tex_page: u32,
+    /// The location of the texture.
+    pub tex_page: PaintPageId,
     /// The rectangle within the texture atlas.
     pub tex_rect: RectI,
     /// The transform to apply to screen coordinates to translate them into UVs.
@@ -195,9 +197,23 @@ impl Palette {
         paint_id
     }
 
+    pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
+        let id = RenderTargetId(self.render_targets.len() as u32);
+        self.render_targets.push(render_target);
+        id
+    }
+
     pub fn build_paint_info(&self, view_box_size: Vector2I) -> PaintInfo {
         let mut allocator = TextureAllocator::new();
         let mut metadata = vec![];
+
+        // Assign render target locations.
+        let mut render_target_locations = vec![];
+        for (render_target_index, render_target) in self.render_targets.iter().enumerate() {
+            let render_target_id = RenderTargetId(render_target_index as u32);
+            render_target_locations.push(allocator.allocate_render_target(render_target.size(),
+                                                                          render_target_id));
+        }
 
         // Assign paint locations.
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
@@ -212,7 +228,14 @@ impl Palette {
                     allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32))
                 }
                 Paint::Pattern(ref pattern) => {
-                    allocator.allocate(pattern.image.size())
+                    match pattern.source {
+                        PatternSource::RenderTarget(render_target_id) => {
+                            render_target_locations[render_target_id.0 as usize]
+                        }
+                        PatternSource::Image(ref image) => {
+                            allocator.allocate(image.size())
+                        }
+                    }
                 }
             };
 
@@ -251,34 +274,55 @@ impl Palette {
         // TODO(pcwalton): This is slow. Do more on GPU.
         let mut paint_data = PaintData { pages: vec![] }; 
         for page_index in 0..allocator.page_count() {
+            let page_index = PaintPageId(page_index);
             let page_size = allocator.page_size(page_index);
+            if let Some(render_target_id) = allocator.page_render_target_id(page_index) {
+                paint_data.pages.push(PaintPageData {
+                    size: page_size,
+                    contents: PaintPageContents::RenderTarget(render_target_id),
+                });
+                continue;
+            }
+
             let page_area = page_size.x() as usize * page_size.y() as usize;
             let texels = vec![ColorU::default(); page_area];
-            paint_data.pages.push(PaintPageData { size: page_size, texels });
+            paint_data.pages.push(PaintPageData {
+                size: page_size,
+                contents: PaintPageContents::Texels(texels),
+            });
         }
 
         for (paint, metadata) in self.paints.iter().zip(metadata.iter()) {
             let tex_page = metadata.tex_page;
-            let PaintPageData {
-                size: page_size,
-                ref mut texels,
-            } = paint_data.pages[tex_page as usize];
+            let paint_page_data = &mut paint_data.pages[tex_page.0 as usize];
+            let page_size = paint_page_data.size;
             let page_scale = allocator.page_scale(tex_page);
-            match paint {
-                Paint::Color(color) => {
-                    put_pixel(metadata.tex_rect.origin(), *color, texels, page_size);
+
+            match paint_page_data.contents {
+                PaintPageContents::Texels(ref mut texels) => {
+                    match paint {
+                        Paint::Color(color) => {
+                            put_pixel(metadata.tex_rect.origin(), *color, texels, page_size);
+                        }
+                        Paint::Gradient(ref gradient) => {
+                            self.render_gradient(gradient,
+                                                metadata.tex_rect,
+                                                &metadata.tex_transform,
+                                                texels,
+                                                page_size,
+                                                page_scale);
+                        }
+                        Paint::Pattern(ref pattern) => {
+                            match pattern.source {
+                                PatternSource::RenderTarget(_) => {}
+                                PatternSource::Image(ref image) => {
+                                    self.render_image(image, metadata.tex_rect, texels, page_size);
+                                }
+                            }
+                        }
+                    }
                 }
-                Paint::Gradient(ref gradient) => {
-                    self.render_gradient(gradient,
-                                         metadata.tex_rect,
-                                         &metadata.tex_transform,
-                                         texels,
-                                         page_size,
-                                         page_scale);
-                }
-                Paint::Pattern(ref pattern) => {
-                    self.render_pattern(pattern, metadata.tex_rect, texels, page_size);
-                }
+                PaintPageContents::RenderTarget(_) => {}
             }
         }
 
@@ -340,12 +384,12 @@ impl Palette {
         }
     }
 
-    fn render_pattern(&self,
-                      pattern: &Pattern,
-                      tex_rect: RectI,
-                      texels: &mut [ColorU],
-                      tex_size: Vector2I) {
-        let image_size = pattern.image.size();
+    fn render_image(&self,
+                    image: &Image,
+                    tex_rect: RectI,
+                    texels: &mut [ColorU],
+                    tex_size: Vector2I) {
+        let image_size = image.size();
         for y in 0..image_size.y() {
             let dest_origin = tex_rect.origin() + Vector2I::new(0, y);
             let dest_start_index = paint_texel_index(dest_origin, tex_size);
@@ -353,7 +397,7 @@ impl Palette {
             let dest_end_index = dest_start_index + image_size.x() as usize;
             let src_end_index = src_start_index + image_size.x() as usize;
             texels[dest_start_index..dest_end_index].copy_from_slice(
-                &pattern.image.pixels()[src_start_index..src_end_index]);
+                &image.pixels()[src_start_index..src_end_index]);
         }
     }
 }
