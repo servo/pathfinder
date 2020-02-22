@@ -9,7 +9,8 @@
 // except according to those terms.
 
 use arrayvec::ArrayVec;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D};
+use pathfinder_canvas::{FillStyle, LineJoin, Path2D};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::{ColorStop, Gradient};

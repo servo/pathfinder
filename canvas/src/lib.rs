@@ -531,6 +531,10 @@ pub enum CompositeOperation {
     Lighter,
     Lighten,
     Darken,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
 }
 
 impl CompositeOperation {
@@ -544,6 +548,10 @@ impl CompositeOperation {
             CompositeOperation::Lighter => BlendMode::Lighter,
             CompositeOperation::Lighten => BlendMode::Lighten,
             CompositeOperation::Darken => BlendMode::Darken,
+            CompositeOperation::Hue => BlendMode::Hue,
+            CompositeOperation::Saturation => BlendMode::Saturation,
+            CompositeOperation::Color => BlendMode::Color,
+            CompositeOperation::Luminosity => BlendMode::Luminosity,
         }
     }
 }

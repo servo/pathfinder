@@ -145,6 +145,9 @@ impl GLDevice {
                 UniformData::Float(value) => {
                     gl::Uniform1f(uniform.location, value); ck();
                 }
+                UniformData::IVec3(value) => {
+                    gl::Uniform3i(uniform.location, value[0], value[1], value[2]); ck();
+                }
                 UniformData::Int(value) => {
                     gl::Uniform1i(uniform.location, value); ck();
                 }

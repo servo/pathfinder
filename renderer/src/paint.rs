@@ -261,10 +261,17 @@ impl Palette {
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(gradient_tile_scale / view_box_size.to_f32())
                 }
-                Paint::Pattern(_) => {
+                Paint::Pattern(Pattern { source: PatternSource::Image(_), .. }) => {
                     let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_scale).origin();
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(texture_scale)
+                }
+                Paint::Pattern(Pattern { source: PatternSource::RenderTarget(_), .. }) => {
+                    // FIXME(pcwalton): Only do this in GL, not Metal!
+                    let texture_origin_uv = rect_to_uv(metadata.tex_rect,
+                                                       texture_scale).lower_left();
+                    Transform2F::from_translation(texture_origin_uv) *
+                        Transform2F::from_scale(texture_scale.scale_xy(Vector2F::new(1.0, -1.0)))
                 }
             }
         }

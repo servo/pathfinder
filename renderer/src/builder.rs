@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu::renderer::MASK_TILES_ACROSS;
+use crate::gpu::renderer::{BlendModeProgram, MASK_TILES_ACROSS};
 use crate::gpu_data::{AlphaTile, AlphaTileVertex, FillBatchPrimitive, MaskTile, MaskTileVertex};
 use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileBatch, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
@@ -90,13 +90,22 @@ impl<'a> SceneBuilder<'a> {
     pub fn build<E>(&mut self, executor: &E) where E: Executor {
         let start_time = Instant::now();
 
+        // Send the start rendering command.
         let bounding_quad = self.built_options.bounding_quad();
 
         let clip_path_count = self.scene.clip_paths.len();
         let draw_path_count = self.scene.paths.len();
         let total_path_count = clip_path_count + draw_path_count;
-        self.listener.send(RenderCommand::Start { bounding_quad, path_count: total_path_count });
 
+        let needs_readable_framebuffer = self.needs_readable_framebuffer();
+
+        self.listener.send(RenderCommand::Start {
+            bounding_quad,
+            path_count: total_path_count,
+            needs_readable_framebuffer,
+        });
+
+        // Build paint data.
         let PaintInfo {
             data: paint_data,
             metadata: paint_metadata,
@@ -249,7 +258,8 @@ impl<'a> SceneBuilder<'a> {
                 culled_tiles.push_mask_tiles(&built_draw_path.path);
 
                 // Create a new `DrawAlphaTiles` display item if we don't have one or if we have to
-                // break a batch due to blend mode or paint page.
+                // break a batch due to blend mode or paint page. Note that every path with a blend
+                // mode that requires a readable framebuffer needs its own batch.
                 //
                 // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid batch
                 // breaks in some cases…
@@ -259,7 +269,9 @@ impl<'a> SceneBuilder<'a> {
                         paint_page,
                         blend_mode
                     }) if paint_page == built_draw_path.paint_page &&
-                        blend_mode == built_draw_path.blend_mode => {}
+                        blend_mode == built_draw_path.blend_mode &&
+                        !BlendModeProgram::from_blend_mode(
+                            built_draw_path.blend_mode).needs_readable_framebuffer() => {}
                     _ => {
                         culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles {
                             tiles: vec![],
@@ -376,6 +388,30 @@ impl<'a> SceneBuilder<'a> {
     pub(crate) fn allocate_mask_tile_index(&self) -> u16 {
         // FIXME(pcwalton): Check for overflow!
         self.next_mask_tile_index.fetch_add(1, Ordering::Relaxed) as u16
+    }
+
+    fn needs_readable_framebuffer(&self) -> bool {
+        let mut framebuffer_nesting = 0;
+        for display_item in &self.scene.display_list {
+            match *display_item {
+                DisplayItem::DrawRenderTarget { .. } => {}
+                DisplayItem::PushRenderTarget(_) => framebuffer_nesting += 1,
+                DisplayItem::PopRenderTarget => framebuffer_nesting -= 1,
+                DisplayItem::DrawPaths { start_index, end_index } => {
+                    if framebuffer_nesting > 0 {
+                        continue;
+                    }
+                    for path_index in start_index..end_index {
+                        let blend_mode = self.scene.paths[path_index as usize].blend_mode();
+                        let blend_mode_program = BlendModeProgram::from_blend_mode(blend_mode);
+                        if blend_mode_program.needs_readable_framebuffer() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 }
 

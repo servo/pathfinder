@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/tile_alpha.fs.glsl
+// pathfinder/shaders/tile_copy.fs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -12,19 +12,12 @@
 
 precision highp float;
 
-uniform sampler2D uStencilTexture;
-uniform sampler2D uPaintTexture;
 uniform vec2 uFramebufferSize;
-
-in vec2 vColorTexCoord;
-in vec2 vMaskTexCoord;
+uniform sampler2D uSrc;
 
 out vec4 oFragColor;
 
 void main() {
-    float coverage = texture(uStencilTexture, vMaskTexCoord).r;
-    vec4 color = texture(uPaintTexture, vColorTexCoord);
-    color.a *= coverage;
-    color.rgb *= color.a;
-    oFragColor = color;
+    vec2 texCoord = gl_FragCoord.xy / uFramebufferSize;
+    oFragColor = texture(uSrc, texCoord);
 }

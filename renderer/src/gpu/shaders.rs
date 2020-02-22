@@ -176,16 +176,16 @@ impl<D> MaskTileVertexArray<D> where D: Device {
 
 pub struct AlphaTileVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
-    pub vertex_buffer: D::Buffer,
 }
 
 impl<D> AlphaTileVertexArray<D> where D: Device {
     pub fn new(
         device: &D,
         alpha_tile_program: &AlphaTileProgram<D>,
+        alpha_tile_vertex_buffer: &D::Buffer,
         quads_vertex_indices_buffer: &D::Buffer,
     ) -> AlphaTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
 
         let tile_position_attr =
             device.get_vertex_attr(&alpha_tile_program.program, "TilePosition").unwrap();
@@ -194,7 +194,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
                                                          "MaskTexCoord").unwrap();
 
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&vertex_array, alpha_tile_vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
@@ -224,7 +224,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         });
         device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
-        AlphaTileVertexArray { vertex_array, vertex_buffer }
+        AlphaTileVertexArray { vertex_array }
     }
 }
 
@@ -278,6 +278,38 @@ where
         device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
+    }
+}
+
+pub struct CopyTileVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+}
+
+impl<D> CopyTileVertexArray<D> where D: Device {
+    pub fn new(
+        device: &D,
+        copy_tile_program: &CopyTileProgram<D>,
+        copy_tile_vertex_buffer: &D::Buffer,
+        quads_vertex_indices_buffer: &D::Buffer,
+    ) -> CopyTileVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+
+        let tile_position_attr =
+            device.get_vertex_attr(&copy_tile_program.program, "TilePosition").unwrap();
+
+        device.bind_buffer(&vertex_array, copy_tile_vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: ALPHA_TILE_VERTEX_SIZE,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
+
+        CopyTileVertexArray { vertex_array }
     }
 }
 
@@ -337,7 +369,6 @@ pub struct SolidTileProgram<D> where D: Device {
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
     pub paint_texture_uniform: D::Uniform,
-    pub paint_texture_size_uniform: D::Uniform,
 }
 
 impl<D> SolidTileProgram<D> where D: Device {
@@ -346,13 +377,11 @@ impl<D> SolidTileProgram<D> where D: Device {
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
-        let paint_texture_size_uniform = device.get_uniform(&program, "PaintTextureSize");
         SolidTileProgram {
             program,
             transform_uniform,
             tile_size_uniform,
             paint_texture_uniform,
-            paint_texture_size_uniform,
         }
     }
 }
@@ -361,37 +390,78 @@ pub struct AlphaTileProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
+    pub framebuffer_size_uniform: D::Uniform,
     pub stencil_texture_uniform: D::Uniform,
-    pub stencil_texture_size_uniform: D::Uniform,
     pub paint_texture_uniform: D::Uniform,
-    pub paint_texture_size_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileProgram<D> where D: Device {
+    #[inline]
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileProgram<D> {
-        let program = device.create_program(resources, "tile_alpha");
+        AlphaTileProgram::from_fragment_shader_name(device, resources, "tile_alpha")
+    }
+
+    fn from_fragment_shader_name(device: &D,
+                                 resources: &dyn ResourceLoader,
+                                 fragment_shader_name: &str)
+                                 -> AlphaTileProgram<D> {
+        let program = device.create_program_from_shader_names(resources,
+                                                              fragment_shader_name,
+                                                              "tile_alpha",
+                                                              fragment_shader_name);
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
-        let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
         let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
-        let paint_texture_size_uniform = device.get_uniform(&program, "PaintTextureSize");
         AlphaTileProgram {
             program,
             transform_uniform,
             tile_size_uniform,
+            framebuffer_size_uniform,
             stencil_texture_uniform,
-            stencil_texture_size_uniform,
             paint_texture_uniform,
-            paint_texture_size_uniform,
         }
+    }
+}
+
+pub struct CopyTileProgram<D> where D: Device {
+    pub program: D::Program,
+    pub transform_uniform: D::Uniform,
+    pub tile_size_uniform: D::Uniform,
+    pub src_uniform: D::Uniform,
+}
+
+impl<D> CopyTileProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> CopyTileProgram<D> {
+        let program = device.create_program(resources, "tile_copy");
+        let transform_uniform = device.get_uniform(&program, "Transform");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let src_uniform = device.get_uniform(&program, "Src");
+        CopyTileProgram { program, transform_uniform, tile_size_uniform, src_uniform }
+    }
+}
+
+pub struct AlphaTileHSLProgram<D> where D: Device {
+    pub alpha_tile_program: AlphaTileProgram<D>,
+    pub dest_uniform: D::Uniform,
+    pub blend_hsl_uniform: D::Uniform,
+}
+
+impl<D> AlphaTileHSLProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileHSLProgram<D> {
+        let alpha_tile_program = AlphaTileProgram::from_fragment_shader_name(device,
+                                                                             resources,
+                                                                             "tile_alpha_hsl");
+        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
+        let blend_hsl_uniform = device.get_uniform(&alpha_tile_program.program, "BlendHSL");
+        AlphaTileHSLProgram { alpha_tile_program, dest_uniform, blend_hsl_uniform }
     }
 }
 
 pub struct FilterBasicProgram<D> where D: Device {
     pub program: D::Program,
     pub source_uniform: D::Uniform,
-    pub source_size_uniform: D::Uniform,
     pub framebuffer_size_uniform: D::Uniform,
 }
 
@@ -402,14 +472,8 @@ impl<D> FilterBasicProgram<D> where D: Device {
                                                               "filter",
                                                               "filter_basic");
         let source_uniform = device.get_uniform(&program, "Source");
-        let source_size_uniform = device.get_uniform(&program, "SourceSize");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        FilterBasicProgram {
-            program,
-            source_uniform,
-            source_size_uniform,
-            framebuffer_size_uniform,
-        }
+        FilterBasicProgram { program, source_uniform, framebuffer_size_uniform }
     }
 }
 

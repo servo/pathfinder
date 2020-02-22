@@ -873,6 +873,11 @@ impl MetalDevice {
                 UniformData::Float(value) => {
                     uniform_buffer_data.write_f32::<NativeEndian>(value).unwrap()
                 }
+                UniformData::IVec3(values) => {
+                    uniform_buffer_data.write_i32::<NativeEndian>(values[0]).unwrap();
+                    uniform_buffer_data.write_i32::<NativeEndian>(values[1]).unwrap();
+                    uniform_buffer_data.write_i32::<NativeEndian>(values[2]).unwrap();
+                }
                 UniformData::Int(value) => {
                     uniform_buffer_data.write_i32::<NativeEndian>(value).unwrap()
                 }
@@ -1250,6 +1255,9 @@ impl UniformDataExt for UniformData {
                 UniformData::TextureUnit(_) => None,
                 UniformData::Float(ref data) => {
                     Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 1))
+                }
+                UniformData::IVec3(ref data) => {
+                    Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 3))
                 }
                 UniformData::Int(ref data) => {
                     Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 1))

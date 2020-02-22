@@ -22,7 +22,19 @@ use std::time::Duration;
 
 pub enum RenderCommand {
     // Starts rendering a frame.
-    Start { path_count: usize, bounding_quad: BoundingQuad },
+    Start {
+        /// The number of paths that will be rendered.
+        path_count: usize,
+
+        /// A bounding quad for the scene.
+        bounding_quad: BoundingQuad,
+
+        /// Whether the framebuffer we're rendering to must be readable.
+        ///
+        /// This is needed if a path that renders directly to the output framebuffer (i.e. not to a
+        /// render target) uses one of the more exotic blend modes.
+        needs_readable_framebuffer: bool,
+    },
 
     // Uploads paint data for use with subsequent rendering commands to the GPU.
     AddPaintData(PaintData),

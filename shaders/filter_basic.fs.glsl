@@ -18,7 +18,6 @@
 precision highp float;
 
 uniform sampler2D uSource;
-uniform vec2 uSourceSize;
 
 in vec2 vTexCoord;
 
