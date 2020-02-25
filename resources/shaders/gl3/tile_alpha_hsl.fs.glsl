@@ -59,6 +59,10 @@ vec4 blendColors(vec4 destRGBA, vec4 srcRGBA, vec3 blendedRGB){
                 1.0);
 }
 
+vec3 select3(bvec3 cond, vec3 a, vec3 b){
+    return vec3(cond . x ? a . x : b . x, cond . y ? a . y : b . y, cond . z ? a . z : b . z);
+}
+
 
 
 
@@ -103,10 +107,7 @@ void main(){
 
     vec3 destHSL = convertRGBToHSL(destRGBA . rgb);
     vec3 srcHSL = convertRGBToHSL(srcRGBA . rgb);
-    bvec3 blendDest = equal(uBlendHSL, ivec3(0));
-    vec3 blendedHSL = vec3(blendDest . x ? destHSL . x : srcHSL . x,
-                           blendDest . y ? destHSL . y : srcHSL . y,
-                           blendDest . z ? destHSL . z : srcHSL . z);
+    vec3 blendedHSL = select3(equal(uBlendHSL, ivec3(0)), destHSL, srcHSL);
     vec3 blendedRGB = convertHSLToRGB(blendedHSL);
 
     oFragColor = blendColors(destRGBA, srcRGBA, blendedRGB);

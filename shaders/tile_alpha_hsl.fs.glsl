@@ -63,10 +63,7 @@ void main() {
 
     vec3 destHSL = convertRGBToHSL(destRGBA.rgb);
     vec3 srcHSL = convertRGBToHSL(srcRGBA.rgb);
-    bvec3 blendDest = equal(uBlendHSL, ivec3(BLEND_TERM_DEST));
-    vec3 blendedHSL = vec3(blendDest.x ? destHSL.x : srcHSL.x,
-                           blendDest.y ? destHSL.y : srcHSL.y,
-                           blendDest.z ? destHSL.z : srcHSL.z);
+    vec3 blendedHSL = select3(equal(uBlendHSL, ivec3(BLEND_TERM_DEST)), destHSL, srcHSL);
     vec3 blendedRGB = convertHSLToRGB(blendedHSL);
 
     oFragColor = blendColors(destRGBA, srcRGBA, blendedRGB);

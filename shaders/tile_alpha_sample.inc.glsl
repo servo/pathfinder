@@ -35,3 +35,7 @@ vec4 blendColors(vec4 destRGBA, vec4 srcRGBA, vec3 blendedRGB) {
                 (1.0 - srcRGBA.a) * destRGBA.a * destRGBA.rgb,
                 1.0);
 }
+
+vec3 select3(bvec3 cond, vec3 a, vec3 b) {
+    return vec3(cond.x ? a.x : b.x, cond.y ? a.y : b.y, cond.z ? a.z : b.z);
+}

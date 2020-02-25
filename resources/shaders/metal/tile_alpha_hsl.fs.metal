@@ -83,6 +83,38 @@ float3 convertRGBToHSL(thread const float3& rgb)
     return float3(h, s, l);
 }
 
+float3 select3(thread const bool3& cond, thread const float3& a, thread const float3& b)
+{
+    float _125;
+    if (cond.x)
+    {
+        _125 = a.x;
+    }
+    else
+    {
+        _125 = b.x;
+    }
+    float _137;
+    if (cond.y)
+    {
+        _137 = a.y;
+    }
+    else
+    {
+        _137 = b.y;
+    }
+    float _149;
+    if (cond.z)
+    {
+        _149 = a.z;
+    }
+    else
+    {
+        _149 = b.z;
+    }
+    return float3(_125, _137, _149);
+}
+
 float3 convertHSLToRGB(thread const float3& hsl)
 {
     float a = hsl.y * fast::min(hsl.z, 1.0 - hsl.z);
@@ -104,41 +136,16 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     float3 destHSL = convertRGBToHSL(param);
     float3 param_1 = srcRGBA.xyz;
     float3 srcHSL = convertRGBToHSL(param_1);
-    bool3 blendDest = (*spvDescriptorSet0.uBlendHSL) == int3(0);
-    float _281;
-    if (blendDest.x)
-    {
-        _281 = destHSL.x;
-    }
-    else
-    {
-        _281 = srcHSL.x;
-    }
-    float _292;
-    if (blendDest.y)
-    {
-        _292 = destHSL.y;
-    }
-    else
-    {
-        _292 = srcHSL.y;
-    }
-    float _303;
-    if (blendDest.z)
-    {
-        _303 = destHSL.z;
-    }
-    else
-    {
-        _303 = srcHSL.z;
-    }
-    float3 blendedHSL = float3(_281, _292, _303);
-    float3 param_2 = blendedHSL;
-    float3 blendedRGB = convertHSLToRGB(param_2);
-    float4 param_3 = destRGBA;
-    float4 param_4 = srcRGBA;
-    float3 param_5 = blendedRGB;
-    out.oFragColor = blendColors(param_3, param_4, param_5);
+    bool3 param_2 = (*spvDescriptorSet0.uBlendHSL) == int3(0);
+    float3 param_3 = destHSL;
+    float3 param_4 = srcHSL;
+    float3 blendedHSL = select3(param_2, param_3, param_4);
+    float3 param_5 = blendedHSL;
+    float3 blendedRGB = convertHSLToRGB(param_5);
+    float4 param_6 = destRGBA;
+    float4 param_7 = srcRGBA;
+    float3 param_8 = blendedRGB;
+    out.oFragColor = blendColors(param_6, param_7, param_8);
     return out;
 }
 
