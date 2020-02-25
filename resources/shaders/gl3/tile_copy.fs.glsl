@@ -14,13 +14,13 @@
 
 precision highp float;
 
-uniform sampler2D uPaintTexture;
-
-in vec2 vColorTexCoord;
+uniform vec2 uFramebufferSize;
+uniform sampler2D uSrc;
 
 out vec4 oFragColor;
 
 void main(){
-    oFragColor = texture(uPaintTexture, vColorTexCoord);
+    vec2 texCoord = gl_FragCoord . xy / uFramebufferSize;
+    oFragColor = texture(uSrc, texCoord);
 }
 

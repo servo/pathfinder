@@ -552,8 +552,16 @@ pub enum CompositeOperation {
     SourceAtop,
     Xor,
     Lighter,
-    Lighten,
+    Multiply,
+    Screen,
+    Overlay,
     Darken,
+    Lighten,
+    HardLight,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
 }
 
 impl CompositeOperation {
@@ -565,8 +573,16 @@ impl CompositeOperation {
             CompositeOperation::SourceAtop => BlendMode::SrcAtop,
             CompositeOperation::Xor => BlendMode::Xor,
             CompositeOperation::Lighter => BlendMode::Lighter,
-            CompositeOperation::Lighten => BlendMode::Lighten,
+            CompositeOperation::Multiply => BlendMode::Multiply,
+            CompositeOperation::Screen => BlendMode::Screen,
+            CompositeOperation::Overlay => BlendMode::Overlay,
             CompositeOperation::Darken => BlendMode::Darken,
+            CompositeOperation::Lighten => BlendMode::Lighten,
+            CompositeOperation::HardLight => BlendMode::HardLight,
+            CompositeOperation::Hue => BlendMode::Hue,
+            CompositeOperation::Saturation => BlendMode::Saturation,
+            CompositeOperation::Color => BlendMode::Color,
+            CompositeOperation::Luminosity => BlendMode::Luminosity,
         }
     }
 }

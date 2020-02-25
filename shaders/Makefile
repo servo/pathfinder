@@ -23,6 +23,10 @@ SHADERS=\
 	stencil.vs.glsl \
 	tile_alpha.fs.glsl \
 	tile_alpha.vs.glsl \
+	tile_alpha_hsl.fs.glsl \
+	tile_alpha_overlay.fs.glsl \
+	tile_copy.fs.glsl \
+	tile_copy.vs.glsl \
 	tile_solid.fs.glsl \
 	tile_solid.vs.glsl \
 	$(EMPTY)
@@ -30,6 +34,7 @@ SHADERS=\
 INCLUDES=\
 	filter_text_convolve.inc.glsl \
 	filter_text_gamma_correct.inc.glsl \
+	tile_alpha_sample.inc.glsl \
 	$(EMPTY)
 
 OUT=\

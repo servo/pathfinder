@@ -145,6 +145,9 @@ impl GLDevice {
                 UniformData::Float(value) => {
                     gl::Uniform1f(uniform.location, value); ck();
                 }
+                UniformData::IVec3(value) => {
+                    gl::Uniform3i(uniform.location, value[0], value[1], value[2]); ck();
+                }
                 UniformData::Int(value) => {
                     gl::Uniform1i(uniform.location, value); ck();
                 }
@@ -447,6 +450,17 @@ impl Device for GLDevice {
     #[inline]
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture {
         &framebuffer.texture
+    }
+
+    #[inline]
+    fn destroy_framebuffer(&self, framebuffer: Self::Framebuffer) -> Self::Texture {
+        let texture = GLTexture {
+            gl_texture: framebuffer.texture.gl_texture,
+            size: framebuffer.texture.size,
+            format: framebuffer.texture.format,
+        };
+        mem::forget(framebuffer);
+        texture
     }
 
     #[inline]

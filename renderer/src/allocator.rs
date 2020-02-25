@@ -10,20 +10,38 @@
 
 //! A simple quadtree-based texture allocator.
 
+use crate::gpu_data::PaintPageId;
+use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::Vector2I;
-use std::mem;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 
-const MAX_TEXTURE_LENGTH: u32 = 4096;
+const ATLAS_TEXTURE_LENGTH: u32 = 1024;
 
 #[derive(Debug)]
 pub struct TextureAllocator {
+    pages: Vec<TexturePageAllocator>,
+}
+
+// TODO(pcwalton): Add layers, perhaps?
+#[derive(Debug)]
+pub enum TexturePageAllocator {
+    // An atlas allocated with our quadtree allocator.
+    Atlas(TextureAtlasAllocator),
+    // A single image.
+    Image { size: Vector2I },
+    // A render target.
+    RenderTarget { size: Vector2I, id: RenderTargetId },
+}
+
+#[derive(Debug)]
+pub struct TextureAtlasAllocator {
     root: TreeNode,
     size: u32,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TextureLocation {
+    pub page: PaintPageId,
     pub rect: RectI,
 }
 
@@ -37,80 +55,118 @@ enum TreeNode {
 
 impl TextureAllocator {
     #[inline]
-    pub fn new(size: u32) -> TextureAllocator {
-        // Make sure that the size is a power of two.
-        debug_assert_eq!(size & (size - 1), 0);
-        TextureAllocator { root: TreeNode::EmptyLeaf, size }
+    pub fn new() -> TextureAllocator {
+        TextureAllocator { pages: vec![] }
     }
 
-    #[inline]
-    pub fn allocate(&mut self, requested_size: Vector2I) -> Option<TextureLocation> {
-        let requested_length =
-            (requested_size.x().max(requested_size.y()) as u32).next_power_of_two();
-        loop {
-            if let Some(location) = self.root.allocate(Vector2I::default(),
-                                                       self.size,
-                                                       requested_length) {
-                return Some(location);
+    pub fn allocate(&mut self, requested_size: Vector2I) -> TextureLocation {
+        // If too big, the image gets its own page.
+        if requested_size.x() > ATLAS_TEXTURE_LENGTH as i32 ||
+                requested_size.y() > ATLAS_TEXTURE_LENGTH as i32 {
+            return self.allocate_image(requested_size);
+        }
+
+        // Try to add to each atlas.
+        for (page_index, page) in self.pages.iter_mut().enumerate() {
+            match *page {
+                TexturePageAllocator::Image { .. } |
+                TexturePageAllocator::RenderTarget { .. } => {}
+                TexturePageAllocator::Atlas(ref mut allocator) => {
+                    if let Some(rect) = allocator.allocate(requested_size) {
+                        return TextureLocation { page: PaintPageId(page_index as u32), rect };
+                    }
+                }
             }
-            if !self.grow() {
-                return None;
-            }
+        }
+
+        // Add a new atlas.
+        let page = PaintPageId(self.pages.len() as u32);
+        let mut allocator = TextureAtlasAllocator::new();
+        let rect = allocator.allocate(requested_size).expect("Allocation failed!");
+        self.pages.push(TexturePageAllocator::Atlas(allocator));
+        TextureLocation { page, rect }
+    }
+
+    fn allocate_image(&mut self, requested_size: Vector2I) -> TextureLocation {
+        let page = PaintPageId(self.pages.len() as u32);
+        let rect = RectI::new(Vector2I::default(), requested_size);
+        self.pages.push(TexturePageAllocator::Image { size: rect.size() });
+        TextureLocation { page, rect }
+    }
+
+    pub fn allocate_render_target(&mut self, requested_size: Vector2I, id: RenderTargetId)  
+                                  -> TextureLocation {
+        let page = PaintPageId(self.pages.len() as u32);
+        let rect = RectI::new(Vector2I::default(), requested_size);
+        self.pages.push(TexturePageAllocator::RenderTarget { size: rect.size(), id });
+        TextureLocation { page, rect }
+    }
+
+    pub fn page_size(&self, page_index: PaintPageId) -> Vector2I {
+        match self.pages[page_index.0 as usize] {
+            TexturePageAllocator::Atlas(ref atlas) => Vector2I::splat(atlas.size as i32),
+            TexturePageAllocator::Image { size } |
+            TexturePageAllocator::RenderTarget { size, .. } => size,
         }
     }
 
+    pub fn page_scale(&self, page_index: PaintPageId) -> Vector2F {
+        Vector2F::splat(1.0) / self.page_size(page_index).to_f32()
+    }
+
     #[inline]
-    #[allow(dead_code)]
-    pub fn free(&mut self, location: TextureLocation) {
-        let requested_length = location.rect.width() as u32;
-        self.root.free(Vector2I::default(), self.size, location.rect.origin(), requested_length)
+    pub fn page_count(&self) -> u32 {
+        self.pages.len() as u32
+    }
+
+    #[inline]
+    pub fn page_render_target_id(&self, page_index: PaintPageId) -> Option<RenderTargetId> {
+        match self.pages[page_index.0 as usize] {
+            TexturePageAllocator::RenderTarget { id, .. } => Some(id),
+            TexturePageAllocator::Atlas(_) | TexturePageAllocator::Image { .. } => None,
+        }
+    }
+}
+
+impl TextureAtlasAllocator {
+    #[inline]
+    fn new() -> TextureAtlasAllocator {
+        TextureAtlasAllocator::with_length(ATLAS_TEXTURE_LENGTH)
+    }
+
+    #[inline]
+    fn with_length(length: u32) -> TextureAtlasAllocator {
+        TextureAtlasAllocator { root: TreeNode::EmptyLeaf, size: length }
+    }
+
+    #[inline]
+    fn allocate(&mut self, requested_size: Vector2I) -> Option<RectI> {
+        let requested_length =
+            (requested_size.x().max(requested_size.y()) as u32).next_power_of_two();
+        self.root.allocate(Vector2I::default(), self.size, requested_length)
     }
 
     #[inline]
     #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
+    fn free(&mut self, rect: RectI) {
+        let requested_length = rect.width() as u32;
+        self.root.free(Vector2I::default(), self.size, rect.origin(), requested_length)
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    fn is_empty(&self) -> bool {
         match self.root {
             TreeNode::EmptyLeaf => true,
             _ => false,
         }
-    }
-
-    // TODO(pcwalton): Make this more flexible.
-    pub fn grow(&mut self) -> bool {
-        if self.size >= MAX_TEXTURE_LENGTH {
-            return false;
-        }
-
-        let old_root = mem::replace(&mut self.root, TreeNode::EmptyLeaf);
-        self.size *= 2;
-
-        // NB: Don't change the order of the children, or else texture coordinates of
-        // already-allocated objects will become invalid.
-        self.root = TreeNode::Parent([
-            Box::new(old_root),
-            Box::new(TreeNode::EmptyLeaf),
-            Box::new(TreeNode::EmptyLeaf),
-            Box::new(TreeNode::EmptyLeaf),
-        ]);
-
-        true
-    }
-
-    #[inline]
-    pub fn size(&self) -> u32 {
-        self.size
-    }
-
-    #[inline]
-    pub fn scale(&self) -> f32 {
-        1.0 / self.size as f32
     }
 }
 
 impl TreeNode {
     // Invariant: `requested_size` must be a power of two.
     fn allocate(&mut self, this_origin: Vector2I, this_size: u32, requested_size: u32)
-                -> Option<TextureLocation> {
+                -> Option<RectI> {
         if let TreeNode::FullLeaf = *self {
             // No room here.
             return None;
@@ -125,9 +181,7 @@ impl TreeNode {
             // Do we have a perfect fit?
             if this_size == requested_size {
                 *self = TreeNode::FullLeaf;
-                return Some(TextureLocation {
-                    rect: RectI::new(this_origin, Vector2I::splat(this_size as i32)),
-                });
+                return Some(RectI::new(this_origin, Vector2I::splat(this_size as i32)));
             }
 
             // Split.
@@ -240,7 +294,7 @@ mod test {
     use quickcheck;
     use std::u32;
 
-    use super::TextureAllocator;
+    use super::TextureAtlasAllocator;
 
     #[test]
     fn test_allocation_and_freeing() {
@@ -255,7 +309,7 @@ mod test {
                 *height = (*height).min(length).max(1);
             }
 
-            let mut allocator = TextureAllocator::new(length);
+            let mut allocator = TextureAtlasAllocator::with_length(length);
             let mut locations = vec![];
             for &(width, height) in &sizes {
                 let size = Vector2I::new(width as i32, height as i32);

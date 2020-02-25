@@ -18,17 +18,9 @@ uniform mat4 uTransform;
 uniform vec2 uTileSize;
 
 in ivec2 aTilePosition;
-in vec2 aColorTexCoord;
-in vec2 aMaskTexCoord;
-
-out vec2 vColorTexCoord;
-out vec2 vMaskTexCoord;
 
 void main(){
-    vec2 position = vec2(aTilePosition)* uTileSize;
-
-    vMaskTexCoord = aMaskTexCoord;
-    vColorTexCoord = aColorTexCoord;
+    vec2 position = aTilePosition * uTileSize;
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 

@@ -20,9 +20,18 @@ use image::RgbaImage;
 /// A raster image pattern.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Pattern {
-    pub image: Image,
+    pub source: PatternSource,
     pub repeat: Repeat,
 }
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub enum PatternSource {
+    Image(Image),
+    RenderTarget(RenderTargetId),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct RenderTargetId(pub u32);
 
 /// RGBA, non-premultiplied.
 // FIXME(pcwalton): Hash the pixel contents so that we don't have to compare every pixel!
@@ -43,8 +52,8 @@ bitflags! {
 
 impl Pattern {
     #[inline]
-    pub fn new(image: Image, repeat: Repeat) -> Pattern {
-        Pattern { image, repeat }
+    pub fn new(source: PatternSource, repeat: Repeat) -> Pattern {
+        Pattern { source, repeat }
     }
 }
 
@@ -87,6 +96,31 @@ impl Image {
         // TODO(pcwalton): Go four pixels at a time with SIMD.
         self.pixels.iter_mut().for_each(|pixel| pixel.a = (pixel.a as f32 * alpha).round() as u8);
         self.is_opaque = false;
+    }
+}
+
+impl PatternSource {
+    #[inline]
+    pub fn is_opaque(&self) -> bool {
+        match *self {
+            PatternSource::Image(ref image) => image.is_opaque(),
+            PatternSource::RenderTarget(_) => {
+                // TODO(pcwalton): Maybe do something smarter here?
+                false
+            }
+        }
+    }
+
+    #[inline]
+    pub fn set_opacity(&mut self, alpha: f32) {
+        match *self {
+            PatternSource::Image(ref mut image) => image.set_opacity(alpha),
+            PatternSource::RenderTarget(_) => {
+                // TODO(pcwalton): We'll probably have to introduce and use an Opacity filter for
+                // this.
+                unimplemented!()
+            }
+        }
     }
 }
 

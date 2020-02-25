@@ -14,7 +14,6 @@ precision highp float;
 
 uniform mat4 uTransform;
 uniform vec2 uTileSize;
-uniform vec2 uStencilTextureSize;
 
 in ivec2 aTilePosition;
 in vec2 aColorTexCoord;

@@ -11,7 +11,7 @@
 //! Software occlusion culling.
 
 use crate::builder::SolidTile;
-use crate::gpu_data::SolidTileVertex;
+use crate::gpu_data::{SolidTileBatch, SolidTileVertex};
 use crate::paint::PaintMetadata;
 use crate::scene::DrawPath;
 use crate::tile_map::DenseTileMap;
@@ -21,6 +21,10 @@ use pathfinder_geometry::vector::Vector2I;
 
 pub(crate) struct ZBuffer {
     buffer: DenseTileMap<u32>,
+}
+
+pub(crate) struct SolidTiles {
+    pub(crate) batches: Vec<SolidTileBatch>,
 }
 
 impl ZBuffer {
@@ -45,8 +49,9 @@ impl ZBuffer {
     }
 
     pub(crate) fn build_solid_tiles(&self, paths: &[DrawPath], paint_metadata: &[PaintMetadata])
-                                    -> Vec<SolidTileVertex> {
-        let mut solid_tiles = vec![];
+                                    -> SolidTiles {
+        let mut solid_tiles = SolidTiles { batches: vec![] };
+
         for tile_index in 0..self.buffer.data.len() {
             let depth = self.buffer.data[tile_index];
             if depth == 0 {
@@ -62,7 +67,20 @@ impl ZBuffer {
             let tile_position = tile_coords + self.buffer.rect.origin();
             let object_index = object_index as u16;
 
-            solid_tiles.extend_from_slice(&[
+            // Create a batch if necessary.
+            match solid_tiles.batches.last() {
+                Some(ref batch) if batch.paint_page == paint_metadata.tex_page => {}
+                _ => {
+                    // Batch break.
+                    solid_tiles.batches.push(SolidTileBatch {
+                        paint_page: paint_metadata.tex_page,
+                        vertices: vec![],
+                    });
+                }
+            }
+
+            let batch = solid_tiles.batches.last_mut().unwrap();
+            batch.vertices.extend_from_slice(&[
                 SolidTileVertex::new(tile_position, object_index, paint_metadata),
                 SolidTileVertex::new(tile_position + Vector2I::new(1, 0),
                                      object_index,

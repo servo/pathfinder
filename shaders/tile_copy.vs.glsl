@@ -1,8 +1,8 @@
 #version 330
 
-// pathfinder/shaders/tile_solid.fs.glsl
+// pathfinder/shaders/tile_copy.vs.glsl
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -12,12 +12,12 @@
 
 precision highp float;
 
-uniform sampler2D uPaintTexture;
+uniform mat4 uTransform;
+uniform vec2 uTileSize;
 
-in vec2 vColorTexCoord;
-
-out vec4 oFragColor;
+in ivec2 aTilePosition;
 
 void main() {
-    oFragColor = texture(uPaintTexture, vColorTexCoord);
+    vec2 position = aTilePosition * uTileSize;
+    gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }

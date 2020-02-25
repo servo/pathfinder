@@ -12,9 +12,18 @@
 
 
 
+
+
 #extension GL_GOOGLE_include_directive : enable
 
+
+
+
+
+
 precision highp float;
+
+uniform int uBlendMode;
 
 out vec4 oFragColor;
 
@@ -64,6 +73,24 @@ vec3 select3(bvec3 cond, vec3 a, vec3 b){
 
 void main(){
     vec4 srcRGBA = sampleSrcColor();
-    oFragColor = vec4(srcRGBA . rgb * srcRGBA . a, srcRGBA . a);
+    vec4 destRGBA = sampleDestColor();
+
+    bool reversed = uBlendMode == 3;
+    vec3 src = reversed ? srcRGBA . rgb : destRGBA . rgb;
+    vec3 dest = reversed ? destRGBA . rgb : srcRGBA . rgb;
+
+    vec3 multiply = src * dest;
+    vec3 blended;
+    if(uBlendMode == 0){
+        blended = multiply;
+    } else {
+        vec3 screen = dest + src - multiply;
+        if(uBlendMode == 1)
+            blended = screen;
+        else
+            blended = select3(lessThanEqual(src, vec3(0.5)), multiply, screen * 2.0 - 1.0);
+    }
+
+    oFragColor = blendColors(destRGBA, srcRGBA, blended);
 }
 

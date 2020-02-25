@@ -11,9 +11,9 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu::renderer::MASK_TILES_ACROSS;
+use crate::gpu::renderer::{BlendModeProgram, MASK_TILES_ACROSS};
 use crate::gpu_data::{AlphaTile, AlphaTileVertex, FillBatchPrimitive, MaskTile, MaskTileVertex};
-use crate::gpu_data::{RenderCommand, SolidTileVertex, TileObjectPrimitive};
+use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileBatch, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
@@ -22,6 +22,7 @@ use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
+use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -57,6 +58,7 @@ pub(crate) struct ObjectBuilder {
 struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
+    paint_page: PaintPageId,
 }
 
 #[derive(Debug)]
@@ -95,13 +97,22 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
         #[cfg(not(target_arch = "wasm32"))]
         let start_time = Instant::now();
 
+        // Send the start rendering command.
         let bounding_quad = self.built_options.bounding_quad();
 
         let clip_path_count = self.scene.clip_paths.len();
         let draw_path_count = self.scene.paths.len();
         let total_path_count = clip_path_count + draw_path_count;
-        self.listener.send(RenderCommand::Start { bounding_quad, path_count: total_path_count });
 
+        let needs_readable_framebuffer = self.needs_readable_framebuffer();
+
+        self.listener.send(RenderCommand::Start {
+            bounding_quad,
+            path_count: total_path_count,
+            needs_readable_framebuffer,
+        });
+
+        // Build paint data.
         let PaintInfo {
             data: paint_data,
             metadata: paint_metadata,
@@ -169,7 +180,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
         let paint_id = path_object.paint();
-
+        let paint_metadata = &paint_metadata[paint_id.0 as usize];
         let built_clip_path =
             path_object.clip_path().map(|clip_path_id| &built_clip_paths[clip_path_id.0 as usize]);
 
@@ -179,7 +190,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                                    view_box,
                                    path_index as u16,
                                    TilingPathInfo::Draw {
-            paint_metadata: &paint_metadata[paint_id.0 as usize],
+            paint_metadata,
             blend_mode: path_object.blend_mode(),
             built_clip_path,
         });
@@ -191,6 +202,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
         BuiltDrawPath {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
+            paint_page: paint_metadata.tex_page,
         }
     }
 
@@ -216,32 +228,38 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
         let first_z_buffer = remaining_layer_z_buffers.pop().unwrap();
         let first_solid_tiles = first_z_buffer.build_solid_tiles(&self.scene.paths,
                                                                  paint_metadata);
-        if !first_solid_tiles.is_empty() {
-            culled_tiles.display_list
-                        .push(CulledDisplayItem::DrawSolidTiles(first_solid_tiles));
+        for batch in first_solid_tiles.batches {
+            culled_tiles.display_list.push(CulledDisplayItem::DrawSolidTiles(batch));
         }
 
         let mut layer_z_buffers_stack = vec![first_z_buffer];
 
         for display_item in &self.scene.display_list {
-            // Just pass through `PushLayer` and `PopLayer` commands.
+            // Pass all commands except `DrawPaths` through.
             let (start_draw_path_index, end_draw_path_index) = match *display_item {
-                DisplayItem::PushLayer { effects } => {
-                    culled_tiles.display_list.push(CulledDisplayItem::PushLayer { effects });
+                DisplayItem::PushRenderTarget(render_target_id) => {
+                    culled_tiles.display_list
+                                .push(CulledDisplayItem::PushRenderTarget(render_target_id));
 
                     let z_buffer = remaining_layer_z_buffers.pop().unwrap();
                     let solid_tiles = z_buffer.build_solid_tiles(&self.scene.paths,
                                                                  paint_metadata);
-                    if !solid_tiles.is_empty() {
-                        culled_tiles.display_list
-                                    .push(CulledDisplayItem::DrawSolidTiles(solid_tiles));
+                    for batch in solid_tiles.batches {
+                        culled_tiles.display_list.push(CulledDisplayItem::DrawSolidTiles(batch));
                     }
                     layer_z_buffers_stack.push(z_buffer);
                     continue;
                 }
-                DisplayItem::PopLayer => {
-                    culled_tiles.display_list.push(CulledDisplayItem::PopLayer);
+                DisplayItem::PopRenderTarget => {
+                    culled_tiles.display_list.push(CulledDisplayItem::PopRenderTarget);
                     layer_z_buffers_stack.pop();
+                    continue;
+                }
+                DisplayItem::DrawRenderTarget { render_target, effects } => {
+                    culled_tiles.display_list.push(CulledDisplayItem::DrawRenderTarget {
+                        render_target,
+                        effects,
+                    });
                     continue;
                 }
                 DisplayItem::DrawPaths { start_index, end_index } => (start_index, end_index),
@@ -252,18 +270,24 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                 culled_tiles.push_mask_tiles(&built_draw_path.path);
 
                 // Create a new `DrawAlphaTiles` display item if we don't have one or if we have to
-                // break a batch due to blend mode differences.
+                // break a batch due to blend mode or paint page. Note that every path with a blend
+                // mode that requires a readable framebuffer needs its own batch.
                 //
                 // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid batch
                 // breaks in some cases…
                 match culled_tiles.display_list.last() {
                     Some(&CulledDisplayItem::DrawAlphaTiles {
                         tiles: _,
+                        paint_page,
                         blend_mode
-                    }) if blend_mode == built_draw_path.blend_mode => {}
+                    }) if paint_page == built_draw_path.paint_page &&
+                        blend_mode == built_draw_path.blend_mode &&
+                        !BlendModeProgram::from_blend_mode(
+                            blend_mode).needs_readable_framebuffer() => {}
                     _ => {
                         culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles {
                             tiles: vec![],
+                            paint_page: built_draw_path.paint_page,
                             blend_mode: built_draw_path.blend_mode,
                         })
                     }
@@ -300,11 +324,11 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
         // Create Z-buffers.
         for display_item in &self.scene.display_list {
             match *display_item {
-                DisplayItem::PushLayer { .. } => {
+                DisplayItem::PushRenderTarget { .. } => {
                     z_buffer_index_stack.push(z_buffers.len());
                     z_buffers.push(ZBuffer::new(effective_view_box));
                 }
-                DisplayItem::PopLayer => {
+                DisplayItem::PopRenderTarget => {
                     z_buffer_index_stack.pop();
                 }
                 DisplayItem::DrawPaths { start_index, end_index } => {
@@ -314,6 +338,9 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                             built_draw_paths[start_index..end_index].iter().enumerate() {
                         z_buffer.update(&built_draw_path.path.solid_tiles, path_index as u32);
                     }
+                }
+                DisplayItem::DrawRenderTarget { .. } => {
+                    // FIXME(pcwalton): Not great that this doesn't participate in Z-buffering!
                 }
             }
         }
@@ -338,16 +365,25 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
 
         for display_item in culled_tiles.display_list {
             match display_item {
-                CulledDisplayItem::DrawSolidTiles(tiles) => {
-                    self.listener.send(RenderCommand::DrawSolidTiles(tiles))
+                CulledDisplayItem::DrawSolidTiles(batch) => {
+                    self.listener.send(RenderCommand::DrawSolidTiles(batch))
                 }
-                CulledDisplayItem::DrawAlphaTiles { tiles, blend_mode } => {
-                    self.listener.send(RenderCommand::DrawAlphaTiles { tiles, blend_mode })
+                CulledDisplayItem::DrawAlphaTiles { tiles, paint_page, blend_mode } => {
+                    self.listener.send(RenderCommand::DrawAlphaTiles {
+                        tiles,
+                        paint_page,
+                        blend_mode,
+                    })
                 }
-                CulledDisplayItem::PushLayer { effects } => {
-                    self.listener.send(RenderCommand::PushLayer { effects })
+                CulledDisplayItem::DrawRenderTarget { render_target, effects } => {
+                    self.listener.send(RenderCommand::DrawRenderTarget { render_target, effects })
                 }
-                CulledDisplayItem::PopLayer => self.listener.send(RenderCommand::PopLayer),
+                CulledDisplayItem::PushRenderTarget(render_target_id) => {
+                    self.listener.send(RenderCommand::PushRenderTarget(render_target_id))
+                }
+                CulledDisplayItem::PopRenderTarget => {
+                    self.listener.send(RenderCommand::PopRenderTarget)
+                }
             }
         }
     }
@@ -364,6 +400,30 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
     pub(crate) fn allocate_mask_tile_index(&self) -> u16 {
         // FIXME(pcwalton): Check for overflow!
         self.next_mask_tile_index.fetch_add(1, Ordering::Relaxed) as u16
+    }
+
+    fn needs_readable_framebuffer(&self) -> bool {
+        let mut framebuffer_nesting = 0;
+        for display_item in &self.scene.display_list {
+            match *display_item {
+                DisplayItem::DrawRenderTarget { .. } => {}
+                DisplayItem::PushRenderTarget(_) => framebuffer_nesting += 1,
+                DisplayItem::PopRenderTarget => framebuffer_nesting -= 1,
+                DisplayItem::DrawPaths { start_index, end_index } => {
+                    if framebuffer_nesting > 0 {
+                        continue;
+                    }
+                    for path_index in start_index..end_index {
+                        let blend_mode = self.scene.paths[path_index as usize].blend_mode();
+                        let blend_mode_program = BlendModeProgram::from_blend_mode(blend_mode);
+                        if blend_mode_program.needs_readable_framebuffer() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 }
 
@@ -393,10 +453,11 @@ struct CulledTiles {
 }
 
 enum CulledDisplayItem {
-    DrawSolidTiles(Vec<SolidTileVertex>),
-    DrawAlphaTiles { tiles: Vec<AlphaTile>, blend_mode: BlendMode },
-    PushLayer { effects: Effects },
-    PopLayer,
+    DrawSolidTiles(SolidTileBatch),
+    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: PaintPageId, blend_mode: BlendMode },
+    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+    PushRenderTarget(RenderTargetId),
+    PopRenderTarget,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
