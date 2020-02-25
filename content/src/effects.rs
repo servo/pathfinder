@@ -94,6 +94,12 @@ pub enum BlendMode {
     // Soft light
     SoftLight,
 
+    // Difference
+    Difference,
+
+    // Exclusion
+    Exclusion,
+
     // HSL
     Hue,
     Saturation,
@@ -143,6 +149,8 @@ impl BlendMode {
             BlendMode::ColorDodge |
             BlendMode::ColorBurn |
             BlendMode::SoftLight |
+            BlendMode::Difference |
+            BlendMode::Exclusion |
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |

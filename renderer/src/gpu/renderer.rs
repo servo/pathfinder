@@ -88,6 +88,8 @@ where
     alpha_tile_overlay_program: AlphaTileOverlayProgram<D>,
     alpha_tile_dodgeburn_program: AlphaTileDodgeBurnProgram<D>,
     alpha_tile_softlight_program: AlphaTileBlendModeProgram<D>,
+    alpha_tile_difference_program: AlphaTileBlendModeProgram<D>,
+    alpha_tile_exclusion_program: AlphaTileBlendModeProgram<D>,
     alpha_tile_hsl_program: AlphaTileHSLProgram<D>,
     mask_winding_tile_vertex_array: MaskTileVertexArray<D>,
     mask_evenodd_tile_vertex_array: MaskTileVertexArray<D>,
@@ -98,6 +100,8 @@ where
     alpha_tile_overlay_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_dodgeburn_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_softlight_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_difference_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_exclusion_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_hsl_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
     alpha_tile_vertex_buffer: D::Buffer,
@@ -175,6 +179,11 @@ where
         let alpha_tile_softlight_program = AlphaTileBlendModeProgram::new(&device,
                                                                           resources,
                                                                           "tile_alpha_softlight");
+        let alpha_tile_difference_program =
+            AlphaTileBlendModeProgram::new(&device, resources, "tile_alpha_difference");
+        let alpha_tile_exclusion_program = AlphaTileBlendModeProgram::new(&device,
+                                                                          resources,
+                                                                          "tile_alpha_exclusion");
         let alpha_tile_hsl_program = AlphaTileHSLProgram::new(&device, resources);
         let filter_basic_program = FilterBasicProgram::new(&device, resources);
         let filter_text_program = FilterTextProgram::new(&device, resources);
@@ -253,6 +262,18 @@ where
             &alpha_tile_vertex_buffer,
             &quads_vertex_indices_buffer,
         );
+        let alpha_tile_difference_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_difference_program.alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_exclusion_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_exclusion_program.alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
         let alpha_tile_hsl_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_tile_hsl_program.alpha_tile_blend_mode_program.alpha_tile_program,
@@ -324,6 +345,8 @@ where
             alpha_tile_overlay_program,
             alpha_tile_dodgeburn_program,
             alpha_tile_softlight_program,
+            alpha_tile_difference_program,
+            alpha_tile_exclusion_program,
             alpha_tile_hsl_program,
             mask_winding_tile_vertex_array,
             mask_evenodd_tile_vertex_array,
@@ -334,6 +357,8 @@ where
             alpha_tile_overlay_vertex_array,
             alpha_tile_dodgeburn_vertex_array,
             alpha_tile_softlight_vertex_array,
+            alpha_tile_difference_vertex_array,
+            alpha_tile_exclusion_vertex_array,
             alpha_tile_hsl_vertex_array,
             area_lut_texture,
             alpha_tile_vertex_buffer,
@@ -786,6 +811,14 @@ where
                 (&self.alpha_tile_softlight_program.alpha_tile_program,
                  &self.alpha_tile_softlight_vertex_array)
             }
+            BlendModeProgram::Difference => {
+                (&self.alpha_tile_difference_program.alpha_tile_program,
+                 &self.alpha_tile_difference_vertex_array)
+            }
+            BlendModeProgram::Exclusion => {
+                (&self.alpha_tile_exclusion_program.alpha_tile_program,
+                 &self.alpha_tile_exclusion_vertex_array)
+            }
             BlendModeProgram::HSL => {
                 (&self.alpha_tile_hsl_program.alpha_tile_blend_mode_program.alpha_tile_program,
                  &self.alpha_tile_hsl_vertex_array)
@@ -837,6 +870,16 @@ where
                 self.set_uniforms_for_blend_mode(&mut textures,
                                                  &mut uniforms,
                                                  &self.alpha_tile_softlight_program);
+            }
+            BlendModeProgram::Difference => {
+                self.set_uniforms_for_blend_mode(&mut textures,
+                                                 &mut uniforms,
+                                                 &self.alpha_tile_difference_program);
+            }
+            BlendModeProgram::Exclusion => {
+                self.set_uniforms_for_blend_mode(&mut textures,
+                                                 &mut uniforms,
+                                                 &self.alpha_tile_exclusion_program);
             }
             BlendModeProgram::HSL => {
                 self.set_uniforms_for_hsl_blend_mode(&mut textures, &mut uniforms, blend_mode);
@@ -1586,6 +1629,8 @@ impl BlendModeExt for BlendMode {
             BlendMode::ColorDodge |
             BlendMode::ColorBurn |
             BlendMode::SoftLight |
+            BlendMode::Difference |
+            BlendMode::Exclusion |
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |
@@ -1604,6 +1649,8 @@ pub(crate) enum BlendModeProgram {
     Overlay,
     DodgeBurn,
     SoftLight,
+    Difference,
+    Exclusion,
     HSL,
 }
 
@@ -1630,6 +1677,8 @@ impl BlendModeProgram {
             BlendMode::ColorDodge |
             BlendMode::ColorBurn => BlendModeProgram::DodgeBurn,
             BlendMode::SoftLight => BlendModeProgram::SoftLight,
+            BlendMode::Difference => BlendModeProgram::Difference,
+            BlendMode::Exclusion => BlendModeProgram::Exclusion,
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |
@@ -1644,6 +1693,8 @@ impl BlendModeProgram {
             BlendModeProgram::Overlay |
             BlendModeProgram::DodgeBurn |
             BlendModeProgram::SoftLight |
+            BlendModeProgram::Difference |
+            BlendModeProgram::Exclusion |
             BlendModeProgram::HSL => true,
         }
     }
