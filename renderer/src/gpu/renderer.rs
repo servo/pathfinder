@@ -10,12 +10,12 @@
 
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu::shaders::{AlphaTileHSLProgram, AlphaTileProgram, AlphaTileVertexArray};
-use crate::gpu::shaders::{CopyTileProgram, CopyTileVertexArray, FillProgram, FillVertexArray};
-use crate::gpu::shaders::{FilterBasicProgram, FilterBasicVertexArray, FilterTextProgram};
-use crate::gpu::shaders::{FilterTextVertexArray, MAX_FILLS_PER_BATCH, MaskTileProgram};
-use crate::gpu::shaders::{MaskTileVertexArray, ReprojectionProgram, ReprojectionVertexArray};
-use crate::gpu::shaders::{SolidTileProgram, SolidTileVertexArray};
+use crate::gpu::shaders::{AlphaTileHSLProgram, AlphaTileOverlayProgram, AlphaTileProgram};
+use crate::gpu::shaders::{AlphaTileVertexArray, CopyTileProgram, CopyTileVertexArray, FillProgram};
+use crate::gpu::shaders::{FillVertexArray, FilterBasicProgram, FilterBasicVertexArray};
+use crate::gpu::shaders::{FilterTextProgram, FilterTextVertexArray, MAX_FILLS_PER_BATCH};
+use crate::gpu::shaders::{MaskTileProgram, MaskTileVertexArray, ReprojectionProgram};
+use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
 use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
 use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileVertex};
@@ -50,11 +50,16 @@ pub(crate) const MASK_TILES_DOWN: u32 = 256;
 const TEXTURE_CACHE_SIZE: usize = 8;
 
 // FIXME(pcwalton): Shrink this again!
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * MASK_TILES_ACROSS as i32;
+const MASK_FRAMEBUFFER_WIDTH:  i32 = TILE_WIDTH as i32  * MASK_TILES_ACROSS as i32;
 const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * MASK_TILES_DOWN as i32;
 
-const BLEND_TERM_DEST:  i32 = 0;
-const BLEND_TERM_SRC:   i32 = 1;
+const BLEND_TERM_DEST: i32 = 0;
+const BLEND_TERM_SRC:  i32 = 1;
+
+const OVERLAY_BLEND_MODE_MULTIPLY:   i32 = 0;
+const OVERLAY_BLEND_MODE_SCREEN:     i32 = 1;
+const OVERLAY_BLEND_MODE_HARD_LIGHT: i32 = 2;
+const OVERLAY_BLEND_MODE_OVERLAY:    i32 = 3;
 
 pub struct Renderer<D>
 where
@@ -72,12 +77,14 @@ where
     copy_tile_program: CopyTileProgram<D>,
     solid_tile_program: SolidTileProgram<D>,
     alpha_tile_program: AlphaTileProgram<D>,
+    alpha_tile_overlay_program: AlphaTileOverlayProgram<D>,
     alpha_tile_hsl_program: AlphaTileHSLProgram<D>,
     mask_winding_tile_vertex_array: MaskTileVertexArray<D>,
     mask_evenodd_tile_vertex_array: MaskTileVertexArray<D>,
     copy_tile_vertex_array: CopyTileVertexArray<D>,
     solid_tile_vertex_array: SolidTileVertexArray<D>,
     alpha_tile_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_overlay_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_hsl_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
     alpha_tile_vertex_buffer: D::Buffer,
@@ -149,6 +156,7 @@ where
         let copy_tile_program = CopyTileProgram::new(&device, resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
+        let alpha_tile_overlay_program = AlphaTileOverlayProgram::new(&device, resources);
         let alpha_tile_hsl_program = AlphaTileHSLProgram::new(&device, resources);
         let filter_basic_program = FilterBasicProgram::new(&device, resources);
         let filter_text_program = FilterTextProgram::new(&device, resources);
@@ -200,6 +208,12 @@ where
         let alpha_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_overlay_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_overlay_program.alpha_tile_program,
             &alpha_tile_vertex_buffer,
             &quads_vertex_indices_buffer,
         );
@@ -270,12 +284,14 @@ where
             copy_tile_program,
             solid_tile_program,
             alpha_tile_program,
+            alpha_tile_overlay_program,
             alpha_tile_hsl_program,
             mask_winding_tile_vertex_array,
             mask_evenodd_tile_vertex_array,
+            copy_tile_vertex_array,
             solid_tile_vertex_array,
             alpha_tile_vertex_array,
-            copy_tile_vertex_array,
+            alpha_tile_overlay_vertex_array,
             alpha_tile_hsl_vertex_array,
             area_lut_texture,
             alpha_tile_vertex_buffer,
@@ -708,6 +724,10 @@ where
 
         let (alpha_tile_program, alpha_tile_vertex_array) = match blend_mode_program {
             BlendModeProgram::Regular => (&self.alpha_tile_program, &self.alpha_tile_vertex_array),
+            BlendModeProgram::Overlay => {
+                (&self.alpha_tile_overlay_program.alpha_tile_program,
+                 &self.alpha_tile_overlay_vertex_array)
+            }
             BlendModeProgram::HSL => {
                 (&self.alpha_tile_hsl_program.alpha_tile_program,
                  &self.alpha_tile_hsl_vertex_array)
@@ -742,6 +762,9 @@ where
 
         match blend_mode_program {
             BlendModeProgram::Regular => {}
+            BlendModeProgram::Overlay => {
+                self.set_uniforms_for_overlay_blend_mode(&mut textures, &mut uniforms, blend_mode);
+            }
             BlendModeProgram::HSL => {
                 self.set_uniforms_for_hsl_blend_mode(&mut textures, &mut uniforms, blend_mode);
             }
@@ -766,6 +789,26 @@ where
         self.preserve_draw_framebuffer();
     }
 
+    fn set_uniforms_for_overlay_blend_mode<'a>(&'a self,
+                                               textures: &mut Vec<&'a D::Texture>,
+                                               uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
+                                               blend_mode: BlendMode) {
+        let overlay_blend_mode = match blend_mode {
+            BlendMode::Multiply  => OVERLAY_BLEND_MODE_MULTIPLY,
+            BlendMode::Screen    => OVERLAY_BLEND_MODE_SCREEN,
+            BlendMode::HardLight => OVERLAY_BLEND_MODE_HARD_LIGHT,
+            BlendMode::Overlay   => OVERLAY_BLEND_MODE_OVERLAY,
+            _                    => unreachable!(),
+        };
+
+        uniforms.push((&self.alpha_tile_overlay_program.blend_mode_uniform,
+                       UniformData::Int(overlay_blend_mode)));
+
+        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
+        uniforms.push((&self.alpha_tile_overlay_program.dest_uniform,
+                        UniformData::TextureUnit(textures.len() as u32 - 1)));
+    }
+
     fn set_uniforms_for_hsl_blend_mode<'a>(&'a self,
                                            textures: &mut Vec<&'a D::Texture>,
                                            uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
@@ -778,19 +821,25 @@ where
             _                     => unreachable!(),
         };
 
-        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
-        uniforms.push((&self.alpha_tile_hsl_program.dest_uniform, UniformData::TextureUnit(2)));
         uniforms.push((&self.alpha_tile_hsl_program.blend_hsl_uniform,
                        UniformData::IVec3(hsl_terms)));
+
+        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
+        uniforms.push((&self.alpha_tile_hsl_program.dest_uniform,
+                       UniformData::TextureUnit(textures.len() as u32 - 1)));
     }
 
     fn copy_alpha_tiles_to_dest_blend_texture(&mut self, tile_count: u32) {
+        let draw_viewport = self.draw_viewport();
+
         let mut textures = vec![];
         let mut uniforms = vec![
             (&self.copy_tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
             (&self.copy_tile_program.tile_size_uniform,
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
+            (&self.copy_tile_program.framebuffer_size_uniform,
+             UniformData::Vec2(draw_viewport.size().to_f32().0)),
         ];
 
         let draw_framebuffer = match self.draw_render_target() {
@@ -809,7 +858,7 @@ where
             primitive: Primitive::Triangles,
             textures: &textures,
             uniforms: &uniforms,
-            viewport: self.draw_viewport(),
+            viewport: draw_viewport,
             options: RenderOptions {
                 clear_ops: ClearOps {
                     color: Some(ColorF::transparent_black()),
@@ -1395,6 +1444,10 @@ impl BlendModeExt for BlendMode {
                     op: BlendOp::Min,
                 })
             }
+            BlendMode::Multiply |
+            BlendMode::Screen |
+            BlendMode::HardLight |
+            BlendMode::Overlay |
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |
@@ -1409,6 +1462,7 @@ impl BlendModeExt for BlendMode {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum BlendModeProgram {
     Regular,
+    Overlay,
     HSL,
 }
 
@@ -1424,6 +1478,10 @@ impl BlendModeProgram {
             BlendMode::Lighter |
             BlendMode::Lighten |
             BlendMode::Darken => BlendModeProgram::Regular,
+            BlendMode::Multiply |
+            BlendMode::Screen |
+            BlendMode::HardLight |
+            BlendMode::Overlay => BlendModeProgram::Overlay,
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |
@@ -1434,7 +1492,7 @@ impl BlendModeProgram {
     pub(crate) fn needs_readable_framebuffer(self) -> bool {
         match self {
             BlendModeProgram::Regular => false,
-            BlendModeProgram::HSL => true,
+            BlendModeProgram::Overlay | BlendModeProgram::HSL => true,
         }
     }
 }

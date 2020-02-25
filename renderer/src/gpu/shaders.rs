@@ -429,6 +429,7 @@ pub struct CopyTileProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
+    pub framebuffer_size_uniform: D::Uniform,
     pub src_uniform: D::Uniform,
 }
 
@@ -437,8 +438,15 @@ impl<D> CopyTileProgram<D> where D: Device {
         let program = device.create_program(resources, "tile_copy");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let src_uniform = device.get_uniform(&program, "Src");
-        CopyTileProgram { program, transform_uniform, tile_size_uniform, src_uniform }
+        CopyTileProgram {
+            program,
+            transform_uniform,
+            tile_size_uniform,
+            framebuffer_size_uniform,
+            src_uniform,
+        }
     }
 }
 
@@ -456,6 +464,23 @@ impl<D> AlphaTileHSLProgram<D> where D: Device {
         let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
         let blend_hsl_uniform = device.get_uniform(&alpha_tile_program.program, "BlendHSL");
         AlphaTileHSLProgram { alpha_tile_program, dest_uniform, blend_hsl_uniform }
+    }
+}
+
+pub struct AlphaTileOverlayProgram<D> where D: Device {
+    pub alpha_tile_program: AlphaTileProgram<D>,
+    pub dest_uniform: D::Uniform,
+    pub blend_mode_uniform: D::Uniform,
+}
+
+impl<D> AlphaTileOverlayProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileOverlayProgram<D> {
+        let alpha_tile_program = AlphaTileProgram::from_fragment_shader_name(device,
+                                                                             resources,
+                                                                             "tile_alpha_overlay");
+        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
+        let blend_mode_uniform = device.get_uniform(&alpha_tile_program.program, "BlendMode");
+        AlphaTileOverlayProgram { alpha_tile_program, dest_uniform, blend_mode_uniform }
     }
 }
 

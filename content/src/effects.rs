@@ -64,6 +64,7 @@ pub enum CompositeOp {
 /// Blend modes that can be applied to individual paths.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlendMode {
+    // Supported by GPU blender
     Clear,
     SrcOver,
     DestOver,
@@ -73,6 +74,14 @@ pub enum BlendMode {
     Lighter,
     Lighten,
     Darken,
+
+    // Overlay
+    Multiply,
+    Screen,
+    HardLight,
+    Overlay,
+
+    // HSL
     Hue,
     Saturation,
     Color,
@@ -109,6 +118,10 @@ impl BlendMode {
             BlendMode::Xor |
             BlendMode::Lighter |
             BlendMode::Lighten |
+            BlendMode::Multiply |
+            BlendMode::Screen |
+            BlendMode::HardLight |
+            BlendMode::Overlay |
             BlendMode::Darken |
             BlendMode::Hue |
             BlendMode::Saturation |
