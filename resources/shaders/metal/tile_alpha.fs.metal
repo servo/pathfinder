@@ -1,4 +1,6 @@
 // Automatically generated from files in pathfinder/shaders/. Do not edit!
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
@@ -23,15 +25,18 @@ struct main0_in
     float2 vMaskTexCoord [[user(locn1)]];
 };
 
+float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
+{
+    float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
+    float4 srcRGBA = uPaintTexture.sample(uPaintTextureSmplr, vColorTexCoord);
+    return float4(srcRGBA.xyz, srcRGBA.w * coverage);
+}
+
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float coverage = spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord).x;
-    float4 color = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
-    color.w *= coverage;
-    float3 _41 = color.xyz * color.w;
-    color = float4(_41.x, _41.y, _41.z, color.w);
-    out.oFragColor = color;
+    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    out.oFragColor = float4(srcRGBA.xyz * srcRGBA.w, srcRGBA.w);
     return out;
 }
 

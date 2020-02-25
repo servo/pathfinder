@@ -12,22 +12,54 @@
 
 
 
+#extension GL_GOOGLE_include_directive : enable
+
 precision highp float;
+
+out vec4 oFragColor;
+
+
+
+
+
+
+
+
+
+
+
 
 uniform sampler2D uStencilTexture;
 uniform sampler2D uPaintTexture;
+uniform sampler2D uDest;
 uniform vec2 uFramebufferSize;
 
 in vec2 vColorTexCoord;
 in vec2 vMaskTexCoord;
 
-out vec4 oFragColor;
+
+vec4 sampleSrcColor(){
+    float coverage = texture(uStencilTexture, vMaskTexCoord). r;
+    vec4 srcRGBA = texture(uPaintTexture, vColorTexCoord);
+    return vec4(srcRGBA . rgb, srcRGBA . a * coverage);
+}
+
+vec4 sampleDestColor(){
+    vec2 destTexCoord = gl_FragCoord . xy / uFramebufferSize;
+    return texture(uDest, destTexCoord);
+}
+
+
+vec4 blendColors(vec4 destRGBA, vec4 srcRGBA, vec3 blendedRGB){
+    return vec4(srcRGBA . a *(1.0 - destRGBA . a)* srcRGBA . rgb +
+                srcRGBA . a * destRGBA . a * blendedRGB +
+                (1.0 - srcRGBA . a)* destRGBA . a * destRGBA . rgb,
+                1.0);
+}
+
 
 void main(){
-    float coverage = texture(uStencilTexture, vMaskTexCoord). r;
-    vec4 color = texture(uPaintTexture, vColorTexCoord);
-    color . a *= coverage;
-    color . rgb *= color . a;
-    oFragColor = color;
+    vec4 srcRGBA = sampleSrcColor();
+    oFragColor = vec4(srcRGBA . rgb * srcRGBA . a, srcRGBA . a);
 }
 

@@ -12,25 +12,20 @@
 
 #extension GL_GOOGLE_include_directive : enable
 
-#define BLEND_TERM_DEST 0
-#define BLEND_TERM_SRC  1
-
 precision highp float;
 
-uniform sampler2D uStencilTexture;
-uniform sampler2D uPaintTexture;
-uniform sampler2D uDest;
 uniform ivec3 uBlendHSL;
-uniform vec2 uFramebufferSize;
-
-in vec2 vColorTexCoord;
-in vec2 vMaskTexCoord;
 
 out vec4 oFragColor;
+
+#include "tile_alpha_sample.inc.glsl"
 
 #define PI_2        6.283185307179586
 #define DEG_30_INV  1.9098593171027443
 #define DEG_60      1.0471975511965976
+
+#define BLEND_TERM_DEST 0
+#define BLEND_TERM_SRC  1
 
 // https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB_alternative
 vec3 convertHSLToRGB(vec3 hsl) {
@@ -63,12 +58,8 @@ vec3 convertRGBToHSL(vec3 rgb) {
 }
 
 void main() {
-    float coverage = texture(uStencilTexture, vMaskTexCoord).r;
-    vec4 srcRGBA = texture(uPaintTexture, vColorTexCoord);
-    srcRGBA.a *= coverage;
-
-    vec2 destTexCoord = gl_FragCoord.xy / uFramebufferSize;
-    vec4 destRGBA = texture(uDest, destTexCoord);
+    vec4 srcRGBA = sampleSrcColor();
+    vec4 destRGBA = sampleDestColor();
 
     vec3 destHSL = convertRGBToHSL(destRGBA.rgb);
     vec3 srcHSL = convertRGBToHSL(srcRGBA.rgb);
@@ -78,10 +69,5 @@ void main() {
                            blendDest.z ? destHSL.z : srcHSL.z);
     vec3 blendedRGB = convertHSLToRGB(blendedHSL);
 
-    // FIXME(pcwalton): What should the output alpha be here?
-    vec4 color = vec4(srcRGBA.a * (1.0 - destRGBA.a) * srcRGBA.rgb +
-                      srcRGBA.a * destRGBA.a * blendedRGB +
-                      (1.0 - srcRGBA.a) * destRGBA.a * destRGBA.rgb,
-                      1.0);
-    oFragColor = color;
+    oFragColor = blendColors(destRGBA, srcRGBA, blendedRGB);
 }

@@ -33,6 +33,7 @@ SHADERS=\
 INCLUDES=\
 	filter_text_convolve.inc.glsl \
 	filter_text_gamma_correct.inc.glsl \
+	tile_alpha_sample.inc.glsl \
 	$(EMPTY)
 
 OUT=\

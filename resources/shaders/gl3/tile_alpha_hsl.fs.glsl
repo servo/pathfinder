@@ -14,21 +14,54 @@
 
 #extension GL_GOOGLE_include_directive : enable
 
-
-
-
 precision highp float;
+
+uniform ivec3 uBlendHSL;
+
+out vec4 oFragColor;
+
+
+
+
+
+
+
+
+
+
+
 
 uniform sampler2D uStencilTexture;
 uniform sampler2D uPaintTexture;
 uniform sampler2D uDest;
-uniform ivec3 uBlendHSL;
 uniform vec2 uFramebufferSize;
 
 in vec2 vColorTexCoord;
 in vec2 vMaskTexCoord;
 
-out vec4 oFragColor;
+
+vec4 sampleSrcColor(){
+    float coverage = texture(uStencilTexture, vMaskTexCoord). r;
+    vec4 srcRGBA = texture(uPaintTexture, vColorTexCoord);
+    return vec4(srcRGBA . rgb, srcRGBA . a * coverage);
+}
+
+vec4 sampleDestColor(){
+    vec2 destTexCoord = gl_FragCoord . xy / uFramebufferSize;
+    return texture(uDest, destTexCoord);
+}
+
+
+vec4 blendColors(vec4 destRGBA, vec4 srcRGBA, vec3 blendedRGB){
+    return vec4(srcRGBA . a *(1.0 - destRGBA . a)* srcRGBA . rgb +
+                srcRGBA . a * destRGBA . a * blendedRGB +
+                (1.0 - srcRGBA . a)* destRGBA . a * destRGBA . rgb,
+                1.0);
+}
+
+
+
+
 
 
 
@@ -65,12 +98,8 @@ vec3 convertRGBToHSL(vec3 rgb){
 }
 
 void main(){
-    float coverage = texture(uStencilTexture, vMaskTexCoord). r;
-    vec4 srcRGBA = texture(uPaintTexture, vColorTexCoord);
-    srcRGBA . a *= coverage;
-
-    vec2 destTexCoord = gl_FragCoord . xy / uFramebufferSize;
-    vec4 destRGBA = texture(uDest, destTexCoord);
+    vec4 srcRGBA = sampleSrcColor();
+    vec4 destRGBA = sampleDestColor();
 
     vec3 destHSL = convertRGBToHSL(destRGBA . rgb);
     vec3 srcHSL = convertRGBToHSL(srcRGBA . rgb);
@@ -80,11 +109,6 @@ void main(){
                            blendDest . z ? destHSL . z : srcHSL . z);
     vec3 blendedRGB = convertHSLToRGB(blendedHSL);
 
-
-    vec4 color = vec4(srcRGBA . a *(1.0 - destRGBA . a)* srcRGBA . rgb +
-                      srcRGBA . a * destRGBA . a * blendedRGB +
-                      (1.0 - srcRGBA . a)* destRGBA . a * destRGBA . rgb,
-                      1.0);
-    oFragColor = color;
+    oFragColor = blendColors(destRGBA, srcRGBA, blendedRGB);
 }
 

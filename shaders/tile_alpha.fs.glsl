@@ -10,21 +10,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#extension GL_GOOGLE_include_directive : enable
+
 precision highp float;
-
-uniform sampler2D uStencilTexture;
-uniform sampler2D uPaintTexture;
-uniform vec2 uFramebufferSize;
-
-in vec2 vColorTexCoord;
-in vec2 vMaskTexCoord;
 
 out vec4 oFragColor;
 
+#include "tile_alpha_sample.inc.glsl"
+
 void main() {
-    float coverage = texture(uStencilTexture, vMaskTexCoord).r;
-    vec4 color = texture(uPaintTexture, vColorTexCoord);
-    color.a *= coverage;
-    color.rgb *= color.a;
-    oFragColor = color;
+    vec4 srcRGBA = sampleSrcColor();
+    oFragColor = vec4(srcRGBA.rgb * srcRGBA.a, srcRGBA.a);
 }

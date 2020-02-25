@@ -36,6 +36,19 @@ Tx mod(Tx x, Ty y)
     return x - y * floor(x / y);
 }
 
+float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
+{
+    float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
+    float4 srcRGBA = uPaintTexture.sample(uPaintTextureSmplr, vColorTexCoord);
+    return float4(srcRGBA.xyz, srcRGBA.w * coverage);
+}
+
+float4 sampleDestColor(thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread texture2d<float> uDest, thread const sampler uDestSmplr)
+{
+    float2 destTexCoord = gl_FragCoord.xy / uFramebufferSize;
+    return uDest.sample(uDestSmplr, destTexCoord);
+}
+
 float3 convertRGBToHSL(thread const float3& rgb)
 {
     float v = fast::max(rgb.y, rgb.z);
@@ -77,51 +90,55 @@ float3 convertHSLToRGB(thread const float3& hsl)
     return hsl.zzz - (fast::clamp(fast::min(ks - float3(3.0), float3(9.0) - ks), float3(-1.0), float3(1.0)) * a);
 }
 
+float4 blendColors(thread const float4& destRGBA, thread const float4& srcRGBA, thread const float3& blendedRGB)
+{
+    return float4(((srcRGBA.xyz * (srcRGBA.w * (1.0 - destRGBA.w))) + (blendedRGB * (srcRGBA.w * destRGBA.w))) + (destRGBA.xyz * ((1.0 - srcRGBA.w) * destRGBA.w)), 1.0);
+}
+
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
-    float coverage = spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord).x;
-    float4 srcRGBA = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
-    srcRGBA.w *= coverage;
-    float2 destTexCoord = gl_FragCoord.xy / (*spvDescriptorSet0.uFramebufferSize);
-    float4 destRGBA = spvDescriptorSet0.uDest.sample(spvDescriptorSet0.uDestSmplr, destTexCoord);
+    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    float4 destRGBA = sampleDestColor(gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), spvDescriptorSet0.uDest, spvDescriptorSet0.uDestSmplr);
     float3 param = destRGBA.xyz;
     float3 destHSL = convertRGBToHSL(param);
     float3 param_1 = srcRGBA.xyz;
     float3 srcHSL = convertRGBToHSL(param_1);
     bool3 blendDest = (*spvDescriptorSet0.uBlendHSL) == int3(0);
-    float _225;
+    float _281;
     if (blendDest.x)
     {
-        _225 = destHSL.x;
+        _281 = destHSL.x;
     }
     else
     {
-        _225 = srcHSL.x;
+        _281 = srcHSL.x;
     }
-    float _236;
+    float _292;
     if (blendDest.y)
     {
-        _236 = destHSL.y;
+        _292 = destHSL.y;
     }
     else
     {
-        _236 = srcHSL.y;
+        _292 = srcHSL.y;
     }
-    float _247;
+    float _303;
     if (blendDest.z)
     {
-        _247 = destHSL.z;
+        _303 = destHSL.z;
     }
     else
     {
-        _247 = srcHSL.z;
+        _303 = srcHSL.z;
     }
-    float3 blendedHSL = float3(_225, _236, _247);
+    float3 blendedHSL = float3(_281, _292, _303);
     float3 param_2 = blendedHSL;
     float3 blendedRGB = convertHSLToRGB(param_2);
-    float4 color = float4(((srcRGBA.xyz * (srcRGBA.w * (1.0 - destRGBA.w))) + (blendedRGB * (srcRGBA.w * destRGBA.w))) + (destRGBA.xyz * ((1.0 - srcRGBA.w) * destRGBA.w)), 1.0);
-    out.oFragColor = color;
+    float4 param_3 = destRGBA;
+    float4 param_4 = srcRGBA;
+    float3 param_5 = blendedRGB;
+    out.oFragColor = blendColors(param_3, param_4, param_5);
     return out;
 }
 
