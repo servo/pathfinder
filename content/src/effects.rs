@@ -75,6 +75,12 @@ pub enum BlendMode {
     Lighten,
     Darken,
 
+    // Porter-Duff
+    SrcIn,
+    DestIn,
+    SrcOut,
+    DestAtop,
+
     // Overlay
     Multiply,
     Screen,
@@ -123,6 +129,10 @@ impl BlendMode {
             BlendMode::Lighter |
             BlendMode::Lighten |
             BlendMode::Darken |
+            BlendMode::SrcIn |
+            BlendMode::DestIn |
+            BlendMode::SrcOut |
+            BlendMode::DestAtop |
             BlendMode::Multiply |
             BlendMode::Screen |
             BlendMode::HardLight |

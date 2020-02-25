@@ -450,6 +450,31 @@ impl<D> CopyTileProgram<D> where D: Device {
     }
 }
 
+pub struct AlphaTilePorterDuffProgram<D> where D: Device {
+    pub alpha_tile_program: AlphaTileProgram<D>,
+    pub dest_uniform: D::Uniform,
+    pub dest_factor_uniform: D::Uniform,
+    pub src_factor_uniform: D::Uniform,
+}
+
+impl<D> AlphaTilePorterDuffProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTilePorterDuffProgram<D> {
+        let alpha_tile_program =
+            AlphaTileProgram::from_fragment_shader_name(device,
+                                                        resources,
+                                                        "tile_alpha_porterduff");
+        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
+        let dest_factor_uniform = device.get_uniform(&alpha_tile_program.program, "DestFactor");
+        let src_factor_uniform = device.get_uniform(&alpha_tile_program.program, "SrcFactor");
+        AlphaTilePorterDuffProgram {
+            alpha_tile_program,
+            dest_uniform,
+            dest_factor_uniform,
+            src_factor_uniform,
+        }
+    }
+}
+
 pub struct AlphaTileHSLProgram<D> where D: Device {
     pub alpha_tile_program: AlphaTileProgram<D>,
     pub dest_uniform: D::Uniform,

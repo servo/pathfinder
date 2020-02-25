@@ -11,12 +11,13 @@
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu::shaders::{AlphaTileDodgeBurnProgram, AlphaTileHSLProgram, AlphaTileOverlayProgram};
-use crate::gpu::shaders::{AlphaTileProgram, AlphaTileVertexArray, CopyTileProgram};
-use crate::gpu::shaders::{CopyTileVertexArray, FillProgram, FillVertexArray, FilterBasicProgram};
-use crate::gpu::shaders::{FilterBasicVertexArray, FilterTextProgram, FilterTextVertexArray};
-use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
-use crate::gpu::shaders::{ReprojectionProgram, ReprojectionVertexArray, SolidTileProgram};
-use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArray};
+use crate::gpu::shaders::{AlphaTilePorterDuffProgram, AlphaTileProgram, AlphaTileVertexArray};
+use crate::gpu::shaders::{CopyTileProgram, CopyTileVertexArray, FillProgram, FillVertexArray};
+use crate::gpu::shaders::{FilterBasicProgram, FilterBasicVertexArray, FilterTextProgram};
+use crate::gpu::shaders::{FilterTextVertexArray, MAX_FILLS_PER_BATCH, MaskTileProgram};
+use crate::gpu::shaders::{MaskTileVertexArray, ReprojectionProgram, ReprojectionVertexArray};
+use crate::gpu::shaders::{SolidTileProgram, SolidTileVertexArray};
+use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
 use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileVertex};
 use crate::options::BoundingQuad;
@@ -61,6 +62,11 @@ const OVERLAY_BLEND_MODE_SCREEN:     i32 = 1;
 const OVERLAY_BLEND_MODE_HARD_LIGHT: i32 = 2;
 const OVERLAY_BLEND_MODE_OVERLAY:    i32 = 3;
 
+const PORTER_DUFF_FACTOR_ZERO:                 i32 = 0;
+const PORTER_DUFF_FACTOR_DEST_ALPHA:           i32 = 1;
+const PORTER_DUFF_FACTOR_SRC_ALPHA:            i32 = 2;
+const PORTER_DUFF_FACTOR_ONE_MINUS_DEST_ALPHA: i32 = 3;
+
 pub struct Renderer<D>
 where
     D: Device,
@@ -77,6 +83,7 @@ where
     copy_tile_program: CopyTileProgram<D>,
     solid_tile_program: SolidTileProgram<D>,
     alpha_tile_program: AlphaTileProgram<D>,
+    alpha_tile_porterduff_program: AlphaTilePorterDuffProgram<D>,
     alpha_tile_overlay_program: AlphaTileOverlayProgram<D>,
     alpha_tile_dodgeburn_program: AlphaTileDodgeBurnProgram<D>,
     alpha_tile_hsl_program: AlphaTileHSLProgram<D>,
@@ -85,6 +92,7 @@ where
     copy_tile_vertex_array: CopyTileVertexArray<D>,
     solid_tile_vertex_array: SolidTileVertexArray<D>,
     alpha_tile_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_porterduff_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_overlay_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_dodgeburn_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_hsl_vertex_array: AlphaTileVertexArray<D>,
@@ -158,6 +166,7 @@ where
         let copy_tile_program = CopyTileProgram::new(&device, resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
+        let alpha_tile_porterduff_program = AlphaTilePorterDuffProgram::new(&device, resources);
         let alpha_tile_overlay_program = AlphaTileOverlayProgram::new(&device, resources);
         let alpha_tile_dodgeburn_program = AlphaTileDodgeBurnProgram::new(&device, resources);
         let alpha_tile_hsl_program = AlphaTileHSLProgram::new(&device, resources);
@@ -211,6 +220,12 @@ where
         let alpha_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_porterduff_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_porterduff_program.alpha_tile_program,
             &alpha_tile_vertex_buffer,
             &quads_vertex_indices_buffer,
         );
@@ -293,6 +308,7 @@ where
             copy_tile_program,
             solid_tile_program,
             alpha_tile_program,
+            alpha_tile_porterduff_program,
             alpha_tile_overlay_program,
             alpha_tile_dodgeburn_program,
             alpha_tile_hsl_program,
@@ -301,6 +317,7 @@ where
             copy_tile_vertex_array,
             solid_tile_vertex_array,
             alpha_tile_vertex_array,
+            alpha_tile_porterduff_vertex_array,
             alpha_tile_overlay_vertex_array,
             alpha_tile_dodgeburn_vertex_array,
             alpha_tile_hsl_vertex_array,
@@ -735,6 +752,10 @@ where
 
         let (alpha_tile_program, alpha_tile_vertex_array) = match blend_mode_program {
             BlendModeProgram::Regular => (&self.alpha_tile_program, &self.alpha_tile_vertex_array),
+            BlendModeProgram::PorterDuff => {
+                (&self.alpha_tile_porterduff_program.alpha_tile_program,
+                 &self.alpha_tile_porterduff_vertex_array)
+            }
             BlendModeProgram::Overlay => {
                 (&self.alpha_tile_overlay_program.alpha_tile_program,
                  &self.alpha_tile_overlay_vertex_array)
@@ -777,6 +798,11 @@ where
 
         match blend_mode_program {
             BlendModeProgram::Regular => {}
+            BlendModeProgram::PorterDuff => {
+                self.set_uniforms_for_porter_duff_blend_mode(&mut textures,
+                                                             &mut uniforms,
+                                                             blend_mode);
+            }
             BlendModeProgram::Overlay => {
                 self.set_uniforms_for_overlay_blend_mode(&mut textures, &mut uniforms, blend_mode);
             }
@@ -807,6 +833,37 @@ where
         });
 
         self.preserve_draw_framebuffer();
+    }
+
+    fn set_uniforms_for_porter_duff_blend_mode<'a>(
+            &'a self,
+            textures: &mut Vec<&'a D::Texture>,
+            uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
+            blend_mode: BlendMode) {
+        let (src_factor, dest_factor) = match blend_mode {
+            BlendMode::SrcIn => {
+                (PORTER_DUFF_FACTOR_DEST_ALPHA, PORTER_DUFF_FACTOR_ZERO)
+            }
+            BlendMode::DestIn => {
+                (PORTER_DUFF_FACTOR_ZERO, PORTER_DUFF_FACTOR_SRC_ALPHA)
+            }
+            BlendMode::SrcOut => {
+                (PORTER_DUFF_FACTOR_ONE_MINUS_DEST_ALPHA, PORTER_DUFF_FACTOR_ZERO)
+            }
+            BlendMode::DestAtop => {
+                (PORTER_DUFF_FACTOR_ONE_MINUS_DEST_ALPHA, PORTER_DUFF_FACTOR_SRC_ALPHA)
+            }
+            _ => unreachable!(),
+        };
+
+        uniforms.push((&self.alpha_tile_porterduff_program.src_factor_uniform,
+                       UniformData::Int(src_factor)));
+        uniforms.push((&self.alpha_tile_porterduff_program.dest_factor_uniform,
+                       UniformData::Int(dest_factor)));
+
+        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
+        uniforms.push((&self.alpha_tile_porterduff_program.dest_uniform,
+                        UniformData::TextureUnit(textures.len() as u32 - 1)));
     }
 
     fn set_uniforms_for_overlay_blend_mode<'a>(&'a self,
@@ -1477,6 +1534,10 @@ impl BlendModeExt for BlendMode {
                     op: BlendOp::Min,
                 })
             }
+            BlendMode::SrcIn |
+            BlendMode::DestIn |
+            BlendMode::SrcOut |
+            BlendMode::DestAtop |
             BlendMode::Multiply |
             BlendMode::Screen |
             BlendMode::HardLight |
@@ -1497,6 +1558,7 @@ impl BlendModeExt for BlendMode {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum BlendModeProgram {
     Regular,
+    PorterDuff,
     Overlay,
     DodgeBurn,
     HSL,
@@ -1514,6 +1576,10 @@ impl BlendModeProgram {
             BlendMode::Lighter |
             BlendMode::Lighten |
             BlendMode::Darken => BlendModeProgram::Regular,
+            BlendMode::SrcIn |
+            BlendMode::DestIn |
+            BlendMode::SrcOut |
+            BlendMode::DestAtop => BlendModeProgram::PorterDuff,
             BlendMode::Multiply |
             BlendMode::Screen |
             BlendMode::HardLight |
@@ -1530,6 +1596,7 @@ impl BlendModeProgram {
     pub(crate) fn needs_readable_framebuffer(self) -> bool {
         match self {
             BlendModeProgram::Regular => false,
+            BlendModeProgram::PorterDuff |
             BlendModeProgram::Overlay |
             BlendModeProgram::DodgeBurn |
             BlendModeProgram::HSL => true,
