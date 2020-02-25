@@ -91,6 +91,9 @@ pub enum BlendMode {
     ColorDodge,
     ColorBurn,
 
+    // Soft light
+    SoftLight,
+
     // HSL
     Hue,
     Saturation,
@@ -139,6 +142,7 @@ impl BlendMode {
             BlendMode::Overlay |
             BlendMode::ColorDodge |
             BlendMode::ColorBurn |
+            BlendMode::SoftLight |
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |

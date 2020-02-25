@@ -450,25 +450,39 @@ impl<D> CopyTileProgram<D> where D: Device {
     }
 }
 
-pub struct AlphaTilePorterDuffProgram<D> where D: Device {
+pub struct AlphaTileBlendModeProgram<D> where D: Device {
     pub alpha_tile_program: AlphaTileProgram<D>,
     pub dest_uniform: D::Uniform,
+}
+
+impl<D> AlphaTileBlendModeProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader, name: &str)  
+               -> AlphaTileBlendModeProgram<D> {
+        let alpha_tile_program =
+            AlphaTileProgram::from_fragment_shader_name(device, resources, name);
+        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
+        AlphaTileBlendModeProgram { alpha_tile_program, dest_uniform }
+    }
+}
+
+pub struct AlphaTilePorterDuffProgram<D> where D: Device {
+    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
     pub dest_factor_uniform: D::Uniform,
     pub src_factor_uniform: D::Uniform,
 }
 
 impl<D> AlphaTilePorterDuffProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTilePorterDuffProgram<D> {
-        let alpha_tile_program =
-            AlphaTileProgram::from_fragment_shader_name(device,
-                                                        resources,
-                                                        "tile_alpha_porterduff");
-        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
-        let dest_factor_uniform = device.get_uniform(&alpha_tile_program.program, "DestFactor");
-        let src_factor_uniform = device.get_uniform(&alpha_tile_program.program, "SrcFactor");
+        let alpha_tile_blend_mode_program =
+            AlphaTileBlendModeProgram::new(device, resources, "tile_alpha_porterduff");
+        let dest_factor_uniform =
+            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
+                               "DestFactor");
+        let src_factor_uniform =
+            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
+                               "SrcFactor");
         AlphaTilePorterDuffProgram {
-            alpha_tile_program,
-            dest_uniform,
+            alpha_tile_blend_mode_program,
             dest_factor_uniform,
             src_factor_uniform,
         }
@@ -476,52 +490,50 @@ impl<D> AlphaTilePorterDuffProgram<D> where D: Device {
 }
 
 pub struct AlphaTileHSLProgram<D> where D: Device {
-    pub alpha_tile_program: AlphaTileProgram<D>,
-    pub dest_uniform: D::Uniform,
+    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
     pub blend_hsl_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileHSLProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileHSLProgram<D> {
-        let alpha_tile_program = AlphaTileProgram::from_fragment_shader_name(device,
-                                                                             resources,
-                                                                             "tile_alpha_hsl");
-        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
-        let blend_hsl_uniform = device.get_uniform(&alpha_tile_program.program, "BlendHSL");
-        AlphaTileHSLProgram { alpha_tile_program, dest_uniform, blend_hsl_uniform }
+        let alpha_tile_blend_mode_program =
+            AlphaTileBlendModeProgram::new(device, resources, "tile_alpha_hsl");
+        let blend_hsl_uniform =
+            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
+                               "BlendHSL");
+        AlphaTileHSLProgram { alpha_tile_blend_mode_program, blend_hsl_uniform }
     }
 }
 
 pub struct AlphaTileOverlayProgram<D> where D: Device {
-    pub alpha_tile_program: AlphaTileProgram<D>,
-    pub dest_uniform: D::Uniform,
+    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
     pub blend_mode_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileOverlayProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileOverlayProgram<D> {
-        let alpha_tile_program = AlphaTileProgram::from_fragment_shader_name(device,
-                                                                             resources,
-                                                                             "tile_alpha_overlay");
-        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
-        let blend_mode_uniform = device.get_uniform(&alpha_tile_program.program, "BlendMode");
-        AlphaTileOverlayProgram { alpha_tile_program, dest_uniform, blend_mode_uniform }
+        let alpha_tile_blend_mode_program = AlphaTileBlendModeProgram::new(device,
+                                                                           resources,
+                                                                           "tile_alpha_overlay");
+        let blend_mode_uniform =
+            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
+                               "BlendMode");
+        AlphaTileOverlayProgram { alpha_tile_blend_mode_program, blend_mode_uniform }
     }
 }
 
 pub struct AlphaTileDodgeBurnProgram<D> where D: Device {
-    pub alpha_tile_program: AlphaTileProgram<D>,
-    pub dest_uniform: D::Uniform,
+    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
     pub burn_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileDodgeBurnProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileDodgeBurnProgram<D> {
-        let alpha_tile_program =
-            AlphaTileProgram::from_fragment_shader_name(device, resources, "tile_alpha_dodgeburn");
-        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
-        let burn_uniform = device.get_uniform(&alpha_tile_program.program, "Burn");
-        AlphaTileDodgeBurnProgram { alpha_tile_program, dest_uniform, burn_uniform }
+        let alpha_tile_blend_mode_program =
+            AlphaTileBlendModeProgram::new(device, resources, "tile_alpha_dodgeburn");
+        let burn_uniform =
+            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program, "Burn");
+        AlphaTileDodgeBurnProgram { alpha_tile_blend_mode_program, burn_uniform }
     }
 }
 
