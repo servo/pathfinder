@@ -271,7 +271,7 @@ impl<'a> SceneBuilder<'a> {
                     }) if paint_page == built_draw_path.paint_page &&
                         blend_mode == built_draw_path.blend_mode &&
                         !BlendModeProgram::from_blend_mode(
-                            built_draw_path.blend_mode).needs_readable_framebuffer() => {}
+                            blend_mode).needs_readable_framebuffer() => {}
                     _ => {
                         culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles {
                             tiles: vec![],
