@@ -484,6 +484,22 @@ impl<D> AlphaTileOverlayProgram<D> where D: Device {
     }
 }
 
+pub struct AlphaTileDodgeBurnProgram<D> where D: Device {
+    pub alpha_tile_program: AlphaTileProgram<D>,
+    pub dest_uniform: D::Uniform,
+    pub burn_uniform: D::Uniform,
+}
+
+impl<D> AlphaTileDodgeBurnProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileDodgeBurnProgram<D> {
+        let alpha_tile_program =
+            AlphaTileProgram::from_fragment_shader_name(device, resources, "tile_alpha_dodgeburn");
+        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
+        let burn_uniform = device.get_uniform(&alpha_tile_program.program, "Burn");
+        AlphaTileDodgeBurnProgram { alpha_tile_program, dest_uniform, burn_uniform }
+    }
+}
+
 pub struct FilterBasicProgram<D> where D: Device {
     pub program: D::Program,
     pub source_uniform: D::Uniform,
