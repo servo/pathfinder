@@ -94,7 +94,7 @@ impl Paint {
 
     pub fn is_fully_transparent(&self) -> bool {
         match *self {
-            Paint::Color(color) => color.is_opaque(),
+            Paint::Color(color) => color.is_fully_transparent(),
             Paint::Gradient(ref gradient) => {
                 gradient.stops().iter().all(|stop| stop.color.is_fully_transparent())
             }
