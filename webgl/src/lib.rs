@@ -166,8 +166,11 @@ impl WebGlDevice {
                 self.ck();
             }
             UniformData::Vec4(data) => {
-                self.context
-                    .uniform4f(location, data.x(), data.y(), data.z(), data.w());
+                self.context.uniform4f(location, data.x(), data.y(), data.z(), data.w());
+                self.ck();
+            }
+            UniformData::IVec3(data) => {
+                self.context.uniform3i(location, data[0], data[1], data[2]);
                 self.ck();
             }
             UniformData::TextureUnit(unit) => {
@@ -593,10 +596,14 @@ impl Device for WebGlDevice {
         }
 
         WebGlFramebuffer {
-            context: self.context.clone(),
             framebuffer: gl_framebuffer,
             texture
         }
+    }
+
+    fn destroy_framebuffer(&self, framebuffer: Self::Framebuffer) -> Self::Texture {
+        self.context.delete_framebuffer(Some(&framebuffer.framebuffer));
+        framebuffer.texture
     }
 
     fn create_buffer(&self) -> WebGlBuffer {
@@ -792,15 +799,8 @@ pub struct WebGlVertexAttr {
 }
 
 pub struct WebGlFramebuffer {
-    context: web_sys::WebGl2RenderingContext,
     pub framebuffer: web_sys::WebGlFramebuffer,
     pub texture: WebGlTexture,
-}
-
-impl Drop for WebGlFramebuffer {
-    fn drop(&mut self) {
-        self.context.delete_framebuffer(Some(&self.framebuffer));
-    }
 }
 
 pub struct WebGlBuffer {

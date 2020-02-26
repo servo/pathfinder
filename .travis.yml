@@ -8,6 +8,7 @@ addons:
     - cmake
 script:
   - cargo build
+  - cargo build -p pathfinder_webgl --target wasm32-unknown-unknown
   - cargo test
 env:
   global:
