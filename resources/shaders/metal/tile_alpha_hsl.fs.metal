@@ -31,11 +31,12 @@ struct main0_in
 
 // Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
 template<typename Tx, typename Ty>
-Tx mod(Tx x, Ty y)
+inline Tx mod(Tx x, Ty y)
 {
     return x - y * floor(x / y);
 }
 
+static inline __attribute__((always_inline))
 float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
 {
     float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
@@ -43,12 +44,14 @@ float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const samp
     return float4(srcRGBA.xyz, srcRGBA.w * coverage);
 }
 
+static inline __attribute__((always_inline))
 float4 sampleDestColor(thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread texture2d<float> uDest, thread const sampler uDestSmplr)
 {
     float2 destTexCoord = gl_FragCoord.xy / uFramebufferSize;
     return uDest.sample(uDestSmplr, destTexCoord);
 }
 
+static inline __attribute__((always_inline))
 float3 convertRGBToHSL(thread const float3& rgb)
 {
     float v = fast::max(rgb.y, rgb.z);
@@ -83,6 +86,7 @@ float3 convertRGBToHSL(thread const float3& rgb)
     return float3(h, s, l);
 }
 
+static inline __attribute__((always_inline))
 float3 select3(thread const bool3& cond, thread const float3& a, thread const float3& b)
 {
     float _125;
@@ -115,6 +119,7 @@ float3 select3(thread const bool3& cond, thread const float3& a, thread const fl
     return float3(_125, _137, _149);
 }
 
+static inline __attribute__((always_inline))
 float3 convertHSLToRGB(thread const float3& hsl)
 {
     float a = hsl.y * fast::min(hsl.z, 1.0 - hsl.z);
@@ -122,6 +127,7 @@ float3 convertHSLToRGB(thread const float3& hsl)
     return hsl.zzz - (fast::clamp(fast::min(ks - float3(3.0), float3(9.0) - ks), float3(-1.0), float3(1.0)) * a);
 }
 
+static inline __attribute__((always_inline))
 float4 blendColors(thread const float4& destRGBA, thread const float4& srcRGBA, thread const float3& blendedRGB)
 {
     return float4(((srcRGBA.xyz * (srcRGBA.w * (1.0 - destRGBA.w))) + (blendedRGB * (srcRGBA.w * destRGBA.w))) + (destRGBA.xyz * ((1.0 - srcRGBA.w) * destRGBA.w)), 1.0);

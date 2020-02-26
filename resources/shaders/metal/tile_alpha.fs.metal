@@ -25,6 +25,7 @@ struct main0_in
     float2 vMaskTexCoord [[user(locn1)]];
 };
 
+static inline __attribute__((always_inline))
 float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
 {
     float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;

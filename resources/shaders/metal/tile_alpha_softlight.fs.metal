@@ -28,6 +28,7 @@ struct main0_in
     float2 vMaskTexCoord [[user(locn1)]];
 };
 
+static inline __attribute__((always_inline))
 float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
 {
     float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
@@ -35,12 +36,14 @@ float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const samp
     return float4(srcRGBA.xyz, srcRGBA.w * coverage);
 }
 
+static inline __attribute__((always_inline))
 float4 sampleDestColor(thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread texture2d<float> uDest, thread const sampler uDestSmplr)
 {
     float2 destTexCoord = gl_FragCoord.xy / uFramebufferSize;
     return uDest.sample(uDestSmplr, destTexCoord);
 }
 
+static inline __attribute__((always_inline))
 float3 select3(thread const bool3& cond, thread const float3& a, thread const float3& b)
 {
     float _118;
@@ -73,6 +76,7 @@ float3 select3(thread const bool3& cond, thread const float3& a, thread const fl
     return float3(_118, _130, _142);
 }
 
+static inline __attribute__((always_inline))
 float4 blendColors(thread const float4& destRGBA, thread const float4& srcRGBA, thread const float3& blendedRGB)
 {
     return float4(((srcRGBA.xyz * (srcRGBA.w * (1.0 - destRGBA.w))) + (blendedRGB * (srcRGBA.w * destRGBA.w))) + (destRGBA.xyz * ((1.0 - srcRGBA.w) * destRGBA.w)), 1.0);
