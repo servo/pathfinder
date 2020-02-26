@@ -36,12 +36,13 @@ uniform vec2 uFramebufferSize;
 
 in vec2 vColorTexCoord;
 in vec2 vMaskTexCoord;
+in float vOpacity;
 
 
 vec4 sampleSrcColor(){
     float coverage = texture(uStencilTexture, vMaskTexCoord). r;
     vec4 srcRGBA = texture(uPaintTexture, vColorTexCoord);
-    return vec4(srcRGBA . rgb, srcRGBA . a * coverage);
+    return vec4(srcRGBA . rgb, srcRGBA . a * coverage * vOpacity);
 }
 
 vec4 sampleDestColor(){

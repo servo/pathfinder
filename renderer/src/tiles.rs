@@ -46,6 +46,7 @@ pub(crate) enum TilingPathInfo<'a> {
     Draw {
         paint_metadata: &'a PaintMetadata,
         blend_mode: BlendMode,
+        opacity: u8,
         built_clip_path: Option<&'a BuiltPath>,
     },
 }
@@ -127,10 +128,10 @@ impl<'a> Tiler<'a> {
     }
 
     fn pack_and_cull_draw_path(&mut self) {
-        let (paint_metadata, blend_mode, built_clip_path) = match self.path_info {
+        let (paint_metadata, blend_mode, opacity, built_clip_path) = match self.path_info {
             TilingPathInfo::Clip => unreachable!(),
-            TilingPathInfo::Draw { paint_metadata, blend_mode, built_clip_path } => {
-                (paint_metadata, blend_mode, built_clip_path)
+            TilingPathInfo::Draw { paint_metadata, blend_mode, opacity, built_clip_path } => {
+                (paint_metadata, blend_mode, opacity, built_clip_path)
             }
         };
 
@@ -181,7 +182,7 @@ impl<'a> Tiler<'a> {
 
                 // Next, if this is a solid tile that completely occludes the background, record
                 // that fact and stop here.
-                if paint_metadata.is_opaque && blend_mode.occludes_backdrop() {
+                if paint_metadata.is_opaque && blend_mode.occludes_backdrop() && opacity == !0 {
                     self.object_builder.built_path.solid_tiles.push(SolidTile::new(tile_coords));
                     continue;
                 }
@@ -209,6 +210,7 @@ impl<'a> Tiler<'a> {
                                            mask_tile_index,
                                            tile_coords,
                                            self.object_index,
+                                           opacity,
                                            paint_metadata);
 
         }

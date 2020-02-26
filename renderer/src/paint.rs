@@ -113,18 +113,6 @@ impl Paint {
         }
     }
 
-    pub fn set_opacity(&mut self, alpha: f32) {
-        if alpha == 1.0 {
-            return;
-        }
-
-        match *self {
-            Paint::Color(ref mut color) => color.a = (color.a as f32 * alpha).round() as u8,
-            Paint::Gradient(ref mut gradient) => gradient.set_opacity(alpha),
-            Paint::Pattern(ref mut pattern) => pattern.source.set_opacity(alpha),
-        }
-    }
-
     pub fn apply_transform(&mut self, transform: &Transform2F) {
         if transform.is_identity() {
             return;

@@ -20,15 +20,18 @@ uniform vec2 uTileSize;
 in ivec2 aTilePosition;
 in vec2 aColorTexCoord;
 in vec2 aMaskTexCoord;
+in float aOpacity;
 
 out vec2 vColorTexCoord;
 out vec2 vMaskTexCoord;
+out float vOpacity;
 
 void main(){
     vec2 position = aTilePosition * uTileSize;
 
     vMaskTexCoord = aMaskTexCoord;
     vColorTexCoord = aColorTexCoord;
+    vOpacity = aOpacity;
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 

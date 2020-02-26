@@ -193,6 +193,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
                                                           "ColorTexCoord").unwrap();
         let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
                                                          "MaskTexCoord").unwrap();
+        let opacity_attr = device.get_vertex_attr(&alpha_tile_program.program, "Opacity").unwrap();
 
         device.bind_buffer(&vertex_array, alpha_tile_vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
@@ -219,6 +220,15 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
             attr_type: VertexAttrType::U16,
             stride: ALPHA_TILE_VERTEX_SIZE,
             offset: 8,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &opacity_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U8,
+            stride: ALPHA_TILE_VERTEX_SIZE,
+            offset: 14,
             divisor: 0,
             buffer_index: 0,
         });

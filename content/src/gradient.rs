@@ -148,12 +148,6 @@ impl Gradient {
                   .lerp(upper_stop.color.to_f32(), (t - lower_stop.offset) / denom)
                   .to_u8()
     }
-
-    pub fn set_opacity(&mut self, alpha: f32) {
-        for stop in &mut self.stops.array {
-            stop.color.a = (stop.color.a as f32 * alpha).round() as u8;
-        }
-    }
 }
 
 impl ColorStop {

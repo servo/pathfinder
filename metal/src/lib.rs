@@ -365,6 +365,9 @@ impl Device for MetalDevice {
             (VertexAttrClass::Int, VertexAttrType::I8, 1) => MTLVertexFormat::Char,
             (VertexAttrClass::Int, VertexAttrType::U8, 1) => MTLVertexFormat::UChar,
             (VertexAttrClass::FloatNorm, VertexAttrType::I8, 1) => MTLVertexFormat::CharNormalized,
+            (VertexAttrClass::FloatNorm, VertexAttrType::U8, 1) => {
+                MTLVertexFormat::UCharNormalized
+            }
             (VertexAttrClass::Int, VertexAttrType::I16, 1) => MTLVertexFormat::Short,
             (VertexAttrClass::Int, VertexAttrType::U16, 1) => MTLVertexFormat::UShort,
             (VertexAttrClass::FloatNorm, VertexAttrType::U16, 1) => {

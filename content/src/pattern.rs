@@ -86,17 +86,6 @@ impl Image {
     pub fn is_opaque(&self) -> bool {
         self.is_opaque
     }
-
-    pub fn set_opacity(&mut self, alpha: f32) {
-        debug_assert!(alpha >= 0.0 && alpha <= 1.0);
-        if alpha == 1.0 {
-            return;
-        }
-
-        // TODO(pcwalton): Go four pixels at a time with SIMD.
-        self.pixels.iter_mut().for_each(|pixel| pixel.a = (pixel.a as f32 * alpha).round() as u8);
-        self.is_opaque = false;
-    }
 }
 
 impl PatternSource {
@@ -107,18 +96,6 @@ impl PatternSource {
             PatternSource::RenderTarget(_) => {
                 // TODO(pcwalton): Maybe do something smarter here?
                 false
-            }
-        }
-    }
-
-    #[inline]
-    pub fn set_opacity(&mut self, alpha: f32) {
-        match *self {
-            PatternSource::Image(ref mut image) => image.set_opacity(alpha),
-            PatternSource::RenderTarget(_) => {
-                // TODO(pcwalton): We'll probably have to introduce and use an Opacity filter for
-                // this.
-                unimplemented!()
             }
         }
     }

@@ -173,7 +173,8 @@ pub struct AlphaTileVertex {
     pub color_u: u16,
     pub color_v: u16,
     pub object_index: u16,
-    pub pad: u16,
+    pub opacity: u8,
+    pub pad: u8,
 }
 
 impl Debug for RenderCommand {

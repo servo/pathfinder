@@ -103,12 +103,9 @@ impl CanvasRenderingContext2D {
         let paint = self.current_state.resolve_paint(&paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        self.scene.push_path(DrawPath::new(outline,
-                                           paint_id,
-                                           None,
-                                           FillRule::Winding,
-                                           BlendMode::Clear,
-                                           String::new()))
+        let mut path = DrawPath::new(outline, paint_id);
+        path.set_blend_mode(BlendMode::Clear);
+        self.scene.push_path(path);
     }
 
     // Line styles
@@ -224,8 +221,9 @@ impl CanvasRenderingContext2D {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
-        let clip_path_id = self.scene   
-                               .push_clip_path(ClipPath::new(outline, fill_rule, String::new()));
+        let mut clip_path = ClipPath::new(outline);
+        clip_path.set_fill_rule(fill_rule);
+        let clip_path_id = self.scene.push_clip_path(clip_path);
 
         self.current_state.clip_path = Some(clip_path_id);
     }
@@ -234,6 +232,7 @@ impl CanvasRenderingContext2D {
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
         let composite_op = self.current_state.global_composite_operation.to_composite_op();
+        let opacity = (self.current_state.global_alpha * 255.0) as u8;
 
         if !self.current_state.shadow_paint.is_fully_transparent() {
             let render_target_id = self.push_render_target_if_needed(composite_op);
@@ -243,24 +242,24 @@ impl CanvasRenderingContext2D {
 
             let mut outline = outline.clone();
             outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
-            self.scene.push_path(DrawPath::new(outline,
-                                               paint_id,
-                                               clip_path,
-                                               fill_rule,
-                                               blend_mode,
-                                               String::new()));
+            let mut path = DrawPath::new(outline, paint_id);
+            path.set_clip_path(clip_path);
+            path.set_fill_rule(fill_rule);
+            path.set_blend_mode(blend_mode);
+            path.set_opacity(opacity);
+            self.scene.push_path(path);
 
             self.composite_render_target_if_needed(composite_op, render_target_id);
         }
 
         let render_target_id = self.push_render_target_if_needed(composite_op);
 
-        self.scene.push_path(DrawPath::new(outline,
-                                           paint_id,
-                                           clip_path,
-                                           fill_rule,
-                                           blend_mode,
-                                           String::new()));
+        let mut path = DrawPath::new(outline, paint_id);
+        path.set_clip_path(clip_path);
+        path.set_fill_rule(fill_rule);
+        path.set_blend_mode(blend_mode);
+        path.set_opacity(opacity);
+        self.scene.push_path(path);
 
         self.composite_render_target_if_needed(composite_op, render_target_id);
     }
@@ -387,12 +386,11 @@ impl State {
     }
 
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
-        if self.global_alpha == 1.0 && (paint.is_color() || self.transform.is_identity()) {
+        if self.transform.is_identity() {
             return Cow::Borrowed(paint);
         }
 
         let mut paint = (*paint).clone();
-        paint.set_opacity(self.global_alpha);
         paint.apply_transform(&self.transform);
         Cow::Owned(paint)
     }

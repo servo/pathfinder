@@ -180,6 +180,7 @@ impl<'a> SceneBuilder<'a> {
                                    TilingPathInfo::Draw {
             paint_metadata,
             blend_mode: path_object.blend_mode(),
+            opacity: path_object.opacity(),
             built_clip_path,
         });
 
@@ -670,27 +671,32 @@ impl ObjectBuilder {
                                   mask_tile_index: u16,
                                   tile_coords: Vector2I,
                                   object_index: u16,
+                                  opacity: u8,
                                   paint_metadata: &PaintMetadata) {
         alpha_tiles.push(AlphaTile {
             upper_left: AlphaTileVertex::new(tile_coords,
                                              mask_tile_index,
                                              Vector2I::default(),
                                              object_index,
+                                             opacity,
                                              paint_metadata),
             upper_right: AlphaTileVertex::new(tile_coords,
                                               mask_tile_index,
                                               Vector2I::new(1, 0),
                                               object_index,
+                                              opacity,
                                               paint_metadata),
             lower_left: AlphaTileVertex::new(tile_coords,
                                              mask_tile_index,
                                              Vector2I::new(0, 1),
                                              object_index,
+                                             opacity,
                                              paint_metadata),
             lower_right: AlphaTileVertex::new(tile_coords,
                                               mask_tile_index,
                                               Vector2I::splat(1),
                                               object_index,
+                                              opacity,
                                               paint_metadata),
         });
     }
@@ -723,6 +729,7 @@ impl AlphaTileVertex {
            tile_index: u16,
            tile_offset: Vector2I,
            object_index: u16,
+           opacity: u8,
            paint_metadata: &PaintMetadata)
            -> AlphaTileVertex {
         let tile_position = tile_origin + tile_offset;
@@ -737,6 +744,7 @@ impl AlphaTileVertex {
             mask_u: mask_uv.x() as u16,
             mask_v: mask_uv.y() as u16,
             object_index,
+            opacity,
             pad: 0,
         }
     }
