@@ -12,13 +12,14 @@
 use crate::gpu::debug::DebugUIPresenter;
 
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu::shaders::{AlphaTileHSLProgram, AlphaTileOverlayProgram, AlphaTileProgram};
-use crate::gpu::shaders::{AlphaTileVertexArray, CopyTileProgram, CopyTileVertexArray, FillProgram};
-use crate::gpu::shaders::{FillVertexArray, FilterBasicProgram, FilterBasicVertexArray};
-use crate::gpu::shaders::{FilterTextProgram, FilterTextVertexArray, MAX_FILLS_PER_BATCH};
-use crate::gpu::shaders::{MaskTileProgram, MaskTileVertexArray, ReprojectionProgram};
-use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
-use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
+use crate::gpu::shaders::{AlphaTileBlendModeProgram, AlphaTileDodgeBurnProgram};
+use crate::gpu::shaders::{AlphaTileHSLProgram, AlphaTileOverlayProgram};
+use crate::gpu::shaders::{AlphaTileProgram, AlphaTileVertexArray, CopyTileProgram};
+use crate::gpu::shaders::{CopyTileVertexArray, FillProgram, FillVertexArray, FilterBasicProgram};
+use crate::gpu::shaders::{FilterBasicVertexArray, FilterTextProgram, FilterTextVertexArray};
+use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
+use crate::gpu::shaders::{ReprojectionProgram, ReprojectionVertexArray, SolidTileProgram};
+use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
 use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileVertex};
 use crate::options::BoundingQuad;
@@ -80,6 +81,10 @@ where
     solid_tile_program: SolidTileProgram<D>,
     alpha_tile_program: AlphaTileProgram<D>,
     alpha_tile_overlay_program: AlphaTileOverlayProgram<D>,
+    alpha_tile_dodgeburn_program: AlphaTileDodgeBurnProgram<D>,
+    alpha_tile_softlight_program: AlphaTileBlendModeProgram<D>,
+    alpha_tile_difference_program: AlphaTileBlendModeProgram<D>,
+    alpha_tile_exclusion_program: AlphaTileBlendModeProgram<D>,
     alpha_tile_hsl_program: AlphaTileHSLProgram<D>,
     mask_winding_tile_vertex_array: MaskTileVertexArray<D>,
     mask_evenodd_tile_vertex_array: MaskTileVertexArray<D>,
@@ -87,6 +92,10 @@ where
     solid_tile_vertex_array: SolidTileVertexArray<D>,
     alpha_tile_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_overlay_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_dodgeburn_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_softlight_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_difference_vertex_array: AlphaTileVertexArray<D>,
+    alpha_tile_exclusion_vertex_array: AlphaTileVertexArray<D>,
     alpha_tile_hsl_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
     alpha_tile_vertex_buffer: D::Buffer,
@@ -161,6 +170,15 @@ where
         let solid_tile_program = SolidTileProgram::new(&device, resources);
         let alpha_tile_program = AlphaTileProgram::new(&device, resources);
         let alpha_tile_overlay_program = AlphaTileOverlayProgram::new(&device, resources);
+        let alpha_tile_dodgeburn_program = AlphaTileDodgeBurnProgram::new(&device, resources);
+        let alpha_tile_softlight_program = AlphaTileBlendModeProgram::new(&device,
+                                                                          resources,
+                                                                          "tile_alpha_softlight");
+        let alpha_tile_difference_program =
+            AlphaTileBlendModeProgram::new(&device, resources, "tile_alpha_difference");
+        let alpha_tile_exclusion_program = AlphaTileBlendModeProgram::new(&device,
+                                                                          resources,
+                                                                          "tile_alpha_exclusion");
         let alpha_tile_hsl_program = AlphaTileHSLProgram::new(&device, resources);
         let filter_basic_program = FilterBasicProgram::new(&device, resources);
         let filter_text_program = FilterTextProgram::new(&device, resources);
@@ -217,13 +235,37 @@ where
         );
         let alpha_tile_overlay_vertex_array = AlphaTileVertexArray::new(
             &device,
-            &alpha_tile_overlay_program.alpha_tile_program,
+            &alpha_tile_overlay_program.alpha_tile_blend_mode_program.alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_dodgeburn_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_dodgeburn_program.alpha_tile_blend_mode_program.alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_softlight_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_softlight_program.alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_difference_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_difference_program.alpha_tile_program,
+            &alpha_tile_vertex_buffer,
+            &quads_vertex_indices_buffer,
+        );
+        let alpha_tile_exclusion_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_tile_exclusion_program.alpha_tile_program,
             &alpha_tile_vertex_buffer,
             &quads_vertex_indices_buffer,
         );
         let alpha_tile_hsl_vertex_array = AlphaTileVertexArray::new(
             &device,
-            &alpha_tile_hsl_program.alpha_tile_program,
+            &alpha_tile_hsl_program.alpha_tile_blend_mode_program.alpha_tile_program,
             &alpha_tile_vertex_buffer,
             &quads_vertex_indices_buffer,
         );
@@ -290,6 +332,10 @@ where
             solid_tile_program,
             alpha_tile_program,
             alpha_tile_overlay_program,
+            alpha_tile_dodgeburn_program,
+            alpha_tile_softlight_program,
+            alpha_tile_difference_program,
+            alpha_tile_exclusion_program,
             alpha_tile_hsl_program,
             mask_winding_tile_vertex_array,
             mask_evenodd_tile_vertex_array,
@@ -297,6 +343,10 @@ where
             solid_tile_vertex_array,
             alpha_tile_vertex_array,
             alpha_tile_overlay_vertex_array,
+            alpha_tile_dodgeburn_vertex_array,
+            alpha_tile_softlight_vertex_array,
+            alpha_tile_difference_vertex_array,
+            alpha_tile_exclusion_vertex_array,
             alpha_tile_hsl_vertex_array,
             area_lut_texture,
             alpha_tile_vertex_buffer,
@@ -734,11 +784,29 @@ where
         let (alpha_tile_program, alpha_tile_vertex_array) = match blend_mode_program {
             BlendModeProgram::Regular => (&self.alpha_tile_program, &self.alpha_tile_vertex_array),
             BlendModeProgram::Overlay => {
-                (&self.alpha_tile_overlay_program.alpha_tile_program,
+                (&self.alpha_tile_overlay_program.alpha_tile_blend_mode_program.alpha_tile_program,
                  &self.alpha_tile_overlay_vertex_array)
             }
+            BlendModeProgram::DodgeBurn => {
+                (&self.alpha_tile_dodgeburn_program
+                      .alpha_tile_blend_mode_program
+                      .alpha_tile_program,
+                 &self.alpha_tile_dodgeburn_vertex_array)
+            }
+            BlendModeProgram::SoftLight => {
+                (&self.alpha_tile_softlight_program.alpha_tile_program,
+                 &self.alpha_tile_softlight_vertex_array)
+            }
+            BlendModeProgram::Difference => {
+                (&self.alpha_tile_difference_program.alpha_tile_program,
+                 &self.alpha_tile_difference_vertex_array)
+            }
+            BlendModeProgram::Exclusion => {
+                (&self.alpha_tile_exclusion_program.alpha_tile_program,
+                 &self.alpha_tile_exclusion_vertex_array)
+            }
             BlendModeProgram::HSL => {
-                (&self.alpha_tile_hsl_program.alpha_tile_program,
+                (&self.alpha_tile_hsl_program.alpha_tile_blend_mode_program.alpha_tile_program,
                  &self.alpha_tile_hsl_vertex_array)
             }
         };
@@ -774,6 +842,26 @@ where
             BlendModeProgram::Overlay => {
                 self.set_uniforms_for_overlay_blend_mode(&mut textures, &mut uniforms, blend_mode);
             }
+            BlendModeProgram::DodgeBurn => {
+                self.set_uniforms_for_dodge_burn_blend_mode(&mut textures,  
+                                                            &mut uniforms,
+                                                            blend_mode);
+            }
+            BlendModeProgram::SoftLight => {
+                self.set_uniforms_for_blend_mode(&mut textures,
+                                                 &mut uniforms,
+                                                 &self.alpha_tile_softlight_program);
+            }
+            BlendModeProgram::Difference => {
+                self.set_uniforms_for_blend_mode(&mut textures,
+                                                 &mut uniforms,
+                                                 &self.alpha_tile_difference_program);
+            }
+            BlendModeProgram::Exclusion => {
+                self.set_uniforms_for_blend_mode(&mut textures,
+                                                 &mut uniforms,
+                                                 &self.alpha_tile_exclusion_program);
+            }
             BlendModeProgram::HSL => {
                 self.set_uniforms_for_hsl_blend_mode(&mut textures, &mut uniforms, blend_mode);
             }
@@ -798,6 +886,16 @@ where
         self.preserve_draw_framebuffer();
     }
 
+    fn set_uniforms_for_blend_mode<'a>(
+            &'a self,
+            textures: &mut Vec<&'a D::Texture>,
+            uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
+            alpha_tile_blend_mode_program: &'a AlphaTileBlendModeProgram<D>) {
+        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
+        uniforms.push((&alpha_tile_blend_mode_program.dest_uniform,
+                       UniformData::TextureUnit(textures.len() as u32 - 1)));
+    }
+
     fn set_uniforms_for_overlay_blend_mode<'a>(&'a self,
                                                textures: &mut Vec<&'a D::Texture>,
                                                uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
@@ -813,9 +911,24 @@ where
         uniforms.push((&self.alpha_tile_overlay_program.blend_mode_uniform,
                        UniformData::Int(overlay_blend_mode)));
 
-        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
-        uniforms.push((&self.alpha_tile_overlay_program.dest_uniform,
-                        UniformData::TextureUnit(textures.len() as u32 - 1)));
+        self.set_uniforms_for_blend_mode(textures,
+                                         uniforms,
+                                         &self.alpha_tile_overlay_program
+                                              .alpha_tile_blend_mode_program);
+    }
+
+    fn set_uniforms_for_dodge_burn_blend_mode<'a>(
+            &'a self,
+            textures: &mut Vec<&'a D::Texture>,
+            uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
+            blend_mode: BlendMode) {
+        uniforms.push((&self.alpha_tile_dodgeburn_program.burn_uniform,
+                       UniformData::Int(if blend_mode == BlendMode::ColorBurn { 1 } else { 0 })));
+
+        self.set_uniforms_for_blend_mode(textures,
+                                         uniforms,
+                                         &self.alpha_tile_dodgeburn_program
+                                              .alpha_tile_blend_mode_program);
     }
 
     fn set_uniforms_for_hsl_blend_mode<'a>(&'a self,
@@ -833,9 +946,10 @@ where
         uniforms.push((&self.alpha_tile_hsl_program.blend_hsl_uniform,
                        UniformData::IVec3(hsl_terms)));
 
-        textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
-        uniforms.push((&self.alpha_tile_hsl_program.dest_uniform,
-                       UniformData::TextureUnit(textures.len() as u32 - 1)));
+        self.set_uniforms_for_blend_mode(textures,
+                                         uniforms,
+                                         &self.alpha_tile_hsl_program
+                                              .alpha_tile_blend_mode_program);
     }
 
     fn copy_alpha_tiles_to_dest_blend_texture(&mut self, tile_count: u32) {
@@ -892,7 +1006,7 @@ where
         let paint_texture = self.paint_texture(paint_page);
         textures.push(paint_texture);
         uniforms.push((&self.solid_tile_program.paint_texture_uniform,
-                        UniformData::TextureUnit(0)));
+                       UniformData::TextureUnit(0)));
 
         self.device.draw_elements(6 * tile_count, &RenderState {
             target: &self.draw_render_target(),
@@ -1051,9 +1165,7 @@ where
             (&self.filter_basic_program.source_uniform, UniformData::TextureUnit(0)),
         ];
 
-        let blend_state = match composite_op {
-            CompositeOp::SrcOver => BlendMode::SrcOver.to_blend_state(),
-        };
+        let blend_state = composite_op.to_blend_state();
 
         self.device.draw_elements(6, &RenderState {
             target: &self.draw_render_target(),
@@ -1365,11 +1477,11 @@ struct RenderTargetInfo<D> where D: Device {
     must_preserve_contents: bool,
 }
 
-trait BlendModeExt {
+trait ToBlendState {
     fn to_blend_state(self) -> Option<BlendState>;
 }
 
-impl BlendModeExt for BlendMode {
+impl ToBlendState for BlendMode {
     fn to_blend_state(self) -> Option<BlendState> {
         match self {
             BlendMode::Clear => {
@@ -1457,6 +1569,11 @@ impl BlendModeExt for BlendMode {
             BlendMode::Screen |
             BlendMode::HardLight |
             BlendMode::Overlay |
+            BlendMode::ColorDodge |
+            BlendMode::ColorBurn |
+            BlendMode::SoftLight |
+            BlendMode::Difference |
+            BlendMode::Exclusion |
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |
@@ -1468,10 +1585,84 @@ impl BlendModeExt for BlendMode {
     }
 }
 
+impl ToBlendState for CompositeOp {
+    fn to_blend_state(self) -> Option<BlendState> {
+        match self {
+            CompositeOp::Clear => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::Zero,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::Zero,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                })
+            }
+            CompositeOp::Copy => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::One,
+                    dest_rgb_factor: BlendFactor::Zero,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::Zero,
+                    ..BlendState::default()
+                })
+            }
+            CompositeOp::SrcOver => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::One,
+                    dest_rgb_factor: BlendFactor::OneMinusSrcAlpha,
+                    src_alpha_factor: BlendFactor::One,
+                    dest_alpha_factor: BlendFactor::OneMinusSrcAlpha,
+                    ..BlendState::default()
+                })
+            }
+            CompositeOp::SrcIn => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::DestAlpha,
+                    dest_rgb_factor: BlendFactor::Zero,
+                    src_alpha_factor: BlendFactor::DestAlpha,
+                    dest_alpha_factor: BlendFactor::Zero,
+                    ..BlendState::default()
+                })
+            }
+            CompositeOp::DestIn => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::Zero,
+                    dest_rgb_factor: BlendFactor::SrcAlpha,
+                    src_alpha_factor: BlendFactor::Zero,
+                    dest_alpha_factor: BlendFactor::SrcAlpha,
+                    ..BlendState::default()
+                })
+            }
+            CompositeOp::SrcOut => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_rgb_factor: BlendFactor::Zero,
+                    src_alpha_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_alpha_factor: BlendFactor::Zero,
+                    ..BlendState::default()
+                })
+            }
+            CompositeOp::DestAtop => {
+                Some(BlendState {
+                    src_rgb_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_rgb_factor: BlendFactor::SrcAlpha,
+                    src_alpha_factor: BlendFactor::OneMinusDestAlpha,
+                    dest_alpha_factor: BlendFactor::SrcAlpha,
+                    ..BlendState::default()
+                })
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum BlendModeProgram {
     Regular,
     Overlay,
+    DodgeBurn,
+    SoftLight,
+    Difference,
+    Exclusion,
     HSL,
 }
 
@@ -1491,6 +1682,11 @@ impl BlendModeProgram {
             BlendMode::Screen |
             BlendMode::HardLight |
             BlendMode::Overlay => BlendModeProgram::Overlay,
+            BlendMode::ColorDodge |
+            BlendMode::ColorBurn => BlendModeProgram::DodgeBurn,
+            BlendMode::SoftLight => BlendModeProgram::SoftLight,
+            BlendMode::Difference => BlendModeProgram::Difference,
+            BlendMode::Exclusion => BlendModeProgram::Exclusion,
             BlendMode::Hue |
             BlendMode::Saturation |
             BlendMode::Color |
@@ -1501,7 +1697,12 @@ impl BlendModeProgram {
     pub(crate) fn needs_readable_framebuffer(self) -> bool {
         match self {
             BlendModeProgram::Regular => false,
-            BlendModeProgram::Overlay | BlendModeProgram::HSL => true,
+            BlendModeProgram::Overlay |
+            BlendModeProgram::DodgeBurn |
+            BlendModeProgram::SoftLight |
+            BlendModeProgram::Difference |
+            BlendModeProgram::Exclusion |
+            BlendModeProgram::HSL => true,
         }
     }
 }

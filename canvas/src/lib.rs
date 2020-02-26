@@ -12,11 +12,11 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
-use pathfinder_content::effects::BlendMode;
+use pathfinder_content::effects::{BlendMode, CompositeOp, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
-use pathfinder_content::pattern::Pattern;
+use pathfinder_content::pattern::{Pattern, RenderTargetId};
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -24,7 +24,7 @@ use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
-use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, Scene};
+use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
@@ -233,8 +233,11 @@ impl CanvasRenderingContext2D {
     fn push_path(&mut self, outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
+        let composite_op = self.current_state.global_composite_operation.to_composite_op();
 
         if !self.current_state.shadow_paint.is_fully_transparent() {
+            let render_target_id = self.push_render_target_if_needed(composite_op);
+
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
             let paint_id = self.scene.push_paint(&paint);
 
@@ -245,15 +248,44 @@ impl CanvasRenderingContext2D {
                                                clip_path,
                                                fill_rule,
                                                blend_mode,
-                                               String::new()))
+                                               String::new()));
+
+            self.composite_render_target_if_needed(composite_op, render_target_id);
         }
+
+        let render_target_id = self.push_render_target_if_needed(composite_op);
 
         self.scene.push_path(DrawPath::new(outline,
                                            paint_id,
                                            clip_path,
                                            fill_rule,
                                            blend_mode,
-                                           String::new()))
+                                           String::new()));
+
+        self.composite_render_target_if_needed(composite_op, render_target_id);
+    }
+
+    fn push_render_target_if_needed(&mut self, composite_op: Option<CompositeOp>)   
+                                    -> Option<RenderTargetId> {
+        if composite_op.is_none() {
+            return None;
+        }
+
+        let render_target_size = self.scene.view_box().size().ceil().to_i32();
+        Some(self.scene.push_render_target(RenderTarget::new(render_target_size, String::new())))
+    }
+
+    fn composite_render_target_if_needed(&mut self,
+                                         composite_op: Option<CompositeOp>,
+                                         render_target_id: Option<RenderTargetId>) {
+        let composite_op = match composite_op {
+            None => return,
+            Some(composite_op) => composite_op,
+        };
+
+        self.scene.pop_render_target();
+        self.scene.draw_render_target(render_target_id.unwrap(),
+                                      Effects::new(Filter::Composite(composite_op)));
     }
 
     // Transformations
@@ -547,17 +579,27 @@ pub enum LineJoin {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CompositeOperation {
     SourceOver,
-    DestinationOver,
-    DestinationOut,
+    SourceIn,
+    SourceOut,
     SourceAtop,
-    Xor,
+    DestinationOver,
+    DestinationIn,
+    DestinationOut,
+    DestinationAtop,
     Lighter,
+    Copy,
+    Xor,
     Multiply,
     Screen,
     Overlay,
     Darken,
     Lighten,
+    ColorDodge,
+    ColorBurn,
     HardLight,
+    SoftLight,
+    Difference,
+    Exclusion,
     Hue,
     Saturation,
     Color,
@@ -567,10 +609,9 @@ pub enum CompositeOperation {
 impl CompositeOperation {
     fn to_blend_mode(self) -> BlendMode {
         match self {
-            CompositeOperation::SourceOver => BlendMode::SrcOver,
+            CompositeOperation::SourceAtop => BlendMode::SrcAtop,
             CompositeOperation::DestinationOver => BlendMode::DestOver,
             CompositeOperation::DestinationOut => BlendMode::DestOut,
-            CompositeOperation::SourceAtop => BlendMode::SrcAtop,
             CompositeOperation::Xor => BlendMode::Xor,
             CompositeOperation::Lighter => BlendMode::Lighter,
             CompositeOperation::Multiply => BlendMode::Multiply,
@@ -578,11 +619,53 @@ impl CompositeOperation {
             CompositeOperation::Overlay => BlendMode::Overlay,
             CompositeOperation::Darken => BlendMode::Darken,
             CompositeOperation::Lighten => BlendMode::Lighten,
+            CompositeOperation::ColorDodge => BlendMode::ColorDodge,
+            CompositeOperation::ColorBurn => BlendMode::ColorBurn,
             CompositeOperation::HardLight => BlendMode::HardLight,
+            CompositeOperation::SoftLight => BlendMode::SoftLight,
+            CompositeOperation::Difference => BlendMode::Difference,
+            CompositeOperation::Exclusion => BlendMode::Exclusion,
             CompositeOperation::Hue => BlendMode::Hue,
             CompositeOperation::Saturation => BlendMode::Saturation,
             CompositeOperation::Color => BlendMode::Color,
             CompositeOperation::Luminosity => BlendMode::Luminosity,
+            CompositeOperation::SourceOver |
+            CompositeOperation::SourceIn |
+            CompositeOperation::SourceOut |
+            CompositeOperation::DestinationIn |
+            CompositeOperation::DestinationAtop |
+            CompositeOperation::Copy => BlendMode::SrcOver,
+        }
+    }
+
+    fn to_composite_op(self) -> Option<CompositeOp> {
+        match self {
+            CompositeOperation::SourceIn => Some(CompositeOp::SrcIn),
+            CompositeOperation::SourceOut => Some(CompositeOp::SrcOut),
+            CompositeOperation::DestinationIn => Some(CompositeOp::DestIn),
+            CompositeOperation::DestinationAtop => Some(CompositeOp::DestAtop),
+            CompositeOperation::Copy => Some(CompositeOp::Copy),
+            CompositeOperation::SourceOver |
+            CompositeOperation::SourceAtop |
+            CompositeOperation::DestinationOver |
+            CompositeOperation::DestinationOut |
+            CompositeOperation::Xor |
+            CompositeOperation::Lighter |
+            CompositeOperation::Multiply |
+            CompositeOperation::Screen |
+            CompositeOperation::Overlay |
+            CompositeOperation::Darken |
+            CompositeOperation::Lighten |
+            CompositeOperation::ColorDodge |
+            CompositeOperation::ColorBurn |
+            CompositeOperation::HardLight |
+            CompositeOperation::SoftLight |
+            CompositeOperation::Difference |
+            CompositeOperation::Exclusion |
+            CompositeOperation::Hue |
+            CompositeOperation::Saturation |
+            CompositeOperation::Color |
+            CompositeOperation::Luminosity => None,
         }
     }
 }

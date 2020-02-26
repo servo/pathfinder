@@ -334,9 +334,10 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                 DisplayItem::DrawPaths { start_index, end_index } => {
                     let (start_index, end_index) = (start_index as usize, end_index as usize);
                     let z_buffer = &mut z_buffers[*z_buffer_index_stack.last().unwrap()];
-                    for (path_index, built_draw_path) in
+                    for (path_subindex, built_draw_path) in
                             built_draw_paths[start_index..end_index].iter().enumerate() {
-                        z_buffer.update(&built_draw_path.path.solid_tiles, path_index as u32);
+                        z_buffer.update(&built_draw_path.path.solid_tiles,
+                                        (path_subindex + start_index) as u32);
                     }
                 }
                 DisplayItem::DrawRenderTarget { .. } => {

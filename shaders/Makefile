@@ -23,8 +23,12 @@ SHADERS=\
 	stencil.vs.glsl \
 	tile_alpha.fs.glsl \
 	tile_alpha.vs.glsl \
+	tile_alpha_difference.fs.glsl \
+	tile_alpha_dodgeburn.fs.glsl \
+	tile_alpha_exclusion.fs.glsl \
 	tile_alpha_hsl.fs.glsl \
 	tile_alpha_overlay.fs.glsl \
+	tile_alpha_softlight.fs.glsl \
 	tile_copy.fs.glsl \
 	tile_copy.vs.glsl \
 	tile_solid.fs.glsl \

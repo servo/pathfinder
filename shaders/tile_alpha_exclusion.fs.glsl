@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/filter_basic.fs.glsl
+// pathfinder/shaders/tile_alpha_exclusion.fs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -10,20 +10,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// TODO(pcwalton): This could be significantly optimized by operating on a
-// sparse per-tile basis.
+// The exclusion blend mode.
 
 #extension GL_GOOGLE_include_directive : enable
 
 precision highp float;
 
-uniform sampler2D uSource;
-
-in vec2 vTexCoord;
-
 out vec4 oFragColor;
 
+#include "tile_alpha_sample.inc.glsl"
+
 void main() {
-    vec4 color = texture(uSource, vTexCoord);
-    oFragColor = vec4(color.rgb * color.a, color.a);
+    vec4 srcRGBA = sampleSrcColor();
+    vec4 destRGBA = sampleDestColor();
+
+    vec3 dest = destRGBA.rgb, src = srcRGBA.rgb;
+    vec3 blended = dest + src - dest * src * 2.0;
+
+    oFragColor = blendColors(destRGBA, srcRGBA, blended);
 }

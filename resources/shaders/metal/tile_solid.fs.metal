@@ -23,7 +23,8 @@ struct main0_in
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    out.oFragColor = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    float4 color = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    out.oFragColor = float4(color.xyz * color.w, color.w);
     return out;
 }
 
