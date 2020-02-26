@@ -38,8 +38,12 @@ pub struct Effects {
 /// The shader that should be used when compositing this layer onto its destination.
 #[derive(Clone, Copy, Debug)]
 pub enum Filter {
-    /// A compositing operation.
-    Composite(CompositeOp),    
+    /// A Porter-Duff compositing operation.
+    ///
+    /// The compositing operations here are the ones that can't be blend modes because they can
+    /// clear parts of the destination not overlapped by the source, plus the regular source-over.
+    Composite(CompositeOp),
+
     /// Performs postprocessing operations useful for monochrome text.
     Text {
         /// The foreground color of the text.
@@ -59,9 +63,24 @@ pub enum Filter {
 pub enum CompositeOp {
     /// The default.
     SrcOver,
+    /// No regions are enabled.
+    Clear,
+    /// Only the source will be present.
+    Copy,
+    /// The source that overlaps the destination replaces the destination.
+    SrcIn,
+    /// Destination which overlaps the source replaces the source. 
+    DestIn,
+    /// Source is placed where it falls outside of the destination.
+    SrcOut,
+    /// Destination which overlaps the source replaces the source. Source is placed elsewhere.
+    DestAtop,
 }
 
 /// Blend modes that can be applied to individual paths.
+/// 
+/// All blend modes preserve parts of the destination that are not overlapped by the source path.
+/// Other Porter-Duff compositing operations are `CompositeOp`s.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlendMode {
     // Supported by GPU blender
@@ -74,12 +93,6 @@ pub enum BlendMode {
     Lighter,
     Lighten,
     Darken,
-
-    // Porter-Duff
-    SrcIn,
-    DestIn,
-    SrcOut,
-    DestAtop,
 
     // Overlay
     Multiply,
@@ -124,6 +137,13 @@ impl Default for BlendMode {
     }
 }
 
+impl Effects {
+    #[inline]
+    pub fn new(filter: Filter) -> Effects {
+        Effects { filter }
+    }
+}
+
 impl BlendMode {
     /// Whether the backdrop is irrelevant when applying this blend mode (i.e. destination blend
     /// factor is zero when source alpha is one).
@@ -138,10 +158,6 @@ impl BlendMode {
             BlendMode::Lighter |
             BlendMode::Lighten |
             BlendMode::Darken |
-            BlendMode::SrcIn |
-            BlendMode::DestIn |
-            BlendMode::SrcOut |
-            BlendMode::DestAtop |
             BlendMode::Multiply |
             BlendMode::Screen |
             BlendMode::HardLight |

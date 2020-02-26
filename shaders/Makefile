@@ -28,7 +28,6 @@ SHADERS=\
 	tile_alpha_exclusion.fs.glsl \
 	tile_alpha_hsl.fs.glsl \
 	tile_alpha_overlay.fs.glsl \
-	tile_alpha_porterduff.fs.glsl \
 	tile_alpha_softlight.fs.glsl \
 	tile_copy.fs.glsl \
 	tile_copy.vs.glsl \

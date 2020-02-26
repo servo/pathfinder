@@ -465,30 +465,6 @@ impl<D> AlphaTileBlendModeProgram<D> where D: Device {
     }
 }
 
-pub struct AlphaTilePorterDuffProgram<D> where D: Device {
-    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
-    pub dest_factor_uniform: D::Uniform,
-    pub src_factor_uniform: D::Uniform,
-}
-
-impl<D> AlphaTilePorterDuffProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTilePorterDuffProgram<D> {
-        let alpha_tile_blend_mode_program =
-            AlphaTileBlendModeProgram::new(device, resources, "tile_alpha_porterduff");
-        let dest_factor_uniform =
-            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
-                               "DestFactor");
-        let src_factor_uniform =
-            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
-                               "SrcFactor");
-        AlphaTilePorterDuffProgram {
-            alpha_tile_blend_mode_program,
-            dest_factor_uniform,
-            src_factor_uniform,
-        }
-    }
-}
-
 pub struct AlphaTileHSLProgram<D> where D: Device {
     pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
     pub blend_hsl_uniform: D::Uniform,
