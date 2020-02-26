@@ -33,7 +33,7 @@ use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
-use pathfinder_gpu::{TextureFormat, UniformData};
+use pathfinder_gpu::{TextureFormat, TextureSamplingFlags, UniformData};
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cmp;
 use std::collections::VecDeque;
@@ -418,13 +418,16 @@ where
                 let count = batch.vertices.len() / 4;
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(&batch.vertices);
-                self.draw_solid_tiles(count as u32, batch.paint_page);
+                self.draw_solid_tiles(count as u32, batch.paint_page, batch.sampling_flags);
             }
-            RenderCommand::DrawAlphaTiles { tiles: ref alpha_tiles, paint_page, blend_mode } => {
-                let count = alpha_tiles.len();
+            RenderCommand::DrawAlphaTiles(ref batch) => {
+                let count = batch.tiles.len();
                 self.stats.alpha_tile_count += count;
-                self.upload_alpha_tiles(alpha_tiles);
-                self.draw_alpha_tiles(count as u32, paint_page, blend_mode);
+                self.upload_alpha_tiles(&batch.tiles);
+                self.draw_alpha_tiles(count as u32,
+                                      batch.paint_page,
+                                      batch.sampling_flags,
+                                      batch.blend_mode)
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -764,6 +767,7 @@ where
     fn draw_alpha_tiles(&mut self,
                         tile_count: u32,
                         paint_page: PaintPageId,
+                        sampling_flags: TextureSamplingFlags,
                         blend_mode: BlendMode) {
         let blend_mode_program = BlendModeProgram::from_blend_mode(blend_mode);
         if blend_mode_program.needs_readable_framebuffer() {
@@ -823,6 +827,8 @@ where
             }
             _ => self.paint_texture(paint_page),
         };
+
+        self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
 
         textures.push(paint_texture);
         uniforms.push((&self.alpha_tile_program.paint_texture_uniform,
@@ -983,7 +989,10 @@ where
         });
     }
 
-    fn draw_solid_tiles(&mut self, tile_count: u32, paint_page: PaintPageId) {
+    fn draw_solid_tiles(&mut self,
+                        tile_count: u32,
+                        paint_page: PaintPageId,
+                        sampling_flags: TextureSamplingFlags) {
         let clear_color = self.clear_color_for_draw_operation();
 
         let mut textures = vec![];
@@ -995,6 +1004,7 @@ where
         ];
 
         let paint_texture = self.paint_texture(paint_page);
+        self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
         textures.push(paint_texture);
         uniforms.push((&self.solid_tile_program.paint_texture_uniform,
                        UniformData::TextureUnit(0)));

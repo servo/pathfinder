@@ -16,7 +16,7 @@ use pathfinder_content::effects::{BlendMode, CompositeOp, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
-use pathfinder_content::pattern::{Pattern, RenderTargetId};
+use pathfinder_content::pattern::{Pattern, PatternFlags, RenderTargetId};
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -326,6 +326,28 @@ impl CanvasRenderingContext2D {
         self.current_state.global_composite_operation = new_composite_operation;
     }
 
+    // Image smoothing
+
+    #[inline]
+    pub fn image_smoothing_enabled(&self) -> bool {
+        self.current_state.image_smoothing_enabled
+    }
+
+    #[inline]
+    pub fn set_image_smoothing_enabled(&mut self, enabled: bool) {
+        self.current_state.image_smoothing_enabled = enabled
+    }
+
+    #[inline]
+    pub fn image_smoothing_quality(&self) -> ImageSmoothingQuality {
+        self.current_state.image_smoothing_quality
+    }
+
+    #[inline]
+    pub fn set_image_smoothing_quality(&mut self, new_quality: ImageSmoothingQuality) {
+        self.current_state.image_smoothing_quality = new_quality
+    }
+
     // The canvas state
 
     #[inline]
@@ -357,6 +379,8 @@ struct State {
     shadow_paint: Paint,
     shadow_offset: Vector2F,
     text_align: TextAlign,
+    image_smoothing_enabled: bool,
+    image_smoothing_quality: ImageSmoothingQuality,
     global_alpha: f32,
     global_composite_operation: CompositeOperation,
     clip_path: Option<ClipPathId>,
@@ -379,6 +403,8 @@ impl State {
             shadow_paint: Paint::transparent_black(),
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
+            image_smoothing_enabled: true,
+            image_smoothing_quality: ImageSmoothingQuality::Low,
             global_alpha: 1.0,
             global_composite_operation: CompositeOperation::SourceOver,
             clip_path: None,
@@ -389,9 +415,18 @@ impl State {
         if self.transform.is_identity() {
             return Cow::Borrowed(paint);
         }
+        if let Paint::Pattern(ref pattern) = *paint {
+            if !self.image_smoothing_enabled ==
+                    pattern.flags.contains(PatternFlags::NO_SMOOTHING) {
+                return Cow::Borrowed(paint)
+            }
+        }
 
         let mut paint = (*paint).clone();
         paint.apply_transform(&self.transform);
+        if let Paint::Pattern(ref mut pattern) = paint {
+            pattern.flags.set(PatternFlags::NO_SMOOTHING, !self.image_smoothing_enabled);
+        }
         Cow::Owned(paint)
     }
 
@@ -643,4 +678,11 @@ impl CompositeOperation {
             CompositeOperation::Luminosity => None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ImageSmoothingQuality {
+    Low,
+    Medium,
+    High,
 }

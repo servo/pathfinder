@@ -10,6 +10,9 @@
 
 //! Minimal abstractions over GPU device capabilities.
 
+#[macro_use]
+extern crate bitflags;
+
 use crate::resources::ResourceLoader;
 use half::f16;
 use image::ImageFormat;
@@ -73,6 +76,7 @@ pub trait Device: Sized {
     fn destroy_framebuffer(&self, framebuffer: Self::Framebuffer) -> Self::Texture;
     fn texture_format(&self, texture: &Self::Texture) -> TextureFormat;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
+    fn set_texture_sampling_mode(&self, texture: &Self::Texture, flags: TextureSamplingFlags);
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI)
                    -> Self::TextureDataReceiver;
@@ -392,6 +396,15 @@ impl Default for BlendState {
             dest_alpha_factor: BlendFactor::One,
             op: BlendOp::Add,
         }
+    }
+}
+
+bitflags! {
+    pub struct TextureSamplingFlags: u8 {
+        const REPEAT_U    = 0x01;
+        const REPEAT_V    = 0x02;
+        const NEAREST_MIN = 0x04;
+        const NEAREST_MAG = 0x08;
     }
 }
 

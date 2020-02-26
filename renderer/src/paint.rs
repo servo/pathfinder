@@ -8,18 +8,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::allocator::{TextureAllocator, TextureLocation};
+use crate::allocator::{AllocationMode, TextureAllocator, TextureLocation};
 use crate::gpu_data::{PaintData, PaintPageContents, PaintPageData, PaintPageId};
 use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::gradient::{Gradient, GradientGeometry};
-use pathfinder_content::pattern::{Image, Pattern, PatternSource, RenderTargetId};
+use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource, RenderTargetId};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
 
@@ -168,6 +169,8 @@ pub struct PaintMetadata {
     pub tex_rect: RectI,
     /// The transform to apply to screen coordinates to translate them into UVs.
     pub tex_transform: Transform2F,
+    /// The sampling mode for the texture.
+    pub sampling_flags: TextureSamplingFlags,
     /// True if this paint is fully opaque.
     pub is_opaque: bool,
 }
@@ -206,23 +209,49 @@ impl Palette {
         // Assign paint locations.
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
         for paint in &self.paints {
-            let tex_location = match paint {
-                Paint::Color(_) => solid_color_tile_builder.allocate(&mut allocator),
+            let (tex_location, mut sampling_flags);
+            match paint {
+                Paint::Color(_) => {
+                    tex_location = solid_color_tile_builder.allocate(&mut allocator);
+                    sampling_flags = TextureSamplingFlags::empty();
+                }
                 Paint::Gradient(_) => {
                     // TODO(pcwalton): Optimize this:
                     // 1. Use repeating/clamp on the sides.
                     // 2. Choose an optimal size for the gradient that minimizes memory usage while
                     //    retaining quality.
-                    allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32))
+                    tex_location = allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
+                                                      AllocationMode::Atlas);
+                    sampling_flags = TextureSamplingFlags::empty();
                 }
                 Paint::Pattern(ref pattern) => {
                     match pattern.source {
                         PatternSource::RenderTarget(render_target_id) => {
-                            render_target_locations[render_target_id.0 as usize]
+                            tex_location = render_target_locations[render_target_id.0 as usize];
                         }
                         PatternSource::Image(ref image) => {
-                            allocator.allocate(image.size())
+                            // TODO(pcwalton): We should be able to use tile cleverness to repeat
+                            // inside the atlas in some cases.
+                            let allocation_mode = if pattern.flags == PatternFlags::empty() {
+                                AllocationMode::Atlas
+                            } else {
+                                AllocationMode::OwnPage
+                            };
+
+                            tex_location = allocator.allocate(image.size(), allocation_mode);
                         }
+                    }
+
+                    sampling_flags = TextureSamplingFlags::empty();
+                    if pattern.flags.contains(PatternFlags::REPEAT_X) {
+                        sampling_flags.insert(TextureSamplingFlags::REPEAT_U);
+                    }
+                    if pattern.flags.contains(PatternFlags::REPEAT_Y) {
+                        sampling_flags.insert(TextureSamplingFlags::REPEAT_V);
+                    }
+                    if pattern.flags.contains(PatternFlags::NO_SMOOTHING) {
+                        sampling_flags.insert(TextureSamplingFlags::NEAREST_MIN |
+                                              TextureSamplingFlags::NEAREST_MAG);
                     }
                 }
             };
@@ -231,6 +260,7 @@ impl Palette {
                 tex_page: tex_location.page,
                 tex_rect: tex_location.rect,
                 tex_transform: Transform2F::default(),
+                sampling_flags,
                 is_opaque: paint.is_opaque(),
             });
         }
@@ -301,11 +331,11 @@ impl Palette {
                         }
                         Paint::Gradient(ref gradient) => {
                             self.render_gradient(gradient,
-                                                metadata.tex_rect,
-                                                &metadata.tex_transform,
-                                                texels,
-                                                page_size,
-                                                page_scale);
+                                                 metadata.tex_rect,
+                                                 &metadata.tex_transform,
+                                                 texels,
+                                                 page_size,
+                                                 page_scale);
                         }
                         Paint::Pattern(ref pattern) => {
                             match pattern.source {
@@ -440,7 +470,8 @@ impl SolidColorTileBuilder {
         if self.0.is_none() {
             // TODO(pcwalton): Handle allocation failure gracefully!
             self.0 = Some(SolidColorTileBuilderData {
-                tile_location: allocator.allocate(Vector2I::splat(SOLID_COLOR_TILE_LENGTH as i32)),
+                tile_location: allocator.allocate(Vector2I::splat(SOLID_COLOR_TILE_LENGTH as i32),
+                                                  AllocationMode::Atlas),
                 next_index: 0,
             });
         }

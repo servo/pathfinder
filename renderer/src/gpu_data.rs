@@ -17,6 +17,7 @@ use pathfinder_content::fill::FillRule;
 use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::Vector2I;
+use pathfinder_gpu::TextureSamplingFlags;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
 
@@ -56,7 +57,7 @@ pub enum RenderCommand {
     PopRenderTarget,
 
     // Draws a batch of alpha tiles to the render target on top of the stack.
-    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: PaintPageId, blend_mode: BlendMode },
+    DrawAlphaTiles(AlphaTileBatch),
 
     // Draws a batch of solid tiles to the render target on top of the stack.
     DrawSolidTiles(SolidTileBatch),
@@ -93,9 +94,18 @@ pub enum PaintPageContents {
 }
 
 #[derive(Clone, Debug)]
+pub struct AlphaTileBatch {
+    pub tiles: Vec<AlphaTile>,
+    pub paint_page: PaintPageId,
+    pub blend_mode: BlendMode,
+    pub sampling_flags: TextureSamplingFlags,
+}
+
+#[derive(Clone, Debug)]
 pub struct SolidTileBatch {
     pub vertices: Vec<SolidTileVertex>,
     pub paint_page: PaintPageId,
+    pub sampling_flags: TextureSamplingFlags,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -128,8 +138,8 @@ pub struct FillBatchPrimitive {
 pub struct SolidTileVertex {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub color_u: u16,
-    pub color_v: u16,
+    pub color_u: f32,
+    pub color_v: f32,
     pub object_index: u16,
     pub pad: u16,
 }
@@ -170,8 +180,8 @@ pub struct AlphaTileVertex {
     pub tile_y: i16,
     pub mask_u: u16,
     pub mask_v: u16,
-    pub color_u: u16,
-    pub color_v: u16,
+    pub color_u: f32,
+    pub color_v: f32,
     pub object_index: u16,
     pub opacity: u8,
     pub pad: u8,
@@ -196,18 +206,20 @@ impl Debug for RenderCommand {
             RenderCommand::DrawRenderTarget { render_target, .. } => {
                 write!(formatter, "DrawRenderTarget({:?})", render_target)
             }
-            RenderCommand::DrawAlphaTiles { ref tiles, paint_page, blend_mode } => {
+            RenderCommand::DrawAlphaTiles(ref batch) => {
                 write!(formatter,
-                       "DrawAlphaTiles(x{}, {:?}, {:?})",
-                       tiles.len(),
-                       paint_page,
-                       blend_mode)
+                       "DrawAlphaTiles(x{}, {:?}, {:?}, {:?})",
+                       batch.tiles.len(),
+                       batch.paint_page,
+                       batch.blend_mode,
+                       batch.sampling_flags)
             }
             RenderCommand::DrawSolidTiles(ref batch) => {
                 write!(formatter,
-                       "DrawSolidTiles(x{}, {:?})",
+                       "DrawSolidTiles(x{}, {:?}, {:?})",
                        batch.vertices.len(),
-                       batch.paint_page)
+                       batch.paint_page,
+                       batch.sampling_flags)
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

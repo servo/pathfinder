@@ -69,11 +69,13 @@ impl ZBuffer {
 
             // Create a batch if necessary.
             match solid_tiles.batches.last() {
-                Some(ref batch) if batch.paint_page == paint_metadata.tex_page => {}
+                Some(ref batch) if batch.paint_page == paint_metadata.tex_page &&
+                    batch.sampling_flags == paint_metadata.sampling_flags => {}
                 _ => {
                     // Batch break.
                     solid_tiles.batches.push(SolidTileBatch {
                         paint_page: paint_metadata.tex_page,
+                        sampling_flags: paint_metadata.sampling_flags,
                         vertices: vec![],
                     });
                 }
@@ -101,13 +103,13 @@ impl ZBuffer {
 impl SolidTileVertex {
     fn new(tile_position: Vector2I, object_index: u16, paint_metadata: &PaintMetadata)
            -> SolidTileVertex {
-        let color_uv = paint_metadata.calculate_tex_coords(tile_position).scale(65535.0).to_i32();
+        let color_uv = paint_metadata.calculate_tex_coords(tile_position);
         SolidTileVertex {
             tile_x: tile_position.x() as i16,
             tile_y: tile_position.y() as i16,
             object_index: object_index,
-            color_u: color_uv.x() as u16,
-            color_v: color_uv.y() as u16,
+            color_u: color_uv.x(),
+            color_v: color_uv.y(),
             pad: 0,
         }
     }

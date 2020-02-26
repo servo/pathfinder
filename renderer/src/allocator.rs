@@ -53,15 +53,22 @@ enum TreeNode {
     Parent([Box<TreeNode>; 4]),
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum AllocationMode {
+    Atlas,
+    OwnPage,
+}
+
 impl TextureAllocator {
     #[inline]
     pub fn new() -> TextureAllocator {
         TextureAllocator { pages: vec![] }
     }
 
-    pub fn allocate(&mut self, requested_size: Vector2I) -> TextureLocation {
-        // If too big, the image gets its own page.
-        if requested_size.x() > ATLAS_TEXTURE_LENGTH as i32 ||
+    pub fn allocate(&mut self, requested_size: Vector2I, mode: AllocationMode) -> TextureLocation {
+        // If requested, or if the image is too big, use a separate page.
+        if mode == AllocationMode::OwnPage ||
+                requested_size.x() > ATLAS_TEXTURE_LENGTH as i32 ||
                 requested_size.y() > ATLAS_TEXTURE_LENGTH as i32 {
             return self.allocate_image(requested_size);
         }
@@ -105,7 +112,7 @@ impl TextureAllocator {
     pub fn page_size(&self, page_index: PaintPageId) -> Vector2I {
         match self.pages[page_index.0 as usize] {
             TexturePageAllocator::Atlas(ref atlas) => Vector2I::splat(atlas.size as i32),
-            TexturePageAllocator::Image { size } |
+            TexturePageAllocator::Image { size, .. } |
             TexturePageAllocator::RenderTarget { size, .. } => size,
         }
     }

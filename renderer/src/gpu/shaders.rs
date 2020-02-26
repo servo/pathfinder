@@ -16,8 +16,8 @@ use pathfinder_gpu::resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_VERTEX_SIZE: usize = 12;
-const ALPHA_TILE_VERTEX_SIZE: usize = 16;
+const SOLID_TILE_VERTEX_SIZE: usize = 16;
+const ALPHA_TILE_VERTEX_SIZE: usize = 20;
 const MASK_TILE_VERTEX_SIZE: usize = 12;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
@@ -216,8 +216,8 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         });
         device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
             stride: ALPHA_TILE_VERTEX_SIZE,
             offset: 8,
             divisor: 0,
@@ -228,7 +228,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U8,
             stride: ALPHA_TILE_VERTEX_SIZE,
-            offset: 14,
+            offset: 18,
             divisor: 0,
             buffer_index: 0,
         });
@@ -278,8 +278,8 @@ where
                                      &color_tex_coord_attr,
                                      &VertexAttrDescriptor {
                                         size: 2,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
+                                        class: VertexAttrClass::Float,
+                                        attr_type: VertexAttrType::F32,
                                         stride: SOLID_TILE_VERTEX_SIZE,
                                         offset: 4,
                                         divisor: 0,

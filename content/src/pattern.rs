@@ -21,7 +21,7 @@ use image::RgbaImage;
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Pattern {
     pub source: PatternSource,
-    pub repeat: Repeat,
+    pub flags: PatternFlags,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -44,16 +44,17 @@ pub struct Image {
 }
 
 bitflags! {
-    pub struct Repeat: u8 {
-        const X = 0x01;
-        const Y = 0x02;
+    pub struct PatternFlags: u8 {
+        const REPEAT_X      = 0x01;
+        const REPEAT_Y      = 0x02;
+        const NO_SMOOTHING  = 0x04;
     }
 }
 
 impl Pattern {
     #[inline]
-    pub fn new(source: PatternSource, repeat: Repeat) -> Pattern {
-        Pattern { source, repeat }
+    pub fn new(source: PatternSource, flags: PatternFlags) -> Pattern {
+        Pattern { source, flags }
     }
 }
 

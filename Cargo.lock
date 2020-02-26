@@ -1707,6 +1707,7 @@ dependencies = [
 name = "pathfinder_gpu"
 version = "0.1.0"
 dependencies = [
+ "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "half 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.22.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_color 0.1.0",
