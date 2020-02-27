@@ -1312,6 +1312,9 @@ impl UniformDataExt for UniformData {
                 UniformData::Vec2(ref data) => {
                     Some(slice::from_raw_parts(data as *const F32x2 as *const u8, 4 * 2))
                 }
+                UniformData::Vec3(ref data) => {
+                    Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 3))
+                }
                 UniformData::Vec4(ref data) => {
                     Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4))
                 }
