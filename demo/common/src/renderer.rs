@@ -214,7 +214,7 @@ impl<W> DemoApp<W> where W: Window {
         let base_transform = perspective.transform * Transform4F::from_translation(offset);
 
         // Fill ground.
-        let transform = base_transform *    
+        let transform = base_transform *
             Transform4F::from_scale(Vector4F::new(ground_scale, 1.0, ground_scale, 1.0));
 
         // Don't clear the first scene after drawing it.

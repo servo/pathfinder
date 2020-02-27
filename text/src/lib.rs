@@ -179,7 +179,7 @@ impl Build for OutlinePathBuilder {
         self.flush_current_contour();
         self.outline
     }
-    
+
     fn build_and_reset(&mut self) -> Outline {
         self.flush_current_contour();
         mem::replace(&mut self.outline, Outline::new())
@@ -218,5 +218,4 @@ impl FlatPathBuilder for OutlinePathBuilder {
         let point = self.current_contour.position_of(point_index);
         Point2D::new(point.x(), point.y())
     }
-
-    }
+}

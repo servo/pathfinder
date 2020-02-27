@@ -112,7 +112,7 @@ impl Display for GlWindowDisplay {
         self.handle_events();
         Ok(())
     }
-   
+
     fn running(&self) -> bool {
         self.running
     }
@@ -124,7 +124,7 @@ impl Display for GlWindowDisplay {
 
 impl DisplayCamera for GlWindowCamera {
     type Error = GlWindowError;
-    
+
     fn make_current(&mut self) -> Result<(), GlWindowError> {
         let bounds = self.bounds();
         unsafe {
@@ -176,7 +176,7 @@ impl GlWindowDisplay {
 	let cameras = vec![
 	    GlWindowCamera { gl_window: gl_window.clone(), start, eye: Eye::Left },
 	    GlWindowCamera { gl_window: gl_window.clone(), start, eye: Eye::Right },
-        ];	    
+        ];
         gl::load_with(|name| gl_window.get_proc_address(name) as *const _);
         Ok(GlWindowDisplay {
 	    resource_loader,

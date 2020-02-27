@@ -296,7 +296,7 @@ impl Palette {
         // Render the actual texels.
         //
         // TODO(pcwalton): This is slow. Do more on GPU.
-        let mut paint_data = PaintData { pages: vec![] }; 
+        let mut paint_data = PaintData { pages: vec![] };
         for page_index in 0..allocator.page_count() {
             let page_index = PaintPageId(page_index);
             let page_size = allocator.page_size(page_index);

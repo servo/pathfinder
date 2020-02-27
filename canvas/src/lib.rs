@@ -213,7 +213,7 @@ impl CanvasRenderingContext2D {
         let paint_id = self.scene.push_paint(&paint);
 
         let mut stroke_style = self.current_state.resolve_stroke_style();
-        
+
         // The smaller scale is relevant here, as we multiply by it and want to ensure it is always
         // bigger than `HAIRLINE_STROKE_WIDTH`.
         let transform_scale = f32::min(self.current_state.transform.m11(),
@@ -289,7 +289,7 @@ impl CanvasRenderingContext2D {
         self.composite_render_target_if_needed(composite_op, render_target_id);
     }
 
-    fn push_render_target_if_needed(&mut self, composite_op: Option<CompositeOp>)   
+    fn push_render_target_if_needed(&mut self, composite_op: Option<CompositeOp>)
                                     -> Option<RenderTargetId> {
         if composite_op.is_none() {
             return None;
