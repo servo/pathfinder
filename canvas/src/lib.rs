@@ -1,6 +1,6 @@
 // pathfinder/canvas/src/lib.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -12,7 +12,7 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
-use pathfinder_content::effects::{BlendMode, CompositeOp, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
@@ -162,8 +162,31 @@ impl CanvasRenderingContext2D {
     // Shadows
 
     #[inline]
+    pub fn shadow_blur(&self) -> f32 {
+        self.current_state.shadow_blur
+    }
+
+    #[inline]
+    pub fn set_shadow_blur(&mut self, new_shadow_blur: f32) {
+        self.current_state.shadow_blur = new_shadow_blur;
+    }
+
+    #[inline]
+    pub fn shadow_color(&self) -> ColorU {
+        match self.current_state.shadow_paint {
+            Paint::Color(color) => color,
+            _ => panic!("Unexpected shadow paint!"),
+        }
+    }
+
+    #[inline]
     pub fn set_shadow_color(&mut self, new_shadow_color: ColorU) {
         self.current_state.shadow_paint = Paint::Color(new_shadow_color);
+    }
+
+    #[inline]
+    pub fn shadow_offset(&self) -> Vector2F {
+        self.current_state.shadow_offset
     }
 
     #[inline]
@@ -235,7 +258,8 @@ impl CanvasRenderingContext2D {
         let opacity = (self.current_state.global_alpha * 255.0) as u8;
 
         if !self.current_state.shadow_paint.is_fully_transparent() {
-            let render_target_id = self.push_render_target_if_needed(composite_op);
+            let composite_render_target_id = self.push_render_target_if_needed(composite_op);
+            let shadow_blur_render_target_ids = self.push_shadow_blur_render_targets_if_needed();
 
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
             let paint_id = self.scene.push_paint(&paint);
@@ -249,7 +273,8 @@ impl CanvasRenderingContext2D {
             path.set_opacity(opacity);
             self.scene.push_path(path);
 
-            self.composite_render_target_if_needed(composite_op, render_target_id);
+            self.composite_shadow_blur_render_targets_if_needed(shadow_blur_render_target_ids);
+            self.composite_render_target_if_needed(composite_op, composite_render_target_id);
         }
 
         let render_target_id = self.push_render_target_if_needed(composite_op);
@@ -274,6 +299,19 @@ impl CanvasRenderingContext2D {
         Some(self.scene.push_render_target(RenderTarget::new(render_target_size, String::new())))
     }
 
+    fn push_shadow_blur_render_targets_if_needed(&mut self) -> Option<[RenderTargetId; 2]> {
+        if self.current_state.shadow_blur == 0.0 {
+            return None;
+        }
+
+        let render_target_size = self.scene.view_box().size().ceil().to_i32();
+        let render_target_id_a =
+            self.scene.push_render_target(RenderTarget::new(render_target_size, String::new()));
+        let render_target_id_b =
+            self.scene.push_render_target(RenderTarget::new(render_target_size, String::new()));
+        Some([render_target_id_a, render_target_id_b])
+    }
+
     fn composite_render_target_if_needed(&mut self,
                                          composite_op: Option<CompositeOp>,
                                          render_target_id: Option<RenderTargetId>) {
@@ -285,6 +323,27 @@ impl CanvasRenderingContext2D {
         self.scene.pop_render_target();
         self.scene.draw_render_target(render_target_id.unwrap(),
                                       Effects::new(Filter::Composite(composite_op)));
+    }
+
+    fn composite_shadow_blur_render_targets_if_needed(
+            &mut self,
+            render_target_ids: Option<[RenderTargetId; 2]>) {
+        let render_target_ids = match render_target_ids {
+            None => return,
+            Some(render_target_ids) => render_target_ids,
+        };
+
+        let sigma = self.current_state.shadow_blur * 0.5;
+        self.scene.pop_render_target();
+        self.scene.draw_render_target(render_target_ids[1], Effects::new(Filter::Blur {
+            direction: BlurDirection::X,
+            sigma,
+        }));
+        self.scene.pop_render_target();
+        self.scene.draw_render_target(render_target_ids[0], Effects::new(Filter::Blur {
+            direction: BlurDirection::Y,
+            sigma,
+        }));
     }
 
     // Transformations
@@ -377,6 +436,7 @@ struct State {
     fill_paint: Paint,
     stroke_paint: Paint,
     shadow_paint: Paint,
+    shadow_blur: f32,
     shadow_offset: Vector2F,
     text_align: TextAlign,
     image_smoothing_enabled: bool,
@@ -401,6 +461,7 @@ impl State {
             fill_paint: Paint::black(),
             stroke_paint: Paint::black(),
             shadow_paint: Paint::transparent_black(),
+            shadow_blur: 0.0,
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
             image_smoothing_enabled: true,

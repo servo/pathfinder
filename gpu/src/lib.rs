@@ -173,6 +173,7 @@ pub enum UniformData {
     Mat2(F32x4),
     Mat4([F32x4; 4]),
     Vec2(F32x2),
+    Vec3([f32; 3]),
     Vec4(F32x4),
     TextureUnit(u32),
 }

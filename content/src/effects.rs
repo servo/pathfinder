@@ -57,6 +57,15 @@ pub enum Filter {
         /// If this is enabled, stem darkening is advised.
         gamma_correction: bool,
     },
+
+    /// A blur operation in one direction, either horizontal or vertical.
+    ///
+    /// To produce a full Gaussian blur, perform two successive blur operations, one in each
+    /// direction.
+    Blur {
+        direction: BlurDirection,
+        sigma: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -122,6 +131,12 @@ pub enum BlendMode {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DefringingKernel(pub [f32; 4]);
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum BlurDirection {
+    X,
+    Y,
+}
 
 impl Default for CompositeOp {
     #[inline]

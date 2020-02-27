@@ -934,6 +934,11 @@ impl MetalDevice {
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.x()).unwrap();
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.y()).unwrap();
                 }
+                UniformData::Vec3(array) => {
+                    uniform_buffer_data.write_f32::<NativeEndian>(array[0]).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(array[1]).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(array[2]).unwrap();
+                }
                 UniformData::Vec4(vector) => {
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.x()).unwrap();
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.y()).unwrap();

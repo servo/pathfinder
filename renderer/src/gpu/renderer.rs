@@ -14,19 +14,21 @@ use crate::gpu::shaders::{AlphaTileBlendModeProgram, AlphaTileDodgeBurnProgram};
 use crate::gpu::shaders::{AlphaTileHSLProgram, AlphaTileOverlayProgram};
 use crate::gpu::shaders::{AlphaTileProgram, AlphaTileVertexArray, CopyTileProgram};
 use crate::gpu::shaders::{CopyTileVertexArray, FillProgram, FillVertexArray, FilterBasicProgram};
-use crate::gpu::shaders::{FilterBasicVertexArray, FilterTextProgram, FilterTextVertexArray};
-use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
-use crate::gpu::shaders::{ReprojectionProgram, ReprojectionVertexArray, SolidTileProgram};
-use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArray};
+use crate::gpu::shaders::{FilterBasicVertexArray,FilterBlurProgram, FilterBlurVertexArray};
+use crate::gpu::shaders::{FilterTextProgram, FilterTextVertexArray, MAX_FILLS_PER_BATCH};
+use crate::gpu::shaders::{MaskTileProgram, MaskTileVertexArray, ReprojectionProgram};
+use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
+use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
 use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileVertex};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF};
-use pathfinder_content::effects::{BlendMode, CompositeOp, DefringingKernel, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, DefringingKernel};
+use pathfinder_content::effects::{Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::pattern::RenderTargetId;
-use pathfinder_geometry::vector::{Vector2I, Vector4F};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -37,6 +39,7 @@ use pathfinder_gpu::{TextureFormat, TextureSamplingFlags, UniformData};
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cmp;
 use std::collections::VecDeque;
+use std::f32;
 use std::mem;
 use std::ops::{Add, Div};
 use std::time::Duration;
@@ -47,6 +50,9 @@ static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 pub(crate) const MASK_TILES_ACROSS: u32 = 256;
 pub(crate) const MASK_TILES_DOWN: u32 = 256;
+
+// 1.0 / sqrt(2*pi)
+const SQRT_2_PI_INV: f32 = 0.3989422804014327;
 
 const TEXTURE_CACHE_SIZE: usize = 8;
 
@@ -118,6 +124,8 @@ where
     // Filter shaders
     filter_basic_program: FilterBasicProgram<D>,
     filter_basic_vertex_array: FilterBasicVertexArray<D>,
+    filter_blur_program: FilterBlurProgram<D>,
+    filter_blur_vertex_array: FilterBlurVertexArray<D>,
     filter_text_program: FilterTextProgram<D>,
     filter_text_vertex_array: FilterTextVertexArray<D>,
     gamma_lut_texture: D::Texture,
@@ -177,6 +185,7 @@ where
                                                                           "tile_alpha_exclusion");
         let alpha_tile_hsl_program = AlphaTileHSLProgram::new(&device, resources);
         let filter_basic_program = FilterBasicProgram::new(&device, resources);
+        let filter_blur_program = FilterBlurProgram::new(&device, resources);
         let filter_text_program = FilterTextProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
@@ -276,6 +285,12 @@ where
             &quad_vertex_positions_buffer,
             &quad_vertex_indices_buffer,
         );
+        let filter_blur_vertex_array = FilterBlurVertexArray::new(
+            &device,
+            &filter_blur_program,
+            &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
+        );
         let filter_text_vertex_array = FilterTextVertexArray::new(
             &device,
             &filter_text_program,
@@ -361,6 +376,8 @@ where
 
             filter_basic_program,
             filter_basic_vertex_array,
+            filter_blur_program,
+            filter_blur_vertex_array,
             filter_text_program,
             filter_text_vertex_array,
             gamma_lut_texture,
@@ -1147,6 +1164,9 @@ where
                                              defringing_kernel,
                                              gamma_correction)
             }
+            Filter::Blur { direction, sigma } => {
+                self.draw_blur_render_target(render_target_id, direction, sigma)
+            }
         }
 
         self.preserve_draw_framebuffer();
@@ -1230,6 +1250,55 @@ where
             viewport: main_viewport,
             options: RenderOptions {
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                ..RenderOptions::default()
+            },
+        });
+    }
+
+    fn draw_blur_render_target(&self,
+                               render_target_id: RenderTargetId,
+                               direction: BlurDirection,
+                               sigma: f32) {
+        let clear_color = self.clear_color_for_draw_operation();
+        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
+        let source_texture = self.device.framebuffer_texture(source_framebuffer);
+        let source_texture_size = self.device.texture_size(source_texture);
+        let main_viewport = self.main_viewport();
+
+        let sigma_inv = 1.0 / sigma;
+        let gauss_coeff_x = SQRT_2_PI_INV * sigma_inv;
+        let gauss_coeff_y = f32::exp(-0.5 * sigma_inv * sigma_inv);
+        let gauss_coeff_z = gauss_coeff_y * gauss_coeff_y;
+
+        let src_offset = match direction {
+            BlurDirection::X => Vector2F::new(1.0, 0.0),
+            BlurDirection::Y => Vector2F::new(0.0, 1.0),
+        };
+        let src_offset_scale = src_offset / source_texture_size.to_f32();
+
+        let uniforms = vec![
+            (&self.filter_blur_program.framebuffer_size_uniform,
+             UniformData::Vec2(main_viewport.size().to_f32().0)),
+            (&self.filter_blur_program.src_uniform, UniformData::TextureUnit(0)),
+            (&self.filter_blur_program.src_offset_scale_uniform,
+             UniformData::Vec2(src_offset_scale.0)),
+            (&self.filter_blur_program.initial_gauss_coeff_uniform,
+             UniformData::Vec3([gauss_coeff_x, gauss_coeff_y, gauss_coeff_z])),
+            (&self.filter_blur_program.support_uniform,
+             UniformData::Int(f32::ceil(1.5 * sigma) as i32 * 2)),
+        ];
+
+        self.device.draw_elements(6, &RenderState {
+            target: &self.draw_render_target(),
+            program: &self.filter_blur_program.program,
+            vertex_array: &self.filter_blur_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[&source_texture],
+            uniforms: &uniforms,
+            viewport: main_viewport,
+            options: RenderOptions {
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                blend: CompositeOp::SrcOver.to_blend_state(),
                 ..RenderOptions::default()
             },
         });

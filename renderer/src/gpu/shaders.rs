@@ -572,6 +572,68 @@ impl<D> FilterBasicVertexArray<D> where D: Device {
     }
 }
 
+pub struct FilterBlurProgram<D> where D: Device {
+    pub program: D::Program,
+    pub framebuffer_size_uniform: D::Uniform,
+    pub src_uniform: D::Uniform,
+    pub src_offset_scale_uniform: D::Uniform,
+    pub initial_gauss_coeff_uniform: D::Uniform,
+    pub support_uniform: D::Uniform,
+}
+
+impl<D> FilterBlurProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterBlurProgram<D> {
+        let program = device.create_program_from_shader_names(resources,
+                                                              "filter_blur",
+                                                              "filter",
+                                                              "filter_blur");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let src_uniform = device.get_uniform(&program, "Src");
+        let src_offset_scale_uniform = device.get_uniform(&program, "SrcOffsetScale");
+        let initial_gauss_coeff_uniform = device.get_uniform(&program, "InitialGaussCoeff");
+        let support_uniform = device.get_uniform(&program, "Support");
+        FilterBlurProgram {
+            program,
+            framebuffer_size_uniform,
+            src_uniform,
+            src_offset_scale_uniform,
+            initial_gauss_coeff_uniform,
+            support_uniform,
+        }
+    }
+}
+
+pub struct FilterBlurVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+}
+
+impl<D> FilterBlurVertexArray<D> where D: Device {
+    pub fn new(
+        device: &D,
+        fill_blur_program: &FilterBlurProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
+    ) -> FilterBlurVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let position_attr = device.get_vertex_attr(&fill_blur_program.program, "Position")
+                                  .unwrap();
+
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: 4,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+
+        FilterBlurVertexArray { vertex_array }
+    }
+}
+
 pub struct FilterTextProgram<D> where D: Device {
     pub program: D::Program,
     pub source_uniform: D::Uniform,

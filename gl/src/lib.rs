@@ -156,6 +156,9 @@ impl GLDevice {
                 UniformData::Vec2(data) => {
                     gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
                 }
+                UniformData::Vec3(data) => {
+                    gl::Uniform3f(uniform.location, data[0], data[1], data[2]); ck();
+                }
                 UniformData::Vec4(data) => {
                     gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
                 }

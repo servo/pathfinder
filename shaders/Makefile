@@ -11,12 +11,13 @@ SHADERS=\
 	demo_ground.vs.glsl \
 	fill.fs.glsl \
 	fill.vs.glsl \
+	filter.vs.glsl \
+	filter_basic.fs.glsl \
+	filter_blur.fs.glsl \
+	filter_text.fs.glsl \
 	mask.vs.glsl \
 	mask_evenodd.fs.glsl \
 	mask_winding.fs.glsl \
-	filter.vs.glsl \
-	filter_basic.fs.glsl \
-	filter_text.fs.glsl \
 	reproject.fs.glsl \
 	reproject.vs.glsl \
 	stencil.fs.glsl \
