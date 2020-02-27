@@ -78,7 +78,7 @@ pub enum CompositeOp {
     Copy,
     /// The source that overlaps the destination replaces the destination.
     SrcIn,
-    /// Destination which overlaps the source replaces the source. 
+    /// Destination which overlaps the source replaces the source.
     DestIn,
     /// Source is placed where it falls outside of the destination.
     SrcOut,
@@ -87,7 +87,7 @@ pub enum CompositeOp {
 }
 
 /// Blend modes that can be applied to individual paths.
-/// 
+///
 /// All blend modes preserve parts of the destination that are not overlapped by the source path.
 /// Other Porter-Duff compositing operations are `CompositeOp`s.
 #[derive(Clone, Copy, PartialEq, Debug)]

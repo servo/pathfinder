@@ -21,10 +21,10 @@ use pdf::Pdf;
 pub enum FileFormat {
     /// Scalable Vector Graphics
     SVG,
-    
+
     /// Portable Document Format
     PDF,
-    
+
     /// PostScript
     PS,
 }
@@ -63,18 +63,18 @@ fn export_svg<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     writeln!(writer, "</svg>")?;
     Ok(())
 }
-    
+
 fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     let mut pdf = Pdf::new();
     let view_box = scene.view_box();
     pdf.add_page(view_box.size());
-    
+
     let height = view_box.size().y();
     let tr = |v: Vector2F| -> Vector2F {
         let r = v - view_box.origin();
         Vector2F::new(r.x(), height - r.y())
     };
-    
+
     for (paint, outline, _) in scene.paths() {
         match paint {
             Paint::Color(color) => pdf.set_fill_color(*color),
@@ -85,7 +85,7 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
                 // TODO(pcwalton): Patterns.
             }
         }
-        
+
         for contour in outline.contours() {
             for (segment_index, segment) in contour.iter().enumerate() {
                 if segment_index == 0 {
@@ -111,13 +111,13 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
                 pdf.close();
             }
         }
-        
+
         // closes implicitly
         pdf.fill();
     }
     pdf.write_to(writer)
 }
-    
+
 fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     struct P(Vector2F);
     impl fmt::Display for P {
@@ -138,7 +138,7 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     )?;
     writeln!(writer, "0 {} translate", view_box.size().y())?;
     writeln!(writer, "1 -1 scale")?;
-    
+
     for (paint, outline, name) in scene.paths() {
         if !name.is_empty() {
             writeln!(writer, "newpath % {}", name)?;

@@ -466,7 +466,7 @@ pub struct AlphaTileBlendModeProgram<D> where D: Device {
 }
 
 impl<D> AlphaTileBlendModeProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, name: &str)  
+    pub fn new(device: &D, resources: &dyn ResourceLoader, name: &str)
                -> AlphaTileBlendModeProgram<D> {
         let alpha_tile_program =
             AlphaTileProgram::from_fragment_shader_name(device, resources, name);

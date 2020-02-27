@@ -69,7 +69,7 @@ impl Segment {
     }
 
     /// Approximates an unit-length arc with a cubic Bézier curve.
-    /// 
+    ///
     /// The maximum supported sweep angle is π/2 (i.e. 90°).
     pub fn arc(sweep_angle: f32) -> Segment {
         Segment::arc_from_cos(f32::cos(sweep_angle))

@@ -343,7 +343,7 @@ impl<W> DemoApp<W> where W: Window {
                         for (index, eye_transform) in eye_transforms.iter().enumerate().skip(1) {
                             let weight = 1.0 / (index + 1) as f32;
                             scene_transform.perspective.transform =
-                                scene_transform.perspective 
+                                scene_transform.perspective
                                                .transform
                                                .lerp(weight, &eye_transform.perspective.transform);
                             scene_transform.modelview_to_eye =

@@ -9,7 +9,7 @@
 // except according to those terms.
 
 //! Pathfinder's representation of a vector scene.
-//! 
+//!
 //! This module also contains various path utilities.
 
 #[macro_use]

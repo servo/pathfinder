@@ -603,7 +603,7 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
 
         let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position")
                                   .unwrap();
-        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord") 
+        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord")
                                    .unwrap();
 
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);

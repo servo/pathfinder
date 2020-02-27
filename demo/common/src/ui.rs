@@ -83,7 +83,7 @@ impl DemoUIModel {
     // Only relevant if in monochrome mode.
     pub fn foreground_color(&self) -> ColorU {
         match self.background_color {
-            BackgroundColor::Light | BackgroundColor::Transparent => ColorU::black(), 
+            BackgroundColor::Light | BackgroundColor::Transparent => ColorU::black(),
             BackgroundColor::Dark => ColorU::white(),
         }
     }

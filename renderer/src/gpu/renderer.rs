@@ -472,7 +472,7 @@ where
         }
         self.stats.path_count = path_count;
 
-        self.flags.set(RendererFlags::INTERMEDIATE_DEST_FRAMEBUFFER_NEEDED, 
+        self.flags.set(RendererFlags::INTERMEDIATE_DEST_FRAMEBUFFER_NEEDED,
                        needs_readable_framebuffer);
     }
 
@@ -857,7 +857,7 @@ where
                 self.set_uniforms_for_overlay_blend_mode(&mut textures, &mut uniforms, blend_mode);
             }
             BlendModeProgram::DodgeBurn => {
-                self.set_uniforms_for_dodge_burn_blend_mode(&mut textures,  
+                self.set_uniforms_for_dodge_burn_blend_mode(&mut textures,
                                                             &mut uniforms,
                                                             blend_mode);
             }

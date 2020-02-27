@@ -100,7 +100,7 @@ impl TextureAllocator {
         TextureLocation { page, rect }
     }
 
-    pub fn allocate_render_target(&mut self, requested_size: Vector2I, id: RenderTargetId)  
+    pub fn allocate_render_target(&mut self, requested_size: Vector2I, id: RenderTargetId)
                                   -> TextureLocation {
         let page = PaintPageId(self.pages.len() as u32);
         let rect = RectI::new(Vector2I::default(), requested_size);

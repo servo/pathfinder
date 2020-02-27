@@ -190,7 +190,7 @@ impl Scene {
         let prepared_options = options.prepare(self.bounds);
         SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
-    
+
     pub fn paths<'a>(&'a self) -> PathIter {
         PathIter {
             scene: self,

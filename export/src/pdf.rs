@@ -133,22 +133,22 @@ impl Pdf {
             .extend("/DeviceRGB cs /DeviceRGB CS\n1 j 1 J\n".bytes());
         self.page_size = Some(size);
     }
-    
+
     pub fn move_to(&mut self, p: Vector2F)  {
         writeln!(self.page_buffer, "{} {} m", p.x(), p.y()).unwrap();
     }
-    
+
     pub fn line_to(&mut self, p: Vector2F) {
         writeln!(self.page_buffer, "{} {} l", p.x(), p.y()).unwrap();
     }
-    
+
     pub fn cubic_to(&mut self, c1: Vector2F, c2: Vector2F, p: Vector2F) {
         writeln!(self.page_buffer, "{} {} {} {} {} {} c", c1.x(), c1.y(), c2.x(), c2.y(), p.x(), p.y()).unwrap();
     }
     pub fn fill(&mut self) {
         writeln!(self.page_buffer, "f").unwrap();
     }
-    
+
     pub fn close(&mut self) {
         writeln!(self.page_buffer, "h").unwrap();
     }
@@ -203,7 +203,7 @@ impl Pdf {
     pub fn write_to<W>(&mut self, writer: W) -> io::Result<()> where W: Write {
         let mut out = Counter::new(writer);
         out.write_all(b"%PDF-1.7\n%\xB5\xED\xAE\xFB\n")?;
-        
+
         if !self.page_buffer.is_empty() {
             self.end_page();
         }
@@ -254,7 +254,7 @@ impl Pdf {
 
         // Write the PDF EOF
         out.write_all(b"%%EOF")?;
-        
+
         Ok(())
     }
 }
