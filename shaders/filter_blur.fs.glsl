@@ -22,8 +22,6 @@
 
 precision highp float;
 
-#define SQRT_PI_2_INV   2.5066282746310002
-
 uniform sampler2D uSrc;
 uniform vec2 uSrcOffsetScale;
 uniform vec3 uInitialGaussCoeff;

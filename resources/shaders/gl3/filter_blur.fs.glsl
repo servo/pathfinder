@@ -24,8 +24,6 @@
 
 precision highp float;
 
-
-
 uniform sampler2D uSrc;
 uniform vec2 uSrcOffsetScale;
 uniform vec3 uInitialGaussCoeff;
