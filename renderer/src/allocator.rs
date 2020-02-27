@@ -22,7 +22,6 @@ pub struct TextureAllocator {
     pages: Vec<TexturePageAllocator>,
 }
 
-// TODO(pcwalton): Add layers, perhaps?
 #[derive(Debug)]
 pub enum TexturePageAllocator {
     // An atlas allocated with our quadtree allocator.

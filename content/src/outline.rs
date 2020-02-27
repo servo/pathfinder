@@ -308,7 +308,6 @@ impl Contour {
         self.closed = true;
     }
 
-    // TODO(pcwalton): SIMD.
     #[inline]
     pub(crate) fn push_point(&mut self,
                              point: Vector2F,

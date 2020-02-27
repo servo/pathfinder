@@ -325,7 +325,7 @@ impl<D> UIPresenter<D> where D: Device {
         self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
     }
 
-    // TODO(pcwalton): `LineSegmentI32`.
+    // TODO(pcwalton): `LineSegment2I`.
     fn draw_line(&self, device: &D, from: Vector2I, to: Vector2I, color: ColorU) {
         let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
         self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);

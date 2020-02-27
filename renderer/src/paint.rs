@@ -160,7 +160,6 @@ pub struct PaintInfo {
     pub metadata: Vec<PaintMetadata>,
 }
 
-// TODO(pcwalton): Add clamp/repeat options.
 #[derive(Debug)]
 pub struct PaintMetadata {
     /// The location of the texture.

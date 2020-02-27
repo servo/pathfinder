@@ -510,7 +510,6 @@ pub struct Path2D {
     current_contour: Contour,
 }
 
-// TODO(pcwalton): `ellipse`
 impl Path2D {
     #[inline]
     pub fn new() -> Path2D {
