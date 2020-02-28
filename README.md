@@ -83,6 +83,9 @@ If you're on the Mozilla Matrix server, you can search for Pathfinder to find it
 information on connecting to the Matrix network, see
 [this `wiki.mozilla.org` page](https://wiki.mozilla.org/Matrix).
 
+The entire Pathfinder community, including the chat room and GitHub project, is expected to abide
+by the same Code of Conduct that the Rust project itself follows.
+
 ## Build status
 
 [![Build Status](https://travis-ci.org/servo/pathfinder.svg?branch=master)](https://travis-ci.org/servo/pathfinder)
@@ -93,8 +96,6 @@ The primary author is Patrick Walton (@pcwalton), with contributions from the Se
 community.
 
 The logo was designed by Jay Vining.
-
-Contributors to Pathfinder are expected to abide by the same Code of Conduct as Rust itself.
 
 ## License
 
