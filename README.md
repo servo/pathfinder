@@ -1,6 +1,6 @@
-[![Build Status](https://travis-ci.org/servo/pathfinder.svg?branch=master)](https://travis-ci.org/servo/pathfinder)
-
 # Pathfinder 3
+
+![Logo](https://github.com/servo/pathfinder/raw/master/resources/shaders/pathfinder-logo.png)
 
 Pathfinder 3 is a fast, practical, GPU-based rasterizer for fonts and vector graphics using OpenGL
 3.0+, OpenGL ES 3.0+, or Metal.
@@ -74,6 +74,10 @@ Running the demo is as simple as:
 The SDL 2 library requires some additional manual installation steps. Follow the
 [`rust-sdl2` installation instructions](https://github.com/Rust-SDL2/rust-sdl2#sdl20-development-libraries) to make sure the libraries are installed. Note that SDL2 is
 only required to run the demo; Pathfinder itself has no dependency on the library.
+
+## Build status
+
+[![Build Status](https://travis-ci.org/servo/pathfinder.svg?branch=master)](https://travis-ci.org/servo/pathfinder)
 
 ## Authors
 
