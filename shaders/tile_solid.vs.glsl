@@ -21,7 +21,7 @@ in vec2 aColorTexCoord;
 out vec2 vColorTexCoord;
 
 void main() {
-    vec2 position = aTilePosition * uTileSize;
+    vec2 position = vec2(aTilePosition) * uTileSize;
     vColorTexCoord = aColorTexCoord;
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }

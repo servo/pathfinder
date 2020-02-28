@@ -20,7 +20,7 @@ uniform vec2 uTileSize;
 in ivec2 aTilePosition;
 
 void main(){
-    vec2 position = aTilePosition * uTileSize;
+    vec2 position = vec2(aTilePosition)* uTileSize;
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 
