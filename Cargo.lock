@@ -29,9 +29,9 @@ dependencies = [
 
 [[package]]
 name = "aho-corasick"
-version = "0.7.8"
+version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743ad5a418686aad3b87fd14c43badd828cf26e214a00f92a384291cf22e1811"
+checksum = "d5e63fd144e18ba274ae7095c0197a870a7b9468abc801dd62f190d80817d2ec"
 dependencies = [
  "memchr",
 ]
@@ -251,13 +251,14 @@ dependencies = [
  "pathfinder_gl",
  "pathfinder_gpu",
  "pathfinder_renderer",
+ "pathfinder_resources",
 ]
 
 [[package]]
 name = "canvas_metal_minimal"
 version = "0.1.0"
 dependencies = [
- "foreign-types 0.3.2",
+ "foreign-types",
  "gl",
  "metal",
  "objc",
@@ -285,6 +286,7 @@ dependencies = [
  "pathfinder_gl",
  "pathfinder_gpu",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "sdl2",
  "sdl2-sys",
 ]
@@ -301,6 +303,7 @@ dependencies = [
  "pathfinder_gl",
  "pathfinder_gpu",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "sdl2",
  "sdl2-sys",
 ]
@@ -335,6 +338,7 @@ dependencies = [
  "pathfinder_gl",
  "pathfinder_gpu",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "sdl2",
  "sdl2-sys",
 ]
@@ -426,7 +430,7 @@ dependencies = [
  "block",
  "core-foundation 0.6.4",
  "core-graphics 0.17.3",
- "foreign-types 0.3.2",
+ "foreign-types",
  "libc 0.2.67",
  "objc",
 ]
@@ -536,7 +540,7 @@ checksum = "56790968ab1c8a1202a102e6de05fc6e1ec87da99e4e93e9a7d13efbfc1e95a9"
 dependencies = [
  "bitflags",
  "core-foundation 0.6.4",
- "foreign-types 0.3.2",
+ "foreign-types",
  "libc 0.2.67",
 ]
 
@@ -548,7 +552,7 @@ checksum = "59e78b2e0aaf43f08e7ae0d6bc96895ef72ff0921c7d4ff4762201b2dba376dd"
 dependencies = [
  "bitflags",
  "core-foundation 0.7.0",
- "foreign-types 0.3.2",
+ "foreign-types",
  "libc 0.2.67",
 ]
 
@@ -560,7 +564,7 @@ checksum = "db84654ad95211c082cf9795f6f83dc17d0ae6c985ac1b906369dc7384ed346d"
 dependencies = [
  "core-foundation 0.6.4",
  "core-graphics 0.17.3",
- "foreign-types 0.3.2",
+ "foreign-types",
  "libc 0.2.67",
 ]
 
@@ -572,7 +576,7 @@ checksum = "131b3fd1f8bd5db9f2b398fa4fdb6008c64afc04d447c306ac2c7e98fba2a61d"
 dependencies = [
  "core-foundation 0.7.0",
  "core-graphics 0.19.0",
- "foreign-types 0.3.2",
+ "foreign-types",
  "libc 0.2.67",
 ]
 
@@ -698,7 +702,7 @@ name = "demo"
 version = "0.1.0"
 dependencies = [
  "color-backtrace",
- "foreign-types 0.3.2",
+ "foreign-types",
  "gl",
  "jemallocator",
  "metal",
@@ -708,6 +712,7 @@ dependencies = [
  "pathfinder_gl",
  "pathfinder_gpu",
  "pathfinder_metal",
+ "pathfinder_resources",
  "pathfinder_simd",
  "pretty_env_logger",
  "sdl2",
@@ -896,28 +901,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
 dependencies = [
- "foreign-types-shared 0.1.1",
-]
-
-[[package]]
-name = "foreign-types"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d737d9aa519fb7b749cbc3b962edcf310a8dd1f4b67c91c4f83975dbdd17d965"
-dependencies = [
- "foreign-types-macros",
- "foreign-types-shared 0.3.0",
-]
-
-[[package]]
-name = "foreign-types-macros"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db8b4c717941b6d03ebb6fc0815b262b8168c187bb5829e8106139e95cd3e174"
-dependencies = [
- "proc-macro2 1.0.9",
- "quote 1.0.2",
- "syn 1.0.16",
+ "foreign-types-shared",
 ]
 
 [[package]]
@@ -925,12 +909,6 @@ name = "foreign-types-shared"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
-
-[[package]]
-name = "foreign-types-shared"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7684cf33bb7f28497939e8c7cf17e3e4e3b8d9a0080ffa4f8ae2f515442ee855"
 
 [[package]]
 name = "freetype"
@@ -1157,7 +1135,7 @@ dependencies = [
  "cc",
  "core-graphics 0.17.3",
  "core-text 13.3.2",
- "foreign-types 0.3.2",
+ "foreign-types",
  "freetype",
  "pkg-config",
 ]
@@ -1567,7 +1545,7 @@ dependencies = [
  "block",
  "cocoa",
  "core-graphics 0.17.3",
- "foreign-types 0.3.2",
+ "foreign-types",
  "log",
  "objc",
 ]
@@ -1827,7 +1805,7 @@ version = "0.1.0"
 dependencies = [
  "cbindgen",
  "font-kit",
- "foreign-types 0.5.0",
+ "foreign-types",
  "gl",
  "libc 0.2.67",
  "metal",
@@ -1839,6 +1817,7 @@ dependencies = [
  "pathfinder_gpu",
  "pathfinder_metal",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "pathfinder_simd",
 ]
 
@@ -1894,6 +1873,7 @@ dependencies = [
  "pathfinder_gpu",
  "pathfinder_metal",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "pathfinder_simd",
  "pathfinder_svg",
  "pathfinder_ui",
@@ -1929,6 +1909,7 @@ dependencies = [
  "log",
  "pathfinder_geometry",
  "pathfinder_gpu",
+ "pathfinder_resources",
  "pathfinder_simd",
 ]
 
@@ -1936,10 +1917,12 @@ dependencies = [
 name = "pathfinder_gpu"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "half",
  "image 0.22.5",
  "pathfinder_color",
  "pathfinder_geometry",
+ "pathfinder_resources",
  "pathfinder_simd",
 ]
 
@@ -1984,12 +1967,13 @@ dependencies = [
  "byteorder",
  "cocoa",
  "core-foundation 0.7.0",
- "foreign-types 0.3.2",
+ "foreign-types",
  "half",
  "metal",
  "objc",
  "pathfinder_geometry",
  "pathfinder_gpu",
+ "pathfinder_resources",
  "pathfinder_simd",
 ]
 
@@ -2005,6 +1989,7 @@ dependencies = [
  "pathfinder_content",
  "pathfinder_geometry",
  "pathfinder_gpu",
+ "pathfinder_resources",
  "pathfinder_simd",
  "pathfinder_ui",
  "quickcheck",
@@ -2019,7 +2004,6 @@ name = "pathfinder_resources"
 version = "0.1.0"
 dependencies = [
  "half",
- "pathfinder_gpu",
  "phf",
  "phf_codegen",
 ]
@@ -2079,6 +2063,7 @@ dependencies = [
  "pathfinder_color",
  "pathfinder_geometry",
  "pathfinder_gpu",
+ "pathfinder_resources",
  "pathfinder_simd",
  "serde",
  "serde_derive",
@@ -2094,6 +2079,7 @@ dependencies = [
  "pathfinder_geometry",
  "pathfinder_gpu",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "pathfinder_simd",
  "wasm-bindgen",
  "web-sys",
@@ -2862,6 +2848,7 @@ dependencies = [
  "pathfinder_gl",
  "pathfinder_gpu",
  "pathfinder_renderer",
+ "pathfinder_resources",
  "pathfinder_swf",
  "sdl2",
  "sdl2-sys",

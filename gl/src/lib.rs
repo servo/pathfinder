@@ -18,11 +18,12 @@ use gl::types::{GLuint, GLvoid};
 use half::f16;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderOptions, RenderState, RenderTarget};
 use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat};
-use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{TextureSamplingFlags, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::mem;
@@ -46,20 +47,6 @@ impl GLDevice {
 
     pub fn set_default_framebuffer(&mut self, framebuffer: GLuint) {
         self.default_framebuffer = framebuffer;
-    }
-
-    fn set_texture_parameters(&self, texture: &GLTexture) {
-        self.bind_texture(texture, 0);
-        unsafe {
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as GLint); ck();
-            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as GLint); ck();
-            gl::TexParameteri(gl::TEXTURE_2D,
-                              gl::TEXTURE_WRAP_S,
-                              gl::CLAMP_TO_EDGE as GLint); ck();
-            gl::TexParameteri(gl::TEXTURE_2D,
-                              gl::TEXTURE_WRAP_T,
-                              gl::CLAMP_TO_EDGE as GLint); ck();
-        }
     }
 
     fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
@@ -169,6 +156,9 @@ impl GLDevice {
                 UniformData::Vec2(data) => {
                     gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
                 }
+                UniformData::Vec3(data) => {
+                    gl::Uniform3f(uniform.location, data[0], data[1], data[2]); ck();
+                }
                 UniformData::Vec4(data) => {
                     gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
                 }
@@ -236,7 +226,7 @@ impl Device for GLDevice {
                            ptr::null()); ck();
         }
 
-        self.set_texture_parameters(&texture);
+        self.set_texture_sampling_mode(&texture, TextureSamplingFlags::empty());
         texture
     }
 
@@ -258,7 +248,7 @@ impl Device for GLDevice {
                            data_ptr)
         }
 
-        self.set_texture_parameters(&texture);
+        self.set_texture_sampling_mode(&texture, TextureSamplingFlags::empty());
         texture
     }
 
@@ -473,6 +463,40 @@ impl Device for GLDevice {
         texture.size
     }
 
+    fn set_texture_sampling_mode(&self, texture: &Self::Texture, flags: TextureSamplingFlags) {
+        self.bind_texture(texture, 0);
+        unsafe {
+            gl::TexParameteri(gl::TEXTURE_2D,
+                              gl::TEXTURE_MIN_FILTER,
+                              if flags.contains(TextureSamplingFlags::NEAREST_MIN) {
+                                  gl::NEAREST as GLint
+                              } else {
+                                  gl::LINEAR as GLint
+                              }); ck();
+            gl::TexParameteri(gl::TEXTURE_2D,
+                              gl::TEXTURE_MAG_FILTER,
+                              if flags.contains(TextureSamplingFlags::NEAREST_MAG) {
+                                  gl::NEAREST as GLint
+                              } else {
+                                  gl::LINEAR as GLint
+                              }); ck();
+            gl::TexParameteri(gl::TEXTURE_2D,
+                              gl::TEXTURE_WRAP_S,
+                              if flags.contains(TextureSamplingFlags::REPEAT_U) {
+                                  gl::REPEAT as GLint
+                              } else {
+                                  gl::CLAMP_TO_EDGE as GLint
+                              }); ck();
+            gl::TexParameteri(gl::TEXTURE_2D,
+                              gl::TEXTURE_WRAP_T,
+                              if flags.contains(TextureSamplingFlags::REPEAT_V) {
+                                  gl::REPEAT as GLint
+                              } else {
+                                  gl::CLAMP_TO_EDGE as GLint
+                              }); ck();
+        }
+    }
+
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef) {
         let data_ptr = data.check_and_extract_data_ptr(rect.size(), texture.format);
 
@@ -506,7 +530,7 @@ impl Device for GLDevice {
             }
         }
 
-        self.set_texture_parameters(texture);
+        self.set_texture_sampling_mode(texture, TextureSamplingFlags::empty());
     }
 
     fn read_pixels(&self, render_target: &RenderTarget<GLDevice>, viewport: RectI)

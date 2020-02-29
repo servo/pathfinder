@@ -21,7 +21,7 @@ use image::RgbaImage;
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Pattern {
     pub source: PatternSource,
-    pub repeat: Repeat,
+    pub flags: PatternFlags,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -44,16 +44,17 @@ pub struct Image {
 }
 
 bitflags! {
-    pub struct Repeat: u8 {
-        const X = 0x01;
-        const Y = 0x02;
+    pub struct PatternFlags: u8 {
+        const REPEAT_X      = 0x01;
+        const REPEAT_Y      = 0x02;
+        const NO_SMOOTHING  = 0x04;
     }
 }
 
 impl Pattern {
     #[inline]
-    pub fn new(source: PatternSource, repeat: Repeat) -> Pattern {
-        Pattern { source, repeat }
+    pub fn new(source: PatternSource, flags: PatternFlags) -> Pattern {
+        Pattern { source, flags }
     }
 }
 
@@ -86,17 +87,6 @@ impl Image {
     pub fn is_opaque(&self) -> bool {
         self.is_opaque
     }
-
-    pub fn set_opacity(&mut self, alpha: f32) {
-        debug_assert!(alpha >= 0.0 && alpha <= 1.0);
-        if alpha == 1.0 {
-            return;
-        }
-
-        // TODO(pcwalton): Go four pixels at a time with SIMD.
-        self.pixels.iter_mut().for_each(|pixel| pixel.a = (pixel.a as f32 * alpha).round() as u8);
-        self.is_opaque = false;
-    }
 }
 
 impl PatternSource {
@@ -107,18 +97,6 @@ impl PatternSource {
             PatternSource::RenderTarget(_) => {
                 // TODO(pcwalton): Maybe do something smarter here?
                 false
-            }
-        }
-    }
-
-    #[inline]
-    pub fn set_opacity(&mut self, alpha: f32) {
-        match *self {
-            PatternSource::Image(ref mut image) => image.set_opacity(alpha),
-            PatternSource::RenderTarget(_) => {
-                // TODO(pcwalton): We'll probably have to introduce and use an Opacity filter for
-                // this.
-                unimplemented!()
             }
         }
     }

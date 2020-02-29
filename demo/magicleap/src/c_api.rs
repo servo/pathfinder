@@ -75,7 +75,7 @@ pub struct MLGraphicsRenderBufferInfo {
     pub color: MLGraphicsRenderTarget,
     pub depth: MLGraphicsRenderTarget,
 }
-  
+
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct MLGraphicsRenderTarget {

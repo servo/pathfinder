@@ -10,8 +10,8 @@
 
 //! GPU rendering code specifically for the demo.
 
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BufferTarget, Device, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_resources::ResourceLoader;
 
 pub struct GroundProgram<D>
 where

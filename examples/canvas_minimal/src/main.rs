@@ -13,12 +13,12 @@ use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -47,7 +47,7 @@ fn main() {
 
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
-                                     &FilesystemResourceLoader::locate(),
+                                     &EmbeddedResourceLoader::new(),
                                      DestFramebuffer::full_window(window_size),
                                      RendererOptions { background_color: Some(ColorF::white()) });
 

@@ -19,7 +19,7 @@ use pathfinder_demo::Options;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_gl::GLVersion;
-use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_resources::ResourceLoader;
 use std::cell::RefCell;
 use std::io::Error as IOError;
 use std::mem;

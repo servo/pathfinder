@@ -5,6 +5,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
+bitflags = "1.0"
 half = "1.4"
 
 [dependencies.image]
@@ -17,6 +18,9 @@ path = "../color"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
+
+[dependencies.pathfinder_resources]
+path = "../resources"
 
 [dependencies.pathfinder_simd]
 path = "../simd"

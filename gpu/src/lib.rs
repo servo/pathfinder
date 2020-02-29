@@ -10,18 +10,19 @@
 
 //! Minimal abstractions over GPU device capabilities.
 
-use crate::resources::ResourceLoader;
+#[macro_use]
+extern crate bitflags;
+
 use half::f16;
 use image::ImageFormat;
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::Vector2I;
+use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::os::raw::c_void;
 use std::time::Duration;
-
-pub mod resources;
 
 pub trait Device: Sized {
     type Buffer;
@@ -73,6 +74,7 @@ pub trait Device: Sized {
     fn destroy_framebuffer(&self, framebuffer: Self::Framebuffer) -> Self::Texture;
     fn texture_format(&self, texture: &Self::Texture) -> TextureFormat;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
+    fn set_texture_sampling_mode(&self, texture: &Self::Texture, flags: TextureSamplingFlags);
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI)
                    -> Self::TextureDataReceiver;
@@ -169,6 +171,7 @@ pub enum UniformData {
     Mat2(F32x4),
     Mat4([F32x4; 4]),
     Vec2(F32x2),
+    Vec3([f32; 3]),
     Vec4(F32x4),
     TextureUnit(u32),
 }
@@ -392,6 +395,15 @@ impl Default for BlendState {
             dest_alpha_factor: BlendFactor::One,
             op: BlendOp::Add,
         }
+    }
+}
+
+bitflags! {
+    pub struct TextureSamplingFlags: u8 {
+        const REPEAT_U    = 0x01;
+        const REPEAT_V    = 0x02;
+        const NEAREST_MIN = 0x04;
+        const NEAREST_MAG = 0x08;
     }
 }
 

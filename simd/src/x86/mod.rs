@@ -532,7 +532,7 @@ impl I32x2 {
 
     // Comparisons
 
-    // TODO(pcwalton): Make a `U32x2` type and use that!
+    // TODO(pcwalton): Use the `U32x2` type!
     #[inline]
     pub fn packed_eq(self, other: I32x2) -> U32x4 {
         self.to_i32x4().packed_eq(other.to_i32x4())

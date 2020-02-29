@@ -14,9 +14,9 @@ use crate::{BackgroundColor, Options};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::gpu::debug::DebugUIPresenter;
+use pathfinder_resources::ResourceLoader;
 use pathfinder_ui::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, FONT_ASCENT, PADDING};
 use pathfinder_ui::{TEXT_COLOR, TOOLTIP_HEIGHT, WINDOW_COLOR};
 use std::f32::consts::PI;
@@ -83,7 +83,7 @@ impl DemoUIModel {
     // Only relevant if in monochrome mode.
     pub fn foreground_color(&self) -> ColorU {
         match self.background_color {
-            BackgroundColor::Light | BackgroundColor::Transparent => ColorU::black(), 
+            BackgroundColor::Light | BackgroundColor::Transparent => ColorU::black(),
             BackgroundColor::Dark => ColorU::white(),
         }
     }

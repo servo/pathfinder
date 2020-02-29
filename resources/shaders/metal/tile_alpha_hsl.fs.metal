@@ -27,6 +27,7 @@ struct main0_in
 {
     float2 vColorTexCoord [[user(locn0)]];
     float2 vMaskTexCoord [[user(locn1)]];
+    float vOpacity [[user(locn2)]];
 };
 
 // Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
@@ -37,11 +38,11 @@ inline Tx mod(Tx x, Ty y)
 }
 
 static inline __attribute__((always_inline))
-float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
+float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord, thread float& vOpacity)
 {
     float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
     float4 srcRGBA = uPaintTexture.sample(uPaintTextureSmplr, vColorTexCoord);
-    return float4(srcRGBA.xyz, srcRGBA.w * coverage);
+    return float4(srcRGBA.xyz, (srcRGBA.w * coverage) * vOpacity);
 }
 
 static inline __attribute__((always_inline))
@@ -89,34 +90,34 @@ float3 convertRGBToHSL(thread const float3& rgb)
 static inline __attribute__((always_inline))
 float3 select3(thread const bool3& cond, thread const float3& a, thread const float3& b)
 {
-    float _125;
+    float _129;
     if (cond.x)
     {
-        _125 = a.x;
+        _129 = a.x;
     }
     else
     {
-        _125 = b.x;
+        _129 = b.x;
     }
-    float _137;
+    float _141;
     if (cond.y)
     {
-        _137 = a.y;
+        _141 = a.y;
     }
     else
     {
-        _137 = b.y;
+        _141 = b.y;
     }
-    float _149;
+    float _153;
     if (cond.z)
     {
-        _149 = a.z;
+        _153 = a.z;
     }
     else
     {
-        _149 = b.z;
+        _153 = b.z;
     }
-    return float3(_125, _137, _149);
+    return float3(_129, _141, _153);
 }
 
 static inline __attribute__((always_inline))
@@ -136,7 +137,7 @@ float4 blendColors(thread const float4& destRGBA, thread const float4& srcRGBA, 
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
-    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord, in.vOpacity);
     float4 destRGBA = sampleDestColor(gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), spvDescriptorSet0.uDest, spvDescriptorSet0.uDestSmplr);
     float3 param = destRGBA.xyz;
     float3 destHSL = convertRGBToHSL(param);

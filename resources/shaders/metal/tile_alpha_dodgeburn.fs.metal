@@ -27,14 +27,15 @@ struct main0_in
 {
     float2 vColorTexCoord [[user(locn0)]];
     float2 vMaskTexCoord [[user(locn1)]];
+    float vOpacity [[user(locn2)]];
 };
 
 static inline __attribute__((always_inline))
-float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
+float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord, thread float& vOpacity)
 {
     float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
     float4 srcRGBA = uPaintTexture.sample(uPaintTextureSmplr, vColorTexCoord);
-    return float4(srcRGBA.xyz, srcRGBA.w * coverage);
+    return float4(srcRGBA.xyz, (srcRGBA.w * coverage) * vOpacity);
 }
 
 static inline __attribute__((always_inline))
@@ -53,57 +54,57 @@ float4 blendColors(thread const float4& destRGBA, thread const float4& srcRGBA, 
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
-    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord, in.vOpacity);
     float4 destRGBA = sampleDestColor(gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), spvDescriptorSet0.uDest, spvDescriptorSet0.uDestSmplr);
-    float3 _118;
+    float3 _122;
     if ((*spvDescriptorSet0.uBurn) == 0)
     {
-        _118 = destRGBA.xyz;
+        _122 = destRGBA.xyz;
     }
     else
     {
-        _118 = float3(1.0) - destRGBA.xyz;
+        _122 = float3(1.0) - destRGBA.xyz;
     }
-    float3 dest = _118;
-    float3 _132;
+    float3 dest = _122;
+    float3 _136;
     if ((*spvDescriptorSet0.uBurn) == 0)
     {
-        _132 = float3(1.0) - srcRGBA.xyz;
+        _136 = float3(1.0) - srcRGBA.xyz;
     }
     else
     {
-        _132 = srcRGBA.xyz;
+        _136 = srcRGBA.xyz;
     }
-    float3 src = _132;
+    float3 src = _136;
     bool3 srcNonzero = src != float3(0.0);
-    float _153;
+    float _157;
     if (srcNonzero.x)
     {
-        _153 = dest.x / src.x;
+        _157 = dest.x / src.x;
     }
     else
     {
-        _153 = 1.0;
+        _157 = 1.0;
     }
-    float _166;
+    float _170;
     if (srcNonzero.y)
     {
-        _166 = dest.y / src.y;
+        _170 = dest.y / src.y;
     }
     else
     {
-        _166 = 1.0;
+        _170 = 1.0;
     }
-    float _179;
+    float _183;
     if (srcNonzero.z)
     {
-        _179 = dest.z / src.z;
+        _183 = dest.z / src.z;
     }
     else
     {
-        _179 = 1.0;
+        _183 = 1.0;
     }
-    float3 blended = fast::min(float3(_153, _166, _179), float3(1.0));
+    float3 blended = fast::min(float3(_157, _170, _183), float3(1.0));
     if ((*spvDescriptorSet0.uBurn) != 0)
     {
         blended = float3(1.0) - blended;

@@ -15,7 +15,8 @@ use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize}
 use pathfinder_demo::{DemoApp, Options};
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
+use pathfinder_resources::ResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::keyboard::Keycode as SDLKeycode;
 use sdl2::video::Window as SDLWindow;

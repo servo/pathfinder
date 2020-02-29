@@ -11,6 +11,7 @@
 //! C bindings to Pathfinder.
 
 use font_kit::handle::Handle;
+use foreign_types::ForeignTypeRef;
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
 use pathfinder_canvas::{TextAlign, TextMetrics};
@@ -23,7 +24,8 @@ use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
+use pathfinder_resources::ResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};

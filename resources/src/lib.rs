@@ -1,19 +1,29 @@
-use std::borrow::Cow;
-use std::io::{Error as IOError, ErrorKind};
-use pathfinder_gpu::resources::ResourceLoader;
-use phf::Map;
+// pathfinder/resources/src/lib.rs
+//
+// Copyright © 2020 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
-pub struct EmbeddedResourceLoader;
-static RESOURCES: Map<&'static str, &'static [u8]> = include!(concat!(env!("OUT_DIR"), "/", "resources_data.rs"));
+//! An abstraction for reading resources.
+//!
+//! This accomplishes two purposes over just using the filesystem to locate shaders and so forth:
+//! 
+//! 1. Downstream users of Pathfinder shouldn't be burdened with having to install the resources
+//!    alongside their binary.
+//! 
+//! 2. There may not be a traditional filesystem available, as for example is the case on Android.
 
-impl ResourceLoader for EmbeddedResourceLoader {
-    fn slurp(&self, virtual_path: &str) -> Result<Cow<'static, [u8]>, IOError> {
-        match RESOURCES.get(virtual_path) {
-            Some(&data) => Ok(data.into()),
-            None => {
-                let msg = format!("{} is not embedded. check your feature flags.", virtual_path);
-                Err(IOError::new(ErrorKind::NotFound, msg))
-            }
-        }
-    }
+use std::io::Error as IOError;
+
+pub mod embedded;
+pub mod fs;
+
+pub trait ResourceLoader {
+    /// This is deliberately not a `Path`, because these are virtual paths
+    /// that do not necessarily correspond to real paths on a filesystem.
+    fn slurp(&self, path: &str) -> Result<Vec<u8>, IOError>;
 }

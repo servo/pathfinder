@@ -43,11 +43,11 @@ use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::{Class, Object};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
 use pathfinder_gpu::{Device, Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc};
-use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, TextureSamplingFlags};
+use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::cell::{Cell, RefCell};
 use std::mem;
@@ -66,7 +66,7 @@ pub struct MetalDevice {
     main_depth_stencil_texture: Texture,
     command_queue: CommandQueue,
     command_buffers: RefCell<Vec<CommandBuffer>>,
-    sampler: SamplerState,
+    samplers: Vec<SamplerState>,
     shared_event: SharedEvent,
     shared_event_listener: SharedEventListener,
     next_timer_query_event_value: Cell<u64>,
@@ -90,14 +90,37 @@ impl MetalDevice {
         let drawable = layer.next_drawable().unwrap().retain();
         let command_queue = device.new_command_queue();
 
-        let sampler_descriptor = SamplerDescriptor::new();
-        sampler_descriptor.set_support_argument_buffers(true);
-        sampler_descriptor.set_normalized_coordinates(true);
-        sampler_descriptor.set_min_filter(MTLSamplerMinMagFilter::Linear);
-        sampler_descriptor.set_mag_filter(MTLSamplerMinMagFilter::Linear);
-        sampler_descriptor.set_address_mode_s(MTLSamplerAddressMode::ClampToEdge);
-        sampler_descriptor.set_address_mode_t(MTLSamplerAddressMode::ClampToEdge);
-        let sampler = device.new_sampler(&sampler_descriptor);
+        let samplers = (0..16).map(|sampling_flags_value| {
+            let sampling_flags = TextureSamplingFlags::from_bits(sampling_flags_value).unwrap();
+            let sampler_descriptor = SamplerDescriptor::new();
+            sampler_descriptor.set_support_argument_buffers(true);
+            sampler_descriptor.set_normalized_coordinates(true);
+            sampler_descriptor.set_min_filter(
+                if sampling_flags.contains(TextureSamplingFlags::NEAREST_MIN) {
+                    MTLSamplerMinMagFilter::Nearest
+                } else {
+                    MTLSamplerMinMagFilter::Linear
+                });
+            sampler_descriptor.set_mag_filter(
+                if sampling_flags.contains(TextureSamplingFlags::NEAREST_MAG) {
+                    MTLSamplerMinMagFilter::Nearest
+                } else {
+                    MTLSamplerMinMagFilter::Linear
+                });
+            sampler_descriptor.set_address_mode_s(
+                if sampling_flags.contains(TextureSamplingFlags::REPEAT_U) {
+                    MTLSamplerAddressMode::Repeat
+                } else {
+                    MTLSamplerAddressMode::ClampToEdge
+                });
+            sampler_descriptor.set_address_mode_t(
+                if sampling_flags.contains(TextureSamplingFlags::REPEAT_V) {
+                    MTLSamplerAddressMode::Repeat
+                } else {
+                    MTLSamplerAddressMode::ClampToEdge
+                });
+            device.new_sampler(&sampler_descriptor)
+        }).collect();
 
         let main_color_texture = drawable.texture();
         let framebuffer_size = Vector2I::new(main_color_texture.width() as i32,
@@ -113,7 +136,7 @@ impl MetalDevice {
             main_depth_stencil_texture,
             command_queue,
             command_buffers: RefCell::new(vec![]),
-            sampler,
+            samplers,
             shared_event,
             shared_event_listener: SharedEventListener::new(),
             next_timer_query_event_value: Cell::new(1),
@@ -145,6 +168,7 @@ enum ShaderUniforms {
 
 pub struct MetalTexture {
     texture: Texture,
+    sampling_flags: Cell<TextureSamplingFlags>,
     dirty: Cell<bool>,
 }
 
@@ -229,7 +253,11 @@ impl Device for MetalDevice {
         descriptor.set_height(size.y() as u64);
         descriptor.set_storage_mode(MTLStorageMode::Managed);
         descriptor.set_usage(MTLTextureUsage::Unknown);
-        MetalTexture { texture: self.device.new_texture(&descriptor), dirty: Cell::new(false) }
+        MetalTexture {
+            texture: self.device.new_texture(&descriptor),
+            sampling_flags: Cell::new(TextureSamplingFlags::empty()),
+            dirty: Cell::new(false),
+        }
     }
 
     fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
@@ -365,6 +393,9 @@ impl Device for MetalDevice {
             (VertexAttrClass::Int, VertexAttrType::I8, 1) => MTLVertexFormat::Char,
             (VertexAttrClass::Int, VertexAttrType::U8, 1) => MTLVertexFormat::UChar,
             (VertexAttrClass::FloatNorm, VertexAttrType::I8, 1) => MTLVertexFormat::CharNormalized,
+            (VertexAttrClass::FloatNorm, VertexAttrType::U8, 1) => {
+                MTLVertexFormat::UCharNormalized
+            }
             (VertexAttrClass::Int, VertexAttrType::I16, 1) => MTLVertexFormat::Short,
             (VertexAttrClass::Int, VertexAttrType::U16, 1) => MTLVertexFormat::UShort,
             (VertexAttrClass::FloatNorm, VertexAttrType::U16, 1) => {
@@ -456,6 +487,10 @@ impl Device for MetalDevice {
 
     fn texture_size(&self, texture: &MetalTexture) -> Vector2I {
         Vector2I::new(texture.texture.width() as i32, texture.texture.height() as i32)
+    }
+
+    fn set_texture_sampling_mode(&self, texture: &MetalTexture, flags: TextureSamplingFlags) {
+        texture.sampling_flags.set(flags)
     }
 
     fn upload_to_texture(&self, texture: &MetalTexture, rect: RectI, data: TextureDataRef) {
@@ -899,6 +934,11 @@ impl MetalDevice {
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.x()).unwrap();
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.y()).unwrap();
                 }
+                UniformData::Vec3(array) => {
+                    uniform_buffer_data.write_f32::<NativeEndian>(array[0]).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(array[1]).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(array[2]).unwrap();
+                }
                 UniformData::Vec4(vector) => {
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.x()).unwrap();
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.y()).unwrap();
@@ -984,7 +1024,8 @@ impl MetalDevice {
                 argument_encoder.set_texture(&texture.texture, argument_index.main);
                 let mut resource_usage = MTLResourceUsage::Read;
                 if let Some(sampler_index) = argument_index.sampler {
-                    argument_encoder.set_sampler_state(&self.sampler, sampler_index);
+                    let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
+                    argument_encoder.set_sampler_state(sampler, sampler_index);
                     resource_usage |= MTLResourceUsage::Sample;
                 }
                 render_command_encoder.use_resource(&texture.texture, resource_usage);
@@ -1270,6 +1311,9 @@ impl UniformDataExt for UniformData {
                 }
                 UniformData::Vec2(ref data) => {
                     Some(slice::from_raw_parts(data as *const F32x2 as *const u8, 4 * 2))
+                }
+                UniformData::Vec3(ref data) => {
+                    Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 3))
                 }
                 UniformData::Vec4(ref data) => {
                     Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4))

@@ -12,12 +12,12 @@ use crate::gpu_data::FillBatchPrimitive;
 use pathfinder_content::fill::FillRule;
 use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
-use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_VERTEX_SIZE: usize = 12;
-const ALPHA_TILE_VERTEX_SIZE: usize = 16;
+const SOLID_TILE_VERTEX_SIZE: usize = 16;
+const ALPHA_TILE_VERTEX_SIZE: usize = 20;
 const MASK_TILE_VERTEX_SIZE: usize = 12;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
@@ -193,6 +193,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
                                                           "ColorTexCoord").unwrap();
         let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
                                                          "MaskTexCoord").unwrap();
+        let opacity_attr = device.get_vertex_attr(&alpha_tile_program.program, "Opacity").unwrap();
 
         device.bind_buffer(&vertex_array, alpha_tile_vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
@@ -215,10 +216,19 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         });
         device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
             stride: ALPHA_TILE_VERTEX_SIZE,
             offset: 8,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &opacity_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U8,
+            stride: ALPHA_TILE_VERTEX_SIZE,
+            offset: 18,
             divisor: 0,
             buffer_index: 0,
         });
@@ -268,8 +278,8 @@ where
                                      &color_tex_coord_attr,
                                      &VertexAttrDescriptor {
                                         size: 2,
-                                        class: VertexAttrClass::FloatNorm,
-                                        attr_type: VertexAttrType::U16,
+                                        class: VertexAttrClass::Float,
+                                        attr_type: VertexAttrType::F32,
                                         stride: SOLID_TILE_VERTEX_SIZE,
                                         offset: 4,
                                         divisor: 0,
@@ -456,7 +466,7 @@ pub struct AlphaTileBlendModeProgram<D> where D: Device {
 }
 
 impl<D> AlphaTileBlendModeProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, name: &str)  
+    pub fn new(device: &D, resources: &dyn ResourceLoader, name: &str)
                -> AlphaTileBlendModeProgram<D> {
         let alpha_tile_program =
             AlphaTileProgram::from_fragment_shader_name(device, resources, name);
@@ -559,6 +569,68 @@ impl<D> FilterBasicVertexArray<D> where D: Device {
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         FilterBasicVertexArray { vertex_array }
+    }
+}
+
+pub struct FilterBlurProgram<D> where D: Device {
+    pub program: D::Program,
+    pub framebuffer_size_uniform: D::Uniform,
+    pub src_uniform: D::Uniform,
+    pub src_offset_scale_uniform: D::Uniform,
+    pub initial_gauss_coeff_uniform: D::Uniform,
+    pub support_uniform: D::Uniform,
+}
+
+impl<D> FilterBlurProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterBlurProgram<D> {
+        let program = device.create_program_from_shader_names(resources,
+                                                              "filter_blur",
+                                                              "filter",
+                                                              "filter_blur");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let src_uniform = device.get_uniform(&program, "Src");
+        let src_offset_scale_uniform = device.get_uniform(&program, "SrcOffsetScale");
+        let initial_gauss_coeff_uniform = device.get_uniform(&program, "InitialGaussCoeff");
+        let support_uniform = device.get_uniform(&program, "Support");
+        FilterBlurProgram {
+            program,
+            framebuffer_size_uniform,
+            src_uniform,
+            src_offset_scale_uniform,
+            initial_gauss_coeff_uniform,
+            support_uniform,
+        }
+    }
+}
+
+pub struct FilterBlurVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+}
+
+impl<D> FilterBlurVertexArray<D> where D: Device {
+    pub fn new(
+        device: &D,
+        fill_blur_program: &FilterBlurProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
+    ) -> FilterBlurVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let position_attr = device.get_vertex_attr(&fill_blur_program.program, "Position")
+                                  .unwrap();
+
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: 4,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+
+        FilterBlurVertexArray { vertex_array }
     }
 }
 

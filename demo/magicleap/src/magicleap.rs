@@ -56,8 +56,8 @@ use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
 use pathfinder_gl::GLVersion;
-use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_resources::ResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x4;
 
 use rayon::ThreadPoolBuilder;

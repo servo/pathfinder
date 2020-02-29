@@ -12,8 +12,9 @@
 
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeProgram, MASK_TILES_ACROSS};
-use crate::gpu_data::{AlphaTile, AlphaTileVertex, FillBatchPrimitive, MaskTile, MaskTileVertex};
-use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileBatch, TileObjectPrimitive};
+use crate::gpu_data::{AlphaTile, AlphaTileBatch, AlphaTileVertex, FillBatchPrimitive, MaskTile};
+use crate::gpu_data::{MaskTileVertex, PaintPageId, RenderCommand};
+use crate::gpu_data::{SolidTileBatch, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
@@ -27,6 +28,7 @@ use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmen
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
+use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::u16;
@@ -58,6 +60,7 @@ pub(crate) struct ObjectBuilder {
 struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
+    sampling_flags: TextureSamplingFlags,
     paint_page: PaintPageId,
 }
 
@@ -192,6 +195,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                                    TilingPathInfo::Draw {
             paint_metadata,
             blend_mode: path_object.blend_mode(),
+            opacity: path_object.opacity(),
             built_clip_path,
         });
 
@@ -203,6 +207,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
             paint_page: paint_metadata.tex_page,
+            sampling_flags: paint_metadata.sampling_flags,
         }
     }
 
@@ -276,29 +281,33 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                 // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid batch
                 // breaks in some cases…
                 match culled_tiles.display_list.last() {
-                    Some(&CulledDisplayItem::DrawAlphaTiles {
+                    Some(&CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
                         tiles: _,
                         paint_page,
-                        blend_mode
-                    }) if paint_page == built_draw_path.paint_page &&
+                        blend_mode,
+                        sampling_flags
+                    })) if paint_page == built_draw_path.paint_page &&
                         blend_mode == built_draw_path.blend_mode &&
+                        sampling_flags == built_draw_path.sampling_flags &&
                         !BlendModeProgram::from_blend_mode(
                             blend_mode).needs_readable_framebuffer() => {}
                     _ => {
-                        culled_tiles.display_list.push(CulledDisplayItem::DrawAlphaTiles {
+                        culled_tiles.display_list
+                                    .push(CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
                             tiles: vec![],
                             paint_page: built_draw_path.paint_page,
                             blend_mode: built_draw_path.blend_mode,
-                        })
+                            sampling_flags: built_draw_path.sampling_flags,
+                        }))
                     }
                 }
 
                 // Fetch the destination alpha tiles buffer.
                 let culled_alpha_tiles = match *culled_tiles.display_list.last_mut().unwrap() {
-                    CulledDisplayItem::DrawAlphaTiles {
+                    CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
                         tiles: ref mut culled_alpha_tiles,
                         ..
-                    } => culled_alpha_tiles,
+                    }) => culled_alpha_tiles,
                     _ => unreachable!(),
                 };
 
@@ -369,12 +378,8 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                 CulledDisplayItem::DrawSolidTiles(batch) => {
                     self.listener.send(RenderCommand::DrawSolidTiles(batch))
                 }
-                CulledDisplayItem::DrawAlphaTiles { tiles, paint_page, blend_mode } => {
-                    self.listener.send(RenderCommand::DrawAlphaTiles {
-                        tiles,
-                        paint_page,
-                        blend_mode,
-                    })
+                CulledDisplayItem::DrawAlphaTiles(batch) => {
+                    self.listener.send(RenderCommand::DrawAlphaTiles(batch))
                 }
                 CulledDisplayItem::DrawRenderTarget { render_target, effects } => {
                     self.listener.send(RenderCommand::DrawRenderTarget { render_target, effects })
@@ -455,7 +460,7 @@ struct CulledTiles {
 
 enum CulledDisplayItem {
     DrawSolidTiles(SolidTileBatch),
-    DrawAlphaTiles { tiles: Vec<AlphaTile>, paint_page: PaintPageId, blend_mode: BlendMode },
+    DrawAlphaTiles(AlphaTileBatch),
     DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
     PushRenderTarget(RenderTargetId),
     PopRenderTarget,
@@ -682,27 +687,32 @@ impl ObjectBuilder {
                                   mask_tile_index: u16,
                                   tile_coords: Vector2I,
                                   object_index: u16,
+                                  opacity: u8,
                                   paint_metadata: &PaintMetadata) {
         alpha_tiles.push(AlphaTile {
             upper_left: AlphaTileVertex::new(tile_coords,
                                              mask_tile_index,
                                              Vector2I::default(),
                                              object_index,
+                                             opacity,
                                              paint_metadata),
             upper_right: AlphaTileVertex::new(tile_coords,
                                               mask_tile_index,
                                               Vector2I::new(1, 0),
                                               object_index,
+                                              opacity,
                                               paint_metadata),
             lower_left: AlphaTileVertex::new(tile_coords,
                                              mask_tile_index,
                                              Vector2I::new(0, 1),
                                              object_index,
+                                             opacity,
                                              paint_metadata),
             lower_right: AlphaTileVertex::new(tile_coords,
                                               mask_tile_index,
                                               Vector2I::splat(1),
                                               object_index,
+                                              opacity,
                                               paint_metadata),
         });
     }
@@ -735,20 +745,21 @@ impl AlphaTileVertex {
            tile_index: u16,
            tile_offset: Vector2I,
            object_index: u16,
+           opacity: u8,
            paint_metadata: &PaintMetadata)
            -> AlphaTileVertex {
         let tile_position = tile_origin + tile_offset;
-        let color_uv = paint_metadata.calculate_tex_coords(tile_position).scale(65535.0).to_i32();
+        let color_uv = paint_metadata.calculate_tex_coords(tile_position);
         let mask_uv = calculate_mask_uv(tile_index, tile_offset);
-
         AlphaTileVertex {
             tile_x: tile_position.x() as i16,
             tile_y: tile_position.y() as i16,
-            color_u: color_uv.x() as u16,
-            color_v: color_uv.y() as u16,
+            color_u: color_uv.x(),
+            color_v: color_uv.y(),
             mask_u: mask_uv.x() as u16,
             mask_v: mask_uv.y() as u16,
             object_index,
+            opacity,
             pad: 0,
         }
     }

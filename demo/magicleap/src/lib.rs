@@ -38,14 +38,14 @@ use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::ClearParams;
 use pathfinder_gpu::Device;
-use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::concurrent::executor::SequentialExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::gpu::renderer::DestFramebuffer;
 use pathfinder_renderer::options::RenderOptions;
 use pathfinder_renderer::options::RenderTransform;
+use pathfinder_resources::ResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x4;
 use pathfinder_svg::BuiltSVG;
 
@@ -91,7 +91,7 @@ pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_co
     options.background_color = BackgroundColor::Transparent;
     options.mode = Mode::VR;
     options.jobs = Some(3);
-    
+
     let demo = DemoApp::new(window, window_size, options);
     info!("Initialized app");
 
@@ -144,7 +144,7 @@ pub struct MagicLeapPathfinderRenderOptions {
     surface: EGLSurface,
     bg_color: [f32; 4],
     viewport: [u32; 4],
-    svg_filename: *const c_char,    
+    svg_filename: *const c_char,
 }
 
 #[no_mangle]
@@ -159,7 +159,7 @@ pub extern "C" fn magicleap_pathfinder_init() -> *mut c_void {
     log::set_boxed_logger(Box::new(logger)).unwrap();
     log::set_max_level(level);
     info!("Initialized logging");
-    
+
     gl::load_with(|s| egl::get_proc_address(s) as *const c_void);
     info!("Initialized gl");
 
@@ -219,7 +219,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         let transform = Transform2F::from_translation(svg.scene.bounds().size().scale(-0.5))
             .post_mul(&Transform2F::from_scale(Vector2F::splat(scale)))
             .post_mul(&Transform2F::from_translation(viewport_size.to_f32().scale(0.5)));
-            
+
         let render_options = RenderOptions {
             transform: RenderTransform::Transform2D(transform),
             dilation: Vector2F::default(),

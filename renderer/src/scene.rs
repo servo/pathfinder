@@ -190,7 +190,7 @@ impl Scene {
         let prepared_options = options.prepare(self.bounds);
         SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
-    
+
     pub fn paths<'a>(&'a self) -> PathIter {
         PathIter {
             scene: self,
@@ -226,6 +226,7 @@ pub struct DrawPath {
     clip_path: Option<ClipPathId>,
     fill_rule: FillRule,
     blend_mode: BlendMode,
+    opacity: u8,
     name: String,
 }
 
@@ -267,14 +268,16 @@ pub enum DisplayItem {
 
 impl DrawPath {
     #[inline]
-    pub fn new(outline: Outline,
-               paint: PaintId,
-               clip_path: Option<ClipPathId>,
-               fill_rule: FillRule,
-               blend_mode: BlendMode,
-               name: String)
-               -> DrawPath {
-        DrawPath { outline, paint, clip_path, fill_rule, blend_mode, name }
+    pub fn new(outline: Outline, paint: PaintId) -> DrawPath {
+        DrawPath {
+            outline,
+            paint,
+            clip_path: None,
+            fill_rule: FillRule::Winding,
+            blend_mode: BlendMode::SrcOver,
+            opacity: !0,
+            name: String::new(),
+        }
     }
 
     #[inline]
@@ -288,6 +291,11 @@ impl DrawPath {
     }
 
     #[inline]
+    pub fn set_clip_path(&mut self, new_clip_path: Option<ClipPathId>) {
+        self.clip_path = new_clip_path
+    }
+
+    #[inline]
     pub(crate) fn paint(&self) -> PaintId {
         self.paint
     }
@@ -298,15 +306,40 @@ impl DrawPath {
     }
 
     #[inline]
+    pub fn set_fill_rule(&mut self, new_fill_rule: FillRule) {
+        self.fill_rule = new_fill_rule
+    }
+
+    #[inline]
     pub(crate) fn blend_mode(&self) -> BlendMode {
         self.blend_mode
+    }
+
+    #[inline]
+    pub fn set_blend_mode(&mut self, new_blend_mode: BlendMode) {
+        self.blend_mode = new_blend_mode
+    }
+
+    #[inline]
+    pub(crate) fn opacity(&self) -> u8 {
+        self.opacity
+    }
+
+    #[inline]
+    pub fn set_opacity(&mut self, new_opacity: u8) {
+        self.opacity = new_opacity
+    }
+
+    #[inline]
+    pub fn set_name(&mut self, new_name: String) {
+        self.name = new_name
     }
 }
 
 impl ClipPath {
     #[inline]
-    pub fn new(outline: Outline, fill_rule: FillRule, name: String) -> ClipPath {
-        ClipPath { outline, fill_rule, name }
+    pub fn new(outline: Outline) -> ClipPath {
+        ClipPath { outline, fill_rule: FillRule::Winding, name: String::new() }
     }
 
     #[inline]
@@ -317,6 +350,16 @@ impl ClipPath {
     #[inline]
     pub(crate) fn fill_rule(&self) -> FillRule {
         self.fill_rule
+    }
+
+    #[inline]
+    pub fn set_fill_rule(&mut self, new_fill_rule: FillRule) {
+        self.fill_rule = new_fill_rule
+    }
+
+    #[inline]
+    pub fn set_name(&mut self, new_name: String) {
+        self.name = new_name
     }
 }
 

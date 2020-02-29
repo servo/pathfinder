@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args_os().skip(1);
     let input = PathBuf::from(args.next().expect("no input given"));
     let output = PathBuf::from(args.next().expect("no output given"));
-    
+
     let mut data = Vec::new();
     File::open(input)?.read_to_end(&mut data)?;
     let svg = BuiltSVG::from_tree(&Tree::from_data(&data, &Options::default()).unwrap());

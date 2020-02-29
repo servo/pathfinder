@@ -20,7 +20,7 @@ use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_gpu::resources::FilesystemResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::Renderer;

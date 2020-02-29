@@ -26,14 +26,15 @@ struct main0_in
 {
     float2 vColorTexCoord [[user(locn0)]];
     float2 vMaskTexCoord [[user(locn1)]];
+    float vOpacity [[user(locn2)]];
 };
 
 static inline __attribute__((always_inline))
-float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord)
+float4 sampleSrcColor(thread texture2d<float> uStencilTexture, thread const sampler uStencilTextureSmplr, thread float2& vMaskTexCoord, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& vColorTexCoord, thread float& vOpacity)
 {
     float coverage = uStencilTexture.sample(uStencilTextureSmplr, vMaskTexCoord).x;
     float4 srcRGBA = uPaintTexture.sample(uPaintTextureSmplr, vColorTexCoord);
-    return float4(srcRGBA.xyz, srcRGBA.w * coverage);
+    return float4(srcRGBA.xyz, (srcRGBA.w * coverage) * vOpacity);
 }
 
 static inline __attribute__((always_inline))
@@ -52,7 +53,7 @@ float4 blendColors(thread const float4& destRGBA, thread const float4& srcRGBA, 
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
-    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    float4 srcRGBA = sampleSrcColor(spvDescriptorSet0.uStencilTexture, spvDescriptorSet0.uStencilTextureSmplr, in.vMaskTexCoord, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord, in.vOpacity);
     float4 destRGBA = sampleDestColor(gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), spvDescriptorSet0.uDest, spvDescriptorSet0.uDestSmplr);
     float3 dest = destRGBA.xyz;
     float3 src = srcRGBA.xyz;

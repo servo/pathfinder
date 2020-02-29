@@ -15,7 +15,6 @@ extern crate bitflags;
 
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
-use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
@@ -180,9 +179,9 @@ impl BuiltSVG {
                 }
 
                 if let Some(clip_outline) = clip_outline {
-                    let name = format!("ClipPath({})", node.id());
                     // FIXME(pcwalton): Is the winding fill rule correct to use?
-                    let clip_path = ClipPath::new(clip_outline, FillRule::Winding, name);
+                    let mut clip_path = ClipPath::new(clip_outline);
+                    clip_path.set_name(format!("ClipPath({})", node.id()));
                     let clip_path_id = self.scene.push_clip_path(clip_path);
                     self.clip_paths.insert(node.id().to_owned(), clip_path_id);
                 }
@@ -232,16 +231,14 @@ impl BuiltSVG {
                       paint: &UsvgPaint,
                       opacity: Opacity,
                       fill_rule: UsvgFillRule) {
-        let style = self.scene.push_paint(&Paint::from_svg_paint(paint,
-                                                                 opacity,
-                                                                 &mut self.result_flags));
+        let style = self.scene.push_paint(&Paint::from_svg_paint(paint, &mut self.result_flags));
         let fill_rule = FillRule::from_usvg_fill_rule(fill_rule);
-        self.scene.push_path(DrawPath::new(outline,
-                                           style,
-                                           state.clip_path,
-                                           fill_rule,
-                                           BlendMode::SrcOver,
-                                           name));
+        let mut path = DrawPath::new(outline, style);
+        path.set_clip_path(state.clip_path);
+        path.set_fill_rule(fill_rule);
+        path.set_name(name);
+        path.set_opacity((opacity.value() * 255.0) as u8);
+        self.scene.push_path(path);
     }
 }
 
@@ -288,17 +285,15 @@ impl Display for BuildResultFlags {
 }
 
 trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
-                      -> Self;
+    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Self;
 }
 
 impl PaintExt for Paint {
     #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
-                      -> Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Paint {
         // TODO(pcwalton): Support gradients.
         Paint::Color(match *svg_paint {
-            UsvgPaint::Color(color) => ColorU::from_svg_color(color, opacity),
+            UsvgPaint::Color(color) => ColorU::from_svg_color(color),
             UsvgPaint::Link(_) => {
                 // TODO(pcwalton)
                 result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
@@ -412,18 +407,13 @@ where
 }
 
 trait ColorUExt {
-    fn from_svg_color(svg_color: SvgColor, opacity: Opacity) -> Self;
+    fn from_svg_color(svg_color: SvgColor) -> Self;
 }
 
 impl ColorUExt for ColorU {
     #[inline]
-    fn from_svg_color(svg_color: SvgColor, opacity: Opacity) -> ColorU {
-        ColorU {
-            r: svg_color.red,
-            g: svg_color.green,
-            b: svg_color.blue,
-            a: (opacity.value() * 255.0).round() as u8,
-        }
+    fn from_svg_color(svg_color: SvgColor) -> ColorU {
+        ColorU { r: svg_color.red, g: svg_color.green, b: svg_color.blue, a: !0 }
     }
 }
 

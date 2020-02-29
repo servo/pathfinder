@@ -1,10 +1,9 @@
 [package]
 name = "pathfinder_resources"
 version = "0.1.0"
-authors = ["Patrick Walton <pcwalton@mimiga.net>", "Sebastian K <s3bk@protonmail.com>"]
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 gl3_shaders = []
 metal_shaders = []
@@ -16,7 +15,6 @@ textures_demo = []
 textures_debug = []
 
 [dependencies]
-pathfinder_gpu = { path = "../gpu" }
 phf = "0.7"
 
 [build-dependencies]

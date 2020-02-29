@@ -20,10 +20,10 @@ use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
 use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::mem;
@@ -325,7 +325,7 @@ impl<D> UIPresenter<D> where D: Device {
         self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
     }
 
-    // TODO(pcwalton): `LineSegmentI32`.
+    // TODO(pcwalton): `LineSegment2I`.
     fn draw_line(&self, device: &D, from: Vector2I, to: Vector2I, color: ColorU) {
         let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
         self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);
@@ -603,7 +603,7 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
 
         let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position")
                                   .unwrap();
-        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord") 
+        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord")
                                    .unwrap();
 
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);

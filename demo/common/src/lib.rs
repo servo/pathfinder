@@ -29,13 +29,13 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::{RenderStats, RenderTime, Renderer};
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::scene::{RenderTarget, Scene};
+use pathfinder_resources::ResourceLoader;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::{self, File};
@@ -343,7 +343,7 @@ impl<W> DemoApp<W> where W: Window {
                         for (index, eye_transform) in eye_transforms.iter().enumerate().skip(1) {
                             let weight = 1.0 / (index + 1) as f32;
                             scene_transform.perspective.transform =
-                                scene_transform.perspective 
+                                scene_transform.perspective
                                                .transform
                                                .lerp(weight, &eye_transform.perspective.transform);
                             scene_transform.modelview_to_eye =
