@@ -1,6 +1,6 @@
-// pathfinder/gpu/src/resources.rs
+// pathfinder/resources/src/fs.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -8,20 +8,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! An abstraction for reading resources.
-//!
-//! We can't always count on a filesystem being present.
+//! Reads resources from the filesystem.
 
+use crate::ResourceLoader;
 use std::env;
 use std::fs::File;
 use std::io::{Error as IOError, Read};
 use std::path::PathBuf;
-
-pub trait ResourceLoader {
-    /// This is deliberately not a `Path`, because these are virtual paths
-    /// that do not necessarily correspond to real paths on a filesystem.
-    fn slurp(&self, path: &str) -> Result<Vec<u8>, IOError>;
-}
 
 pub struct FilesystemResourceLoader {
     pub directory: PathBuf,

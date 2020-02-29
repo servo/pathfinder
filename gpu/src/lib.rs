@@ -13,18 +13,16 @@
 #[macro_use]
 extern crate bitflags;
 
-use crate::resources::ResourceLoader;
 use half::f16;
 use image::ImageFormat;
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::Vector2I;
+use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::os::raw::c_void;
 use std::time::Duration;
-
-pub mod resources;
 
 pub trait Device: Sized {
     type Buffer;

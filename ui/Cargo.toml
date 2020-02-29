@@ -22,5 +22,8 @@ path = "../geometry"
 [dependencies.pathfinder_gpu]
 path = "../gpu"
 
+[dependencies.pathfinder_resources]
+path = "../resources"
+
 [dependencies.pathfinder_simd]
 path = "../simd"

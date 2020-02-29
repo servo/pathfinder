@@ -18,8 +18,8 @@
 use crate::gpu::renderer::{RenderStats, RenderTime};
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
+use pathfinder_resources::ResourceLoader;
 use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UIPresenter, WINDOW_COLOR};
 use std::collections::VecDeque;
 use std::ops::{Add, Div};

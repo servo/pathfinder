@@ -13,7 +13,7 @@
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
-use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 

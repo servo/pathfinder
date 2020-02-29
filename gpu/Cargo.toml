@@ -19,5 +19,8 @@ path = "../color"
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 
+[dependencies.pathfinder_resources]
+path = "../resources"
+
 [dependencies.pathfinder_simd]
 path = "../simd"

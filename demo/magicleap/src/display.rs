@@ -15,7 +15,7 @@ use pathfinder_geometry::rect::RectI32;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform3d::Transform4F32;
 use pathfinder_gl::GLVersion;
-use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_resources::ResourceLoader;
 
 pub trait Display: Sized {
     type Error: DisplayError;

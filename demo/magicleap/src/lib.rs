@@ -38,14 +38,14 @@ use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::ClearParams;
 use pathfinder_gpu::Device;
-use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::concurrent::executor::SequentialExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::gpu::renderer::DestFramebuffer;
 use pathfinder_renderer::options::RenderOptions;
 use pathfinder_renderer::options::RenderTransform;
+use pathfinder_resources::ResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x4;
 use pathfinder_svg::BuiltSVG;
 

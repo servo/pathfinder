@@ -10,7 +10,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 font-kit = "0.5"
-foreign-types = "0.5"
+foreign-types = "0.3"
 gl = "0.14"
 libc = "0.2"
 
@@ -35,6 +35,9 @@ path = "../gpu"
 
 [dependencies.pathfinder_renderer]
 path = "../renderer"
+
+[dependencies.pathfinder_resources]
+path = "../resources"
 
 [dependencies.pathfinder_simd]
 path = "../simd"

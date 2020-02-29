@@ -15,12 +15,12 @@ extern crate log;
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, RenderTarget};
 use pathfinder_gpu::{BufferUploadMode, ClearOps, DepthFunc, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, ShaderKind, StencilFunc, TextureData, TextureDataRef};
 use pathfinder_gpu::{TextureFormat, TextureSamplingFlags, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_resources::ResourceLoader;
 use std::mem;
 use std::str;
 use std::time::Duration;
