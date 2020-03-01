@@ -18,7 +18,6 @@ include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
 pub struct EmbeddedResourceLoader;
 
 impl EmbeddedResourceLoader {
-    #[inline]
     pub fn new() -> EmbeddedResourceLoader {
         EmbeddedResourceLoader
     }

@@ -2,7 +2,6 @@ use std::fs::File;
 use std::env;
 use std::io::Write;
 use std::path::{PathBuf, Path};
-use phf_codegen::Map;
 
 fn add_dir(out: &mut impl Write, root: &Path, dir: &Path) {
     println!("{:?}", dir);
@@ -13,7 +12,7 @@ fn add_dir(out: &mut impl Write, root: &Path, dir: &Path) {
         let path = dir.join(entry.file_name());
         if typ.is_file() {
             let file_path = root.join(&path);
-            writeln!(out, "    ({:?}, include_bytes!({:?})),", path.to_str(), file_path).unwrap();
+            writeln!(out, "    ({:?}, include_bytes!({:?})),", path.to_str().unwrap(), file_path).unwrap();
         } else if typ.is_dir() {
             add_dir(out, root, &path)
         }
@@ -29,7 +28,7 @@ fn main() {
     let file_path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("manifest.rs");
     
     let mut file = File::create(file_path).unwrap();
-    writeln!(file, "pub static RESOURCES: &'static [(&'static str, &'static [u8])] = &[");
+    writeln!(file, "pub static RESOURCES: &'static [(&'static str, &'static [u8])] = &[").unwrap();
 
     #[cfg(feature="gl3_shaders")]
     add_dir(&mut file, &resources, Path::new("shaders/gl3"));
@@ -55,5 +54,5 @@ fn main() {
     #[cfg(feature="textures_debug")]
     add_dir(&mut file, &resources, Path::new("textures/debug"));
 
-    writeln!(file, "];");
+    writeln!(file, "];").unwrap();
 }

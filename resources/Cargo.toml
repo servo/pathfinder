@@ -13,10 +13,3 @@ svg = []
 textures_lut = []
 textures_demo = []
 textures_debug = []
-
-[dependencies]
-phf = "0.7"
-
-[build-dependencies]
-phf_codegen = "0.7"
-half = "1.4"
