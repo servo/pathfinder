@@ -9,9 +9,9 @@ bitflags = "1.0"
 half = "1.4"
 
 [dependencies.image]
-version = "0.22"
+version = "0.23"
 default-features = false
-features = ["png_codec"]
+features = ["png"]
 
 [dependencies.pathfinder_color]
 path = "../color"

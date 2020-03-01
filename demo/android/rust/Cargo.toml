@@ -10,7 +10,7 @@ crate_type = ["cdylib"]
 [dependencies]
 egl = "0.2"
 gl = "0.14"
-jni = "0.14"
+jni = "0.15"
 lazy_static = "1.3"
 
 [dependencies.pathfinder_demo]
