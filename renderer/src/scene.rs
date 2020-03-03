@@ -46,7 +46,9 @@ impl Scene {
         }
     }
 
-    pub fn push_path(&mut self, path: DrawPath) {
+    pub fn push_path(&mut self, mut path: DrawPath) {
+        path.outline.transform(&path.transform());
+
         self.bounds = self.bounds.union_rect(path.outline.bounds());
         self.paths.push(path);
 

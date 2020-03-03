@@ -525,9 +525,13 @@ impl Palette {
 
 impl PaintMetadata {
     // TODO(pcwalton): Apply clamp/repeat to tile rect.
-    pub(crate) fn calculate_tex_coords(&self, tile_position: Vector2I) -> Vector2F {
+    pub(crate) fn calculate_tex_coords(&self,
+                                       tile_position: Vector2I,
+                                       path_transform_inv: Transform2F)
+                                       -> Vector2F {
         let tile_size = Vector2I::new(TILE_WIDTH as i32, TILE_HEIGHT as i32);
-        let tex_coords = self.tex_transform * tile_position.scale_xy(tile_size).to_f32();
+        let position = tile_position.scale_xy(tile_size).to_f32();
+        let tex_coords = self.tex_transform * path_transform_inv * position;
         tex_coords
     }
 }

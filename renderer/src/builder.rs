@@ -20,15 +20,15 @@ use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
-use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
-use crate::z_buffer::ZBuffer;
+use crate::tiles::{self, DrawTilingPathInfo, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
+use crate::z_buffer::{DepthMetadata, ZBuffer};
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -170,8 +170,7 @@ impl<'a> SceneBuilder<'a> {
         built_clip_paths: &[BuiltPath],
     ) -> BuiltDrawPath {
         let path_object = &scene.paths[path_index];
-        let mut outline = scene.apply_render_options(path_object.outline(), built_options);
-        outline.transform(&path_object.transform());
+        let outline = scene.apply_render_options(path_object.outline(), built_options);
 
         let paint_id = path_object.paint();
         let paint_metadata = &paint_metadata[paint_id.0 as usize];
@@ -183,12 +182,13 @@ impl<'a> SceneBuilder<'a> {
                                    path_object.fill_rule(),
                                    view_box,
                                    path_index as u16,
-                                   TilingPathInfo::Draw {
+                                   TilingPathInfo::Draw(DrawTilingPathInfo {
             paint_metadata,
             blend_mode: path_object.blend_mode(),
             opacity: path_object.opacity(),
             built_clip_path,
-        });
+            transform_inv: path_object.transform().inverse(),
+        }));
 
         tiler.generate_tiles();
 
@@ -357,8 +357,12 @@ impl<'a> SceneBuilder<'a> {
                             built_draw_paths[start_index..end_index].iter().enumerate() {
                         let solid_tiles = &built_draw_path.path.solid_tiles;
                         let path_index = (path_subindex + start_index) as u32;
-                        let paint = self.scene.paths[path_index as usize].paint();
-                        z_buffer.update(solid_tiles, current_depth, paint);
+                        let path = &self.scene.paths[path_index as usize];
+                        let metadata = DepthMetadata {
+                            paint_id: path.paint(),
+                            transform: path.transform(),
+                        };
+                        z_buffer.update(solid_tiles, current_depth, metadata);
                         current_depth += 1;
                     }
                 }
@@ -701,33 +705,28 @@ impl ObjectBuilder {
                                   mask_tile_index: u16,
                                   tile_coords: Vector2I,
                                   object_index: u16,
-                                  opacity: u8,
-                                  paint_metadata: &PaintMetadata) {
+                                  draw_tiling_path_info: &DrawTilingPathInfo) {
         alpha_tiles.push(AlphaTile {
             upper_left: AlphaTileVertex::new(tile_coords,
                                              mask_tile_index,
                                              Vector2I::default(),
                                              object_index,
-                                             opacity,
-                                             paint_metadata),
+                                             draw_tiling_path_info),
             upper_right: AlphaTileVertex::new(tile_coords,
                                               mask_tile_index,
                                               Vector2I::new(1, 0),
                                               object_index,
-                                              opacity,
-                                              paint_metadata),
+                                              draw_tiling_path_info),
             lower_left: AlphaTileVertex::new(tile_coords,
                                              mask_tile_index,
                                              Vector2I::new(0, 1),
                                              object_index,
-                                             opacity,
-                                             paint_metadata),
+                                             draw_tiling_path_info),
             lower_right: AlphaTileVertex::new(tile_coords,
                                               mask_tile_index,
                                               Vector2I::splat(1),
                                               object_index,
-                                              opacity,
-                                              paint_metadata),
+                                              draw_tiling_path_info),
         });
     }
 }
@@ -759,11 +758,12 @@ impl AlphaTileVertex {
            tile_index: u16,
            tile_offset: Vector2I,
            object_index: u16,
-           opacity: u8,
-           paint_metadata: &PaintMetadata)
+           draw_tiling_path_info: &DrawTilingPathInfo)
            -> AlphaTileVertex {
         let tile_position = tile_origin + tile_offset;
-        let color_uv = paint_metadata.calculate_tex_coords(tile_position);
+        let transform_inv = draw_tiling_path_info.transform_inv;
+        let color_uv = draw_tiling_path_info.paint_metadata.calculate_tex_coords(tile_position,
+                                                                                 transform_inv);
         let mask_uv = calculate_mask_uv(tile_index, tile_offset);
         AlphaTileVertex {
             tile_x: tile_position.x() as i16,
@@ -773,7 +773,7 @@ impl AlphaTileVertex {
             mask_u: mask_uv.x() as u16,
             mask_v: mask_uv.y() as u16,
             object_index,
-            opacity,
+            opacity: draw_tiling_path_info.opacity,
             pad: 0,
         }
     }
