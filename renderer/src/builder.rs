@@ -24,7 +24,7 @@ use crate::tiles::{self, DrawTilingPathInfo, TILE_HEIGHT, TILE_WIDTH, Tiler, Til
 use crate::z_buffer::{DepthMetadata, ZBuffer};
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
-use pathfinder_content::pattern::RenderTargetId;
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::util;

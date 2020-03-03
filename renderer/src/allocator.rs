@@ -11,7 +11,7 @@
 //! A simple quadtree-based texture allocator.
 
 use crate::gpu_data::PaintPageId;
-use pathfinder_content::pattern::RenderTargetId;
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 

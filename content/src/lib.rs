@@ -25,6 +25,7 @@ pub mod gradient;
 pub mod orientation;
 pub mod outline;
 pub mod pattern;
+pub mod render_target;
 pub mod segment;
 pub mod sorted_vector;
 pub mod stroke;

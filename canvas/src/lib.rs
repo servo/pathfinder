@@ -16,7 +16,8 @@ use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, Effects
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
-use pathfinder_content::pattern::{Pattern, PatternFlags, RenderTargetId};
+use pathfinder_content::pattern::{Pattern, PatternFlags};
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;

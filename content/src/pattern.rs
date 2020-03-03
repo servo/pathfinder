@@ -10,6 +10,7 @@
 
 //! Raster image patterns.
 
+use crate::render_target::RenderTargetId;
 use pathfinder_color::{self as color, ColorU};
 use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{self, Debug, Formatter};
@@ -29,9 +30,6 @@ pub enum PatternSource {
     Image(Image),
     RenderTarget(RenderTargetId),
 }
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct RenderTargetId(pub u32);
 
 /// RGBA, non-premultiplied.
 // FIXME(pcwalton): Hash the pixel contents so that we don't have to compare every pixel!

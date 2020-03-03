@@ -14,7 +14,7 @@ use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
-use pathfinder_content::pattern::RenderTargetId;
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::TextureSamplingFlags;
