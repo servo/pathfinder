@@ -133,7 +133,6 @@ impl BuiltSVG {
                     path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
                     let path = UsvgPathToSegments::new(path.data.iter().cloned());
-                    let path = Transform2FPathIter::new(path, &state.transform);
                     let outline = Outline::from_segments(path);
 
                     let name = format!("Fill({})", node.id());
@@ -158,8 +157,7 @@ impl BuiltSVG {
 
                     let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
                     stroke_to_fill.offset();
-                    let mut outline = stroke_to_fill.into_outline();
-                    outline.transform(&state.transform);
+                    let outline = stroke_to_fill.into_outline();
 
                     let name = format!("Stroke({})", node.id());
                     self.push_draw_path(outline,
@@ -238,6 +236,7 @@ impl BuiltSVG {
         path.set_fill_rule(fill_rule);
         path.set_name(name);
         path.set_opacity((opacity.value() * 255.0) as u8);
+        path.set_transform(state.transform);
         self.scene.push_path(path);
     }
 }

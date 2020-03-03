@@ -170,7 +170,9 @@ impl<'a> SceneBuilder<'a> {
         built_clip_paths: &[BuiltPath],
     ) -> BuiltDrawPath {
         let path_object = &scene.paths[path_index];
-        let outline = scene.apply_render_options(path_object.outline(), built_options);
+        let mut outline = scene.apply_render_options(path_object.outline(), built_options);
+        outline.transform(&path_object.transform());
+
         let paint_id = path_object.paint();
         let paint_metadata = &paint_metadata[paint_id.0 as usize];
         let built_clip_path =
