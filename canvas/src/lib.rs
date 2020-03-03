@@ -598,7 +598,7 @@ impl Path2D {
         }
     }
 
-    fn into_outline(mut self) -> Outline {
+    pub fn into_outline(mut self) -> Outline {
         self.flush_current_contour();
         self.outline
     }
