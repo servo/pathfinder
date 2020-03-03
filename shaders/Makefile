@@ -3,6 +3,8 @@ TARGET_DIR?=../resources/shaders
 EMPTY=
 
 SHADERS=\
+	blit.fs.glsl \
+	blit.vs.glsl \
 	debug_solid.fs.glsl \
 	debug_solid.vs.glsl \
 	debug_texture.fs.glsl \
@@ -11,10 +13,6 @@ SHADERS=\
 	demo_ground.vs.glsl \
 	fill.fs.glsl \
 	fill.vs.glsl \
-	filter.vs.glsl \
-	filter_basic.fs.glsl \
-	filter_blur.fs.glsl \
-	filter_text.fs.glsl \
 	mask.vs.glsl \
 	mask_evenodd.fs.glsl \
 	mask_winding.fs.glsl \
@@ -32,14 +30,17 @@ SHADERS=\
 	tile_alpha_softlight.fs.glsl \
 	tile_copy.fs.glsl \
 	tile_copy.vs.glsl \
+	tile_filter.vs.glsl \
+	tile_filter_blur.fs.glsl \
+	tile_filter_text.fs.glsl \
 	tile_solid.fs.glsl \
 	tile_solid.vs.glsl \
 	$(EMPTY)
 
 INCLUDES=\
-	filter_text_convolve.inc.glsl \
-	filter_text_gamma_correct.inc.glsl \
 	tile_alpha_sample.inc.glsl \
+	tile_filter_text_convolve.inc.glsl \
+	tile_filter_text_gamma_correct.inc.glsl \
 	$(EMPTY)
 
 OUT=\

@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/filter.vs.glsl
+// pathfinder/shaders/blit.fs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -12,17 +12,13 @@
 
 precision highp float;
 
-in ivec2 aPosition;
+uniform sampler2D uSrc;
 
-out vec2 vTexCoord;
+in vec2 vTexCoord;
+
+out vec4 oFragColor;
 
 void main() {
-    vec2 position = vec2(aPosition);
-    vTexCoord = position;
-
-#ifdef PF_ORIGIN_UPPER_LEFT
-    // FIXME(pcwalton): This is wrong.
-    position.y = 1.0 - position.y;
-#endif
-    gl_Position = vec4(vec2(position) * 2.0 - 1.0, 0.0, 1.0);
+    vec4 color = texture(uSrc, vTexCoord);
+    oFragColor = vec4(color.rgb * color.a, color.a);
 }

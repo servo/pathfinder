@@ -242,6 +242,7 @@ dependencies = [
  "pathfinder_gpu 0.1.0",
  "pathfinder_metal 0.1.0",
  "pathfinder_renderer 0.1.0",
+ "pathfinder_resources 0.1.0",
  "sdl2 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sdl2-sys 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -293,6 +294,7 @@ dependencies = [
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_renderer 0.1.0",
+ "pathfinder_resources 0.1.0",
  "sdl2 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sdl2-sys 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1819,6 +1821,7 @@ dependencies = [
  "serde 1.0.104 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "vec_map 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

@@ -13,7 +13,8 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeProgram, MASK_TILES_ACROSS};
 use crate::gpu_data::{AlphaTile, AlphaTileBatch, AlphaTileVertex, FillBatchPrimitive, MaskTile};
-use crate::gpu_data::{MaskTileVertex, PaintPageId, RenderCommand};
+use crate::gpu_data::{MaskTileVertex, PaintPageId, RenderCommand, RenderTargetTile};
+use crate::gpu_data::{RenderTargetTileBatch, RenderTargetTileVertex};
 use crate::gpu_data::{SolidTileBatch, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
@@ -21,7 +22,7 @@ use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
 use crate::z_buffer::ZBuffer;
-use pathfinder_content::effects::{BlendMode, Effects};
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::pattern::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
@@ -219,92 +220,110 @@ impl<'a> SceneBuilder<'a> {
 
         // Process first Z-buffer.
         let first_z_buffer = remaining_layer_z_buffers.pop().unwrap();
-        let first_solid_tiles = first_z_buffer.build_solid_tiles(&self.scene.paths,
-                                                                 paint_metadata);
+        let first_solid_tiles = first_z_buffer.build_solid_tiles(paint_metadata);
         for batch in first_solid_tiles.batches {
             culled_tiles.display_list.push(CulledDisplayItem::DrawSolidTiles(batch));
         }
 
         let mut layer_z_buffers_stack = vec![first_z_buffer];
+        let mut current_depth = 1;
 
         for display_item in &self.scene.display_list {
-            // Pass all commands except `DrawPaths` through.
-            let (start_draw_path_index, end_draw_path_index) = match *display_item {
+            match *display_item {
                 DisplayItem::PushRenderTarget(render_target_id) => {
                     culled_tiles.display_list
                                 .push(CulledDisplayItem::PushRenderTarget(render_target_id));
 
                     let z_buffer = remaining_layer_z_buffers.pop().unwrap();
-                    let solid_tiles = z_buffer.build_solid_tiles(&self.scene.paths,
-                                                                 paint_metadata);
+                    let solid_tiles = z_buffer.build_solid_tiles(paint_metadata);
                     for batch in solid_tiles.batches {
                         culled_tiles.display_list.push(CulledDisplayItem::DrawSolidTiles(batch));
                     }
                     layer_z_buffers_stack.push(z_buffer);
-                    continue;
                 }
+
                 DisplayItem::PopRenderTarget => {
                     culled_tiles.display_list.push(CulledDisplayItem::PopRenderTarget);
                     layer_z_buffers_stack.pop();
-                    continue;
                 }
+
                 DisplayItem::DrawRenderTarget { render_target, effects } => {
-                    culled_tiles.display_list.push(CulledDisplayItem::DrawRenderTarget {
-                        render_target,
-                        effects,
-                    });
-                    continue;
-                }
-                DisplayItem::DrawPaths { start_index, end_index } => (start_index, end_index),
-            };
-
-            for draw_path_index in start_draw_path_index..end_draw_path_index {
-                let built_draw_path = &built_draw_paths[draw_path_index as usize];
-                culled_tiles.push_mask_tiles(&built_draw_path.path);
-
-                // Create a new `DrawAlphaTiles` display item if we don't have one or if we have to
-                // break a batch due to blend mode or paint page. Note that every path with a blend
-                // mode that requires a readable framebuffer needs its own batch.
-                //
-                // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid batch
-                // breaks in some cases…
-                match culled_tiles.display_list.last() {
-                    Some(&CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
-                        tiles: _,
-                        paint_page,
-                        blend_mode,
-                        sampling_flags
-                    })) if paint_page == built_draw_path.paint_page &&
-                        blend_mode == built_draw_path.blend_mode &&
-                        sampling_flags == built_draw_path.sampling_flags &&
-                        !BlendModeProgram::from_blend_mode(
-                            blend_mode).needs_readable_framebuffer() => {}
-                    _ => {
-                        culled_tiles.display_list
-                                    .push(CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
-                            tiles: vec![],
-                            paint_page: built_draw_path.paint_page,
-                            blend_mode: built_draw_path.blend_mode,
-                            sampling_flags: built_draw_path.sampling_flags,
-                        }))
+                    let effective_view_box = self.scene.effective_view_box(self.built_options);
+                    let tile_rect = tiles::round_rect_out_to_tile_bounds(effective_view_box);
+                    let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
+                    let mut tiles = vec![];
+                    for tile_y in tile_rect.min_y()..tile_rect.max_y() {
+                        for tile_x in tile_rect.min_x()..tile_rect.max_x() {
+                            let tile_coords = Vector2I::new(tile_x, tile_y);
+                            if layer_z_buffer.test(tile_coords, current_depth) {
+                                tiles.push(RenderTargetTile::new(tile_coords));
+                            }
+                        }
                     }
+                    let batch = RenderTargetTileBatch { tiles, render_target, effects };
+                    culled_tiles.display_list
+                                .push(CulledDisplayItem::DrawRenderTargetTiles(batch));
+                    current_depth += 1;
                 }
 
-                // Fetch the destination alpha tiles buffer.
-                let culled_alpha_tiles = match *culled_tiles.display_list.last_mut().unwrap() {
-                    CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
-                        tiles: ref mut culled_alpha_tiles,
-                        ..
-                    }) => culled_alpha_tiles,
-                    _ => unreachable!(),
-                };
+                DisplayItem::DrawPaths {
+                    start_index: start_draw_path_index,
+                    end_index: end_draw_path_index,
+                } => {
+                    for draw_path_index in start_draw_path_index..end_draw_path_index {
+                        let built_draw_path = &built_draw_paths[draw_path_index as usize];
+                        culled_tiles.push_mask_tiles(&built_draw_path.path);
 
-                let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
-                for alpha_tile in &built_draw_path.path.alpha_tiles {
-                    let alpha_tile_coords = alpha_tile.upper_left.tile_position();
-                    if layer_z_buffer.test(alpha_tile_coords,
-                                           alpha_tile.upper_left.object_index as u32) {
-                        culled_alpha_tiles.push(*alpha_tile);
+                        // Create a new `DrawAlphaTiles` display item if we don't have one or if we
+                        // have to break a batch due to blend mode or paint page. Note that every
+                        // path with a blend mode that requires a readable framebuffer needs its
+                        // own batch.
+                        //
+                        // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid
+                        // batch breaks in some cases…
+                        match culled_tiles.display_list.last() {
+                            Some(&CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
+                                tiles: _,
+                                paint_page,
+                                blend_mode,
+                                sampling_flags
+                            })) if paint_page == built_draw_path.paint_page &&
+                                blend_mode == built_draw_path.blend_mode &&
+                                sampling_flags == built_draw_path.sampling_flags &&
+                                !BlendModeProgram::from_blend_mode(
+                                    blend_mode).needs_readable_framebuffer() => {}
+                            _ => {
+                                let batch = AlphaTileBatch {
+                                    tiles: vec![],
+                                    paint_page: built_draw_path.paint_page,
+                                    blend_mode: built_draw_path.blend_mode,
+                                    sampling_flags: built_draw_path.sampling_flags,
+                                };
+                                culled_tiles.display_list
+                                            .push(CulledDisplayItem::DrawAlphaTiles(batch))
+                            }
+                        }
+
+                        // Fetch the destination alpha tiles buffer.
+                        let culled_alpha_tiles = match *culled_tiles.display_list
+                                                                    .last_mut()
+                                                                    .unwrap() {
+                            CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
+                                tiles: ref mut culled_alpha_tiles,
+                                ..
+                            }) => culled_alpha_tiles,
+                            _ => unreachable!(),
+                        };
+
+                        let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
+                        for alpha_tile in &built_draw_path.path.alpha_tiles {
+                            let alpha_tile_coords = alpha_tile.upper_left.tile_position();
+                            if layer_z_buffer.test(alpha_tile_coords, current_depth) {
+                                culled_alpha_tiles.push(*alpha_tile);
+                            }
+                        }
+
+                        current_depth += 1;
                     }
                 }
             }
@@ -317,6 +336,7 @@ impl<'a> SceneBuilder<'a> {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let mut z_buffers = vec![ZBuffer::new(effective_view_box)];
         let mut z_buffer_index_stack = vec![0];
+        let mut current_depth = 0;
 
         // Create Z-buffers.
         for display_item in &self.scene.display_list {
@@ -333,12 +353,16 @@ impl<'a> SceneBuilder<'a> {
                     let z_buffer = &mut z_buffers[*z_buffer_index_stack.last().unwrap()];
                     for (path_subindex, built_draw_path) in
                             built_draw_paths[start_index..end_index].iter().enumerate() {
-                        z_buffer.update(&built_draw_path.path.solid_tiles,
-                                        (path_subindex + start_index) as u32);
+                        let solid_tiles = &built_draw_path.path.solid_tiles;
+                        let path_index = (path_subindex + start_index) as u32;
+                        let paint = self.scene.paths[path_index as usize].paint();
+                        z_buffer.update(solid_tiles, current_depth, paint);
+                        current_depth += 1;
                     }
                 }
                 DisplayItem::DrawRenderTarget { .. } => {
                     // FIXME(pcwalton): Not great that this doesn't participate in Z-buffering!
+                    current_depth += 1;
                 }
             }
         }
@@ -369,8 +393,8 @@ impl<'a> SceneBuilder<'a> {
                 CulledDisplayItem::DrawAlphaTiles(batch) => {
                     self.listener.send(RenderCommand::DrawAlphaTiles(batch))
                 }
-                CulledDisplayItem::DrawRenderTarget { render_target, effects } => {
-                    self.listener.send(RenderCommand::DrawRenderTarget { render_target, effects })
+                CulledDisplayItem::DrawRenderTargetTiles(batch) => {
+                    self.listener.send(RenderCommand::DrawRenderTargetTiles(batch))
                 }
                 CulledDisplayItem::PushRenderTarget(render_target_id) => {
                     self.listener.send(RenderCommand::PushRenderTarget(render_target_id))
@@ -449,7 +473,7 @@ struct CulledTiles {
 enum CulledDisplayItem {
     DrawSolidTiles(SolidTileBatch),
     DrawAlphaTiles(AlphaTileBatch),
-    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+    DrawRenderTargetTiles(RenderTargetTileBatch),
     PushRenderTarget(RenderTargetId),
     PopRenderTarget,
 }
@@ -772,5 +796,22 @@ impl CulledTiles {
             FillRule::Winding => self.mask_winding_tiles.extend_from_slice(&built_path.mask_tiles),
             FillRule::EvenOdd => self.mask_evenodd_tiles.extend_from_slice(&built_path.mask_tiles),
         }
+    }
+}
+
+impl RenderTargetTile {
+    fn new(tile_coords: Vector2I) -> RenderTargetTile {
+        RenderTargetTile {
+            upper_left:  RenderTargetTileVertex::new(tile_coords),
+            upper_right: RenderTargetTileVertex::new(tile_coords + Vector2I::new(1, 0)),
+            lower_left:  RenderTargetTileVertex::new(tile_coords + Vector2I::new(0, 1)),
+            lower_right: RenderTargetTileVertex::new(tile_coords + Vector2I::splat(1)),
+        }
+    }
+}
+
+impl RenderTargetTileVertex {
+    fn new(tile_coords: Vector2I) -> RenderTargetTileVertex {
+        RenderTargetTileVertex { tile_x: tile_coords.x() as i16, tile_y: tile_coords.y() as i16 }
     }
 }

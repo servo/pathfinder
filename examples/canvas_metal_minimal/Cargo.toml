@@ -36,3 +36,6 @@ path = "../../metal"
 
 [dependencies.pathfinder_renderer]
 path = "../../renderer"
+
+[dependencies.pathfinder_resources]
+path = "../../resources"

@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/filter_basic.fs.glsl
+// pathfinder/shaders/blit.vs.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -10,20 +10,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// TODO(pcwalton): This could be significantly optimized by operating on a
-// sparse per-tile basis.
-
-#extension GL_GOOGLE_include_directive : enable
-
 precision highp float;
 
-uniform sampler2D uSource;
+in vec2 aPosition;
 
-in vec2 vTexCoord;
-
-out vec4 oFragColor;
+out vec2 vTexCoord;
 
 void main() {
-    vec4 color = texture(uSource, vTexCoord);
-    oFragColor = vec4(color.rgb * color.a, color.a);
+    vTexCoord = aPosition;
+    gl_Position = vec4(mix(aPosition, vec2(-1.0), vec2(1.0)), 0.0, 1.0);
 }

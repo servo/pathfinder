@@ -62,12 +62,12 @@ pub enum RenderCommand {
     // Draws a batch of solid tiles to the render target on top of the stack.
     DrawSolidTiles(SolidTileBatch),
 
-    // Draws an entire render target to the render target on top of the stack.
+    // Draws a batch of render target tiles to the render target on top of the stack.
     //
-    // FIXME(pcwalton): This draws the entire render target, so it's inefficient. We should get rid
-    // of this command and transition all uses to `DrawAlphaTiles`/`DrawSolidTiles`. The reason it
-    // exists is that we don't have logic to create tiles for blur bounding regions yet.
-    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+    // FIXME(pcwalton): We should get rid of this command and transition all uses to
+    // `DrawAlphaTiles`/`DrawSolidTiles`. The reason it exists is that we don't have logic to
+    // create tiles for blur bounding regions yet.
+    DrawRenderTargetTiles(RenderTargetTileBatch),
 
     // Presents a rendered frame.
     Finish { build_time: Duration },
@@ -106,6 +106,13 @@ pub struct SolidTileBatch {
     pub vertices: Vec<SolidTileVertex>,
     pub paint_page: PaintPageId,
     pub sampling_flags: TextureSamplingFlags,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderTargetTileBatch {
+    pub tiles: Vec<RenderTargetTile>,
+    pub render_target: RenderTargetId,
+    pub effects: Effects,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +171,15 @@ pub struct AlphaTile {
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
+pub struct RenderTargetTile {
+    pub upper_left: RenderTargetTileVertex,
+    pub upper_right: RenderTargetTileVertex,
+    pub lower_left: RenderTargetTileVertex,
+    pub lower_right: RenderTargetTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
 pub struct MaskTileVertex {
     pub mask_u: u16,
     pub mask_v: u16,
@@ -187,6 +203,13 @@ pub struct AlphaTileVertex {
     pub pad: u8,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct RenderTargetTileVertex {
+    pub tile_x: i16,
+    pub tile_y: i16,
+}
+
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
@@ -203,9 +226,6 @@ impl Debug for RenderCommand {
                 write!(formatter, "PushRenderTarget({:?})", render_target_id)
             }
             RenderCommand::PopRenderTarget => write!(formatter, "PopRenderTarget"),
-            RenderCommand::DrawRenderTarget { render_target, .. } => {
-                write!(formatter, "DrawRenderTarget({:?})", render_target)
-            }
             RenderCommand::DrawAlphaTiles(ref batch) => {
                 write!(formatter,
                        "DrawAlphaTiles(x{}, {:?}, {:?}, {:?})",
@@ -220,6 +240,12 @@ impl Debug for RenderCommand {
                        batch.vertices.len(),
                        batch.paint_page,
                        batch.sampling_flags)
+            }
+            RenderCommand::DrawRenderTargetTiles(ref batch) => {
+                write!(formatter,
+                       "DrawRenderTarget(x{}, {:?})",
+                       batch.tiles.len(),
+                       batch.render_target)
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

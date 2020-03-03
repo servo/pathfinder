@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/filter_text.fs.glsl
+// pathfinder/shaders/tile_filter_text.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,15 +10,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// TODO(pcwalton): This could be significantly optimized by operating on a
-// sparse per-tile basis.
-
 #extension GL_GOOGLE_include_directive : enable
 
 precision highp float;
 
-uniform sampler2D uSource;
-uniform vec2 uSourceSize;
+uniform sampler2D uSrc;
+uniform vec2 uSrcSize;
 uniform vec4 uFGColor;
 uniform vec4 uBGColor;
 uniform int uGammaCorrectionEnabled;
@@ -27,23 +24,23 @@ in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
-#include "filter_text_gamma_correct.inc.glsl"
-#include "filter_text_convolve.inc.glsl"
+#include "tile_filter_text_gamma_correct.inc.glsl"
+#include "tile_filter_text_convolve.inc.glsl"
 
 // Convolve horizontally in this pass.
 float sample1Tap(float offset) {
-    return texture(uSource, vec2(vTexCoord.x + offset, vTexCoord.y)).r;
+    return texture(uSrc, vec2(vTexCoord.x + offset, vTexCoord.y)).r;
 }
 
 void main() {
     // Apply defringing if necessary.
     vec3 alpha;
     if (uKernel.w == 0.0) {
-        alpha = texture(uSource, vTexCoord).rrr;
+        alpha = texture(uSrc, vTexCoord).rrr;
     } else {
         vec4 alphaLeft, alphaRight;
         float alphaCenter;
-        sample9Tap(alphaLeft, alphaCenter, alphaRight, 1.0 / uSourceSize.x);
+        sample9Tap(alphaLeft, alphaCenter, alphaRight, 1.0 / uSrcSize.x);
 
         float r = convolve7Tap(alphaLeft, vec3(alphaCenter, alphaRight.xy));
         float g = convolve7Tap(vec4(alphaLeft.yzw, alphaCenter), alphaRight.xyz);

@@ -18,9 +18,39 @@ use pathfinder_resources::ResourceLoader;
 const FILL_INSTANCE_SIZE: usize = 8;
 const SOLID_TILE_VERTEX_SIZE: usize = 16;
 const ALPHA_TILE_VERTEX_SIZE: usize = 20;
+const FILTER_TILE_VERTEX_SIZE: usize = 4;
 const MASK_TILE_VERTEX_SIZE: usize = 12;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
+
+pub struct BlitVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+}
+
+impl<D> BlitVertexArray<D> where D: Device {
+    pub fn new(device: &D,
+               blit_program: &BlitProgram<D>,
+               quad_vertex_positions_buffer: &D::Buffer,
+               quad_vertex_indices_buffer: &D::Buffer)
+               -> BlitVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let position_attr = device.get_vertex_attr(&blit_program.program, "Position").unwrap();
+
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: 4,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+
+        BlitVertexArray { vertex_array }
+    }
+}
 
 pub struct FillVertexArray<D>
 where
@@ -323,6 +353,19 @@ impl<D> CopyTileVertexArray<D> where D: Device {
     }
 }
 
+pub struct BlitProgram<D> where D: Device {
+    pub program: D::Program,
+    pub src_uniform: D::Uniform,
+}
+
+impl<D> BlitProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> BlitProgram<D> {
+        let program = device.create_program(resources, "blit");
+        let src_uniform = device.get_uniform(&program, "Src");
+        BlitProgram { program, src_uniform }
+    }
+}
+
 pub struct FillProgram<D>
 where
     D: Device,
@@ -523,79 +566,101 @@ impl<D> AlphaTileDodgeBurnProgram<D> where D: Device {
     }
 }
 
-pub struct FilterBasicProgram<D> where D: Device {
+pub struct TileFilterProgram<D> where D: Device {
     pub program: D::Program,
-    pub source_uniform: D::Uniform,
-    pub framebuffer_size_uniform: D::Uniform,
+    pub transform_uniform: D::Uniform,
+    pub tile_size_uniform: D::Uniform,
+    pub src_uniform: D::Uniform,
+    pub src_size_uniform: D::Uniform,
 }
 
-impl<D> FilterBasicProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterBasicProgram<D> {
+impl<D> TileFilterProgram<D> where D: Device {
+    pub fn new(device: &D,
+               resources: &dyn ResourceLoader,
+               program_name: &str,
+               fragment_shader_name: &str)
+               -> TileFilterProgram<D> {
         let program = device.create_program_from_shader_names(resources,
-                                                              "filter_basic",
-                                                              "filter",
-                                                              "filter_basic");
-        let source_uniform = device.get_uniform(&program, "Source");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        FilterBasicProgram { program, source_uniform, framebuffer_size_uniform }
+                                                              program_name,
+                                                              "tile_filter",
+                                                              fragment_shader_name);
+        let transform_uniform = device.get_uniform(&program, "Transform");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let src_uniform = device.get_uniform(&program, "Src");
+        let src_size_uniform = device.get_uniform(&program, "SrcSize");
+        TileFilterProgram {
+            program,
+            transform_uniform,
+            tile_size_uniform,
+            src_uniform,
+            src_size_uniform,
+        }
     }
 }
 
-pub struct FilterBasicVertexArray<D> where D: Device {
+pub struct TileFilterBasicProgram<D> where D: Device {
+    pub tile_filter_program: TileFilterProgram<D>,
+}
+
+impl<D> TileFilterBasicProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileFilterBasicProgram<D> {
+        TileFilterBasicProgram {
+            tile_filter_program: TileFilterProgram::new(device, resources, "filter_basic", "blit"),
+        }
+    }
+}
+
+pub struct TileFilterVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
 }
 
-impl<D> FilterBasicVertexArray<D> where D: Device {
-    pub fn new(
-        device: &D,
-        fill_basic_program: &FilterBasicProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> FilterBasicVertexArray<D> {
+impl<D> TileFilterVertexArray<D> where D: Device {
+    pub fn new(device: &D,
+               tile_filter_program: &TileFilterProgram<D>,
+               tile_filter_vertex_buffer: &D::Buffer,
+               quads_vertex_indices_buffer: &D::Buffer)
+               -> TileFilterVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&fill_basic_program.program, "Position")
-                                  .unwrap();
 
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
+        let tile_position_attr =
+            device.get_vertex_attr(&tile_filter_program.program, "TilePosition").unwrap();
+
+        device.bind_buffer(&vertex_array, tile_filter_vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
-            stride: 4,
+            stride: FILTER_TILE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
-        FilterBasicVertexArray { vertex_array }
+        TileFilterVertexArray { vertex_array }
     }
 }
 
-pub struct FilterBlurProgram<D> where D: Device {
-    pub program: D::Program,
-    pub framebuffer_size_uniform: D::Uniform,
-    pub src_uniform: D::Uniform,
+pub struct TileFilterBlurProgram<D> where D: Device {
+    pub tile_filter_program: TileFilterProgram<D>,
     pub src_offset_scale_uniform: D::Uniform,
     pub initial_gauss_coeff_uniform: D::Uniform,
     pub support_uniform: D::Uniform,
 }
 
-impl<D> FilterBlurProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterBlurProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              "filter_blur",
-                                                              "filter",
-                                                              "filter_blur");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let src_uniform = device.get_uniform(&program, "Src");
-        let src_offset_scale_uniform = device.get_uniform(&program, "SrcOffsetScale");
-        let initial_gauss_coeff_uniform = device.get_uniform(&program, "InitialGaussCoeff");
-        let support_uniform = device.get_uniform(&program, "Support");
-        FilterBlurProgram {
-            program,
-            framebuffer_size_uniform,
-            src_uniform,
+impl<D> TileFilterBlurProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileFilterBlurProgram<D> {
+        let tile_filter_program = TileFilterProgram::new(device,
+                                                         resources,
+                                                         "tile_filter_blur",
+                                                         "tile_filter_blur");
+        let src_offset_scale_uniform = device.get_uniform(&tile_filter_program.program, 
+                                                          "SrcOffsetScale");
+        let initial_gauss_coeff_uniform = device.get_uniform(&tile_filter_program.program,
+                                                             "InitialGaussCoeff");
+        let support_uniform = device.get_uniform(&tile_filter_program.program, "Support");
+        TileFilterBlurProgram {
+            tile_filter_program,
             src_offset_scale_uniform,
             initial_gauss_coeff_uniform,
             support_uniform,
@@ -603,42 +668,8 @@ impl<D> FilterBlurProgram<D> where D: Device {
     }
 }
 
-pub struct FilterBlurVertexArray<D> where D: Device {
-    pub vertex_array: D::VertexArray,
-}
-
-impl<D> FilterBlurVertexArray<D> where D: Device {
-    pub fn new(
-        device: &D,
-        fill_blur_program: &FilterBlurProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> FilterBlurVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&fill_blur_program.program, "Position")
-                                  .unwrap();
-
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        FilterBlurVertexArray { vertex_array }
-    }
-}
-
-pub struct FilterTextProgram<D> where D: Device {
-    pub program: D::Program,
-    pub source_uniform: D::Uniform,
-    pub source_size_uniform: D::Uniform,
-    pub framebuffer_size_uniform: D::Uniform,
+pub struct TileFilterTextProgram<D> where D: Device {
+    pub tile_filter_program: TileFilterProgram<D>,
     pub kernel_uniform: D::Uniform,
     pub gamma_lut_uniform: D::Uniform,
     pub gamma_correction_enabled_uniform: D::Uniform,
@@ -646,63 +677,26 @@ pub struct FilterTextProgram<D> where D: Device {
     pub bg_color_uniform: D::Uniform,
 }
 
-impl<D> FilterTextProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FilterTextProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              "filter_text",
-                                                              "filter",
-                                                              "filter_text");
-        let source_uniform = device.get_uniform(&program, "Source");
-        let source_size_uniform = device.get_uniform(&program, "SourceSize");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let kernel_uniform = device.get_uniform(&program, "Kernel");
-        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
-        let gamma_correction_enabled_uniform = device.get_uniform(&program,
+impl<D> TileFilterTextProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileFilterTextProgram<D> {
+        let tile_filter_program = TileFilterProgram::new(device,
+                                                         resources,
+                                                         "tile_filter_text",
+                                                         "tile_filter_text");
+        let kernel_uniform = device.get_uniform(&tile_filter_program.program, "Kernel");
+        let gamma_lut_uniform = device.get_uniform(&tile_filter_program.program, "GammaLUT");
+        let gamma_correction_enabled_uniform = device.get_uniform(&tile_filter_program.program,
                                                                   "GammaCorrectionEnabled");
-        let fg_color_uniform = device.get_uniform(&program, "FGColor");
-        let bg_color_uniform = device.get_uniform(&program, "BGColor");
-        FilterTextProgram {
-            program,
-            source_uniform,
-            source_size_uniform,
-            framebuffer_size_uniform,
+        let fg_color_uniform = device.get_uniform(&tile_filter_program.program, "FGColor");
+        let bg_color_uniform = device.get_uniform(&tile_filter_program.program, "BGColor");
+        TileFilterTextProgram {
+            tile_filter_program,
             kernel_uniform,
             gamma_lut_uniform,
             gamma_correction_enabled_uniform,
             fg_color_uniform,
             bg_color_uniform,
         }
-    }
-}
-
-pub struct FilterTextVertexArray<D> where D: Device {
-    pub vertex_array: D::VertexArray,
-}
-
-impl<D> FilterTextVertexArray<D> where D: Device {
-    pub fn new(
-        device: &D,
-        fill_text_program: &FilterTextProgram<D>,
-        quad_vertex_positions_buffer: &D::Buffer,
-        quad_vertex_indices_buffer: &D::Buffer,
-    ) -> FilterTextVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&fill_text_program.program, "Position")
-                                  .unwrap();
-
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
-
-        FilterTextVertexArray { vertex_array }
     }
 }
 
