@@ -871,8 +871,7 @@ where
         self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
 
         textures.push(paint_texture);
-        uniforms.push((&self.alpha_tile_program.paint_texture_uniform,
-                       UniformData::TextureUnit(1)));
+        uniforms.push((&alpha_tile_program.paint_texture_uniform, UniformData::TextureUnit(1)));
 
         match blend_mode_program {
             BlendModeProgram::Regular => {}
