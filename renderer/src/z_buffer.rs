@@ -79,12 +79,12 @@ impl ZBuffer {
 
             // Create a batch if necessary.
             match solid_tiles.batches.last() {
-                Some(ref batch) if batch.paint_page == paint_metadata.tex_page &&
+                Some(ref batch) if batch.color_texture_page == paint_metadata.texture_page &&
                     batch.sampling_flags == paint_metadata.sampling_flags => {}
                 _ => {
                     // Batch break.
                     solid_tiles.batches.push(SolidTileBatch {
-                        paint_page: paint_metadata.tex_page,
+                        color_texture_page: paint_metadata.texture_page,
                         sampling_flags: paint_metadata.sampling_flags,
                         vertices: vec![],
                     });

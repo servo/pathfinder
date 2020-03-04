@@ -13,9 +13,8 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeProgram, MASK_TILES_ACROSS};
 use crate::gpu_data::{AlphaTile, AlphaTileBatch, AlphaTileVertex, FillBatchPrimitive, MaskTile};
-use crate::gpu_data::{MaskTileVertex, PaintPageId, RenderCommand, RenderTargetTile};
-use crate::gpu_data::{RenderTargetTileBatch, RenderTargetTileVertex};
-use crate::gpu_data::{SolidTileBatch, TileObjectPrimitive};
+use crate::gpu_data::{MaskTileVertex, RenderCommand, RenderTargetTile, RenderTargetTileBatch};
+use crate::gpu_data::{RenderTargetTileVertex, SolidTileBatch, TexturePageId, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
@@ -57,7 +56,7 @@ struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
     sampling_flags: TextureSamplingFlags,
-    paint_page: PaintPageId,
+    color_texture_page: TexturePageId,
 }
 
 #[derive(Debug)]
@@ -111,10 +110,10 @@ impl<'a> SceneBuilder<'a> {
 
         // Build paint data.
         let PaintInfo {
-            data: paint_data,
+            data: texture_data,
             metadata: paint_metadata,
         } = self.scene.build_paint_info();
-        self.listener.send(RenderCommand::AddPaintData(paint_data));
+        self.listener.send(RenderCommand::AddTextureData(texture_data));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
 
@@ -197,7 +196,7 @@ impl<'a> SceneBuilder<'a> {
         BuiltDrawPath {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
-            paint_page: paint_metadata.tex_page,
+            color_texture_page: paint_metadata.texture_page,
             sampling_flags: paint_metadata.sampling_flags,
         }
     }
@@ -286,10 +285,10 @@ impl<'a> SceneBuilder<'a> {
                         match culled_tiles.display_list.last() {
                             Some(&CulledDisplayItem::DrawAlphaTiles(AlphaTileBatch {
                                 tiles: _,
-                                paint_page,
+                                color_texture_page,
                                 blend_mode,
                                 sampling_flags
-                            })) if paint_page == built_draw_path.paint_page &&
+                            })) if color_texture_page == built_draw_path.color_texture_page &&
                                 blend_mode == built_draw_path.blend_mode &&
                                 sampling_flags == built_draw_path.sampling_flags &&
                                 !BlendModeProgram::from_blend_mode(
@@ -297,7 +296,7 @@ impl<'a> SceneBuilder<'a> {
                             _ => {
                                 let batch = AlphaTileBatch {
                                     tiles: vec![],
-                                    paint_page: built_draw_path.paint_page,
+                                    color_texture_page: built_draw_path.color_texture_page,
                                     blend_mode: built_draw_path.blend_mode,
                                     sampling_flags: built_draw_path.sampling_flags,
                                 };

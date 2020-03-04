@@ -37,8 +37,8 @@ pub enum RenderCommand {
         needs_readable_framebuffer: bool,
     },
 
-    // Uploads paint data for use with subsequent rendering commands to the GPU.
-    AddPaintData(PaintData),
+    // Uploads texture data for use with subsequent rendering commands to the GPU.
+    AddTextureData(TextureData),
 
     // Adds fills to the queue.
     AddFills(Vec<FillBatchPrimitive>),
@@ -74,21 +74,21 @@ pub enum RenderCommand {
 }
 
 #[derive(Clone, Debug)]
-pub struct PaintData {
-    pub pages: Vec<PaintPageData>,
+pub struct TextureData {
+    pub pages: Vec<TexturePageData>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct PaintPageId(pub u32);
+pub struct TexturePageId(pub u32);
 
 #[derive(Clone, Debug)]
-pub struct PaintPageData {
+pub struct TexturePageData {
     pub size: Vector2I,
-    pub contents: PaintPageContents,
+    pub contents: TexturePageContents,
 }
 
 #[derive(Clone, Debug)]
-pub enum PaintPageContents {
+pub enum TexturePageContents {
     Texels(Vec<ColorU>),
     RenderTarget(RenderTargetId),
 }
@@ -96,7 +96,7 @@ pub enum PaintPageContents {
 #[derive(Clone, Debug)]
 pub struct AlphaTileBatch {
     pub tiles: Vec<AlphaTile>,
-    pub paint_page: PaintPageId,
+    pub color_texture_page: TexturePageId,
     pub blend_mode: BlendMode,
     pub sampling_flags: TextureSamplingFlags,
 }
@@ -104,7 +104,7 @@ pub struct AlphaTileBatch {
 #[derive(Clone, Debug)]
 pub struct SolidTileBatch {
     pub vertices: Vec<SolidTileVertex>,
-    pub paint_page: PaintPageId,
+    pub color_texture_page: TexturePageId,
     pub sampling_flags: TextureSamplingFlags,
 }
 
@@ -214,8 +214,8 @@ impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
-            RenderCommand::AddPaintData(ref paint_data) => {
-                write!(formatter, "AddPaintData(x{})", paint_data.pages.len())
+            RenderCommand::AddTextureData(ref texture_data) => {
+                write!(formatter, "AddTextureData(x{})", texture_data.pages.len())
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
@@ -230,7 +230,7 @@ impl Debug for RenderCommand {
                 write!(formatter,
                        "DrawAlphaTiles(x{}, {:?}, {:?}, {:?})",
                        batch.tiles.len(),
-                       batch.paint_page,
+                       batch.color_texture_page,
                        batch.blend_mode,
                        batch.sampling_flags)
             }
@@ -238,7 +238,7 @@ impl Debug for RenderCommand {
                 write!(formatter,
                        "DrawSolidTiles(x{}, {:?}, {:?})",
                        batch.vertices.len(),
-                       batch.paint_page,
+                       batch.color_texture_page,
                        batch.sampling_flags)
             }
             RenderCommand::DrawRenderTargetTiles(ref batch) => {

@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::allocator::{AllocationMode, TextureAllocator, TextureLocation};
-use crate::gpu_data::{PaintData, PaintPageContents, PaintPageData, PaintPageId};
+use crate::gpu_data::{TextureData, TexturePageContents, TexturePageData, TexturePageId};
 use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
@@ -154,7 +154,7 @@ impl Paint {
 
 pub struct PaintInfo {
     /// The data that is sent to the renderer.
-    pub data: PaintData,
+    pub data: TextureData,
     /// The metadata for each paint.
     ///
     /// The indices of this vector are paint IDs.
@@ -164,11 +164,11 @@ pub struct PaintInfo {
 #[derive(Debug)]
 pub struct PaintMetadata {
     /// The location of the texture.
-    pub tex_page: PaintPageId,
+    pub texture_page: TexturePageId,
     /// The rectangle within the texture atlas.
-    pub tex_rect: RectI,
+    pub texture_rect: RectI,
     /// The transform to apply to screen coordinates to translate them into UVs.
-    pub tex_transform: Transform2F,
+    pub texture_transform: Transform2F,
     /// The sampling mode for the texture.
     pub sampling_flags: TextureSamplingFlags,
     /// True if this paint is fully opaque.
@@ -209,10 +209,10 @@ impl Palette {
         // Assign paint locations.
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
         for paint in &self.paints {
-            let (tex_location, mut sampling_flags);
+            let (texture_location, mut sampling_flags);
             match paint {
                 Paint::Color(_) => {
-                    tex_location = solid_color_tile_builder.allocate(&mut allocator);
+                    texture_location = solid_color_tile_builder.allocate(&mut allocator);
                     sampling_flags = TextureSamplingFlags::empty();
                 }
                 Paint::Gradient(_) => {
@@ -220,14 +220,15 @@ impl Palette {
                     // 1. Use repeating/clamp on the sides.
                     // 2. Choose an optimal size for the gradient that minimizes memory usage while
                     //    retaining quality.
-                    tex_location = allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
+                    texture_location = allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
                                                       AllocationMode::Atlas);
                     sampling_flags = TextureSamplingFlags::empty();
                 }
                 Paint::Pattern(ref pattern) => {
                     match pattern.source {
                         PatternSource::RenderTarget(render_target_id) => {
-                            tex_location = render_target_locations[render_target_id.0 as usize];
+                            texture_location =
+                                render_target_locations[render_target_id.0 as usize];
                         }
                         PatternSource::Image(ref image) => {
                             // TODO(pcwalton): We should be able to use tile cleverness to repeat
@@ -238,7 +239,7 @@ impl Palette {
                                 AllocationMode::OwnPage
                             };
 
-                            tex_location = allocator.allocate(image.size(), allocation_mode);
+                            texture_location = allocator.allocate(image.size(), allocation_mode);
                         }
                     }
 
@@ -257,9 +258,9 @@ impl Palette {
             };
 
             metadata.push(PaintMetadata {
-                tex_page: tex_location.page,
-                tex_rect: tex_location.rect,
-                tex_transform: Transform2F::default(),
+                texture_page: texture_location.page,
+                texture_rect: texture_location.rect,
+                texture_transform: Transform2F::default(),
                 sampling_flags,
                 is_opaque: paint.is_opaque(),
             });
@@ -267,26 +268,28 @@ impl Palette {
 
         // Calculate texture transforms.
         for (paint, metadata) in self.paints.iter().zip(metadata.iter_mut()) {
-            let texture_scale = allocator.page_scale(metadata.tex_page);
-            metadata.tex_transform = match paint {
+            let texture_scale = allocator.page_scale(metadata.texture_page);
+            metadata.texture_transform = match paint {
                 Paint::Color(_) => {
-                    let vector = rect_to_inset_uv(metadata.tex_rect, texture_scale).origin();
+                    let vector = rect_to_inset_uv(metadata.texture_rect, texture_scale).origin();
                     Transform2F { matrix: Matrix2x2F(F32x4::default()), vector }
                 }
                 Paint::Gradient(_) => {
-                    let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_scale).origin();
+                    let texture_origin_uv =
+                        rect_to_uv(metadata.texture_rect, texture_scale).origin();
                     let gradient_tile_scale = texture_scale.scale(GRADIENT_TILE_LENGTH as f32);
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(gradient_tile_scale / view_box_size.to_f32())
                 }
                 Paint::Pattern(Pattern { source: PatternSource::Image(_), .. }) => {
-                    let texture_origin_uv = rect_to_uv(metadata.tex_rect, texture_scale).origin();
+                    let texture_origin_uv =
+                        rect_to_uv(metadata.texture_rect, texture_scale).origin();
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(texture_scale)
                 }
                 Paint::Pattern(Pattern { source: PatternSource::RenderTarget(_), .. }) => {
                     // FIXME(pcwalton): Only do this in GL, not Metal!
-                    let texture_origin_uv = rect_to_uv(metadata.tex_rect,
+                    let texture_origin_uv = rect_to_uv(metadata.texture_rect,
                                                        texture_scale).lower_left();
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(texture_scale.scale_xy(Vector2F::new(1.0, -1.0)))
@@ -297,42 +300,42 @@ impl Palette {
         // Render the actual texels.
         //
         // TODO(pcwalton): This is slow. Do more on GPU.
-        let mut paint_data = PaintData { pages: vec![] };
+        let mut texture_data = TextureData { pages: vec![] };
         for page_index in 0..allocator.page_count() {
-            let page_index = PaintPageId(page_index);
+            let page_index = TexturePageId(page_index);
             let page_size = allocator.page_size(page_index);
             if let Some(render_target_id) = allocator.page_render_target_id(page_index) {
-                paint_data.pages.push(PaintPageData {
+                texture_data.pages.push(TexturePageData {
                     size: page_size,
-                    contents: PaintPageContents::RenderTarget(render_target_id),
+                    contents: TexturePageContents::RenderTarget(render_target_id),
                 });
                 continue;
             }
 
             let page_area = page_size.x() as usize * page_size.y() as usize;
             let texels = vec![ColorU::default(); page_area];
-            paint_data.pages.push(PaintPageData {
+            texture_data.pages.push(TexturePageData {
                 size: page_size,
-                contents: PaintPageContents::Texels(texels),
+                contents: TexturePageContents::Texels(texels),
             });
         }
 
         for (paint, metadata) in self.paints.iter().zip(metadata.iter()) {
-            let tex_page = metadata.tex_page;
-            let paint_page_data = &mut paint_data.pages[tex_page.0 as usize];
+            let texture_page = metadata.texture_page;
+            let paint_page_data = &mut texture_data.pages[texture_page.0 as usize];
             let page_size = paint_page_data.size;
-            let page_scale = allocator.page_scale(tex_page);
+            let page_scale = allocator.page_scale(texture_page);
 
             match paint_page_data.contents {
-                PaintPageContents::Texels(ref mut texels) => {
+                TexturePageContents::Texels(ref mut texels) => {
                     match paint {
                         Paint::Color(color) => {
-                            put_pixel(metadata.tex_rect.origin(), *color, texels, page_size);
+                            put_pixel(metadata.texture_rect.origin(), *color, texels, page_size);
                         }
                         Paint::Gradient(ref gradient) => {
                             self.render_gradient(gradient,
-                                                 metadata.tex_rect,
-                                                 &metadata.tex_transform,
+                                                 metadata.texture_rect,
+                                                 &metadata.texture_transform,
                                                  texels,
                                                  page_size,
                                                  page_scale);
@@ -341,17 +344,20 @@ impl Palette {
                             match pattern.source {
                                 PatternSource::RenderTarget(_) => {}
                                 PatternSource::Image(ref image) => {
-                                    self.render_image(image, metadata.tex_rect, texels, page_size);
+                                    self.render_image(image,
+                                                      metadata.texture_rect,
+                                                      texels,
+                                                      page_size);
                                 }
                             }
                         }
                     }
                 }
-                PaintPageContents::RenderTarget(_) => {}
+                TexturePageContents::RenderTarget(_) => {}
             }
         }
 
-        return PaintInfo { data: paint_data, metadata };
+        return PaintInfo { data: texture_data, metadata };
     }
 
     // TODO(pcwalton): This is slow. Do on GPU instead.
@@ -532,7 +538,7 @@ impl PaintMetadata {
                                        -> Vector2F {
         let tile_size = Vector2I::new(TILE_WIDTH as i32, TILE_HEIGHT as i32);
         let position = tile_position.scale_xy(tile_size).to_f32();
-        let tex_coords = self.tex_transform * path_transform_inv * position;
+        let tex_coords = self.texture_transform * path_transform_inv * position;
         tex_coords
     }
 }

@@ -19,8 +19,8 @@ use crate::gpu::shaders::{ReprojectionProgram, ReprojectionVertexArray, SolidTil
 use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArray};
 use crate::gpu::shaders::{TileFilterBasicProgram, TileFilterBlurProgram, TileFilterProgram};
 use crate::gpu::shaders::{TileFilterTextProgram, TileFilterVertexArray};
-use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
-use crate::gpu_data::{PaintPageId, RenderCommand, RenderTargetTile, SolidTileVertex};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, RenderCommand, RenderTargetTile};
+use crate::gpu_data::{SolidTileVertex, TextureData, TexturePageContents, TexturePageId};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF};
@@ -28,9 +28,9 @@ use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, Defring
 use pathfinder_content::effects::{Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
@@ -114,7 +114,7 @@ where
     mask_framebuffer: D::Framebuffer,
     dest_blend_framebuffer: D::Framebuffer,
     intermediate_dest_framebuffer: D::Framebuffer,
-    paint_textures: Vec<PaintTexture<D>>,
+    texture_pages: Vec<TexturePage<D>>,
     render_targets: Vec<RenderTargetInfo<D>>,
     render_target_stack: Vec<RenderTargetId>,
 
@@ -382,7 +382,7 @@ where
             mask_framebuffer,
             dest_blend_framebuffer,
             intermediate_dest_framebuffer,
-            paint_textures: vec![],
+            texture_pages: vec![],
             render_targets: vec![],
             render_target_stack: vec![],
             clear_paint_texture,
@@ -427,7 +427,7 @@ where
             RenderCommand::Start { bounding_quad, path_count, needs_readable_framebuffer } => {
                 self.start_rendering(bounding_quad, path_count, needs_readable_framebuffer);
             }
-            RenderCommand::AddPaintData(ref paint_data) => self.upload_paint_data(paint_data),
+            RenderCommand::AddTextureData(ref paint_data) => self.add_texture_data(paint_data),
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => {
                 self.draw_buffered_fills();
@@ -451,14 +451,16 @@ where
                 let count = batch.vertices.len() / 4;
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(&batch.vertices);
-                self.draw_solid_tiles(count as u32, batch.paint_page, batch.sampling_flags);
+                self.draw_solid_tiles(count as u32,
+                                      batch.color_texture_page,
+                                      batch.sampling_flags);
             }
             RenderCommand::DrawAlphaTiles(ref batch) => {
                 let count = batch.tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(&batch.tiles);
                 self.draw_alpha_tiles(count as u32,
-                                      batch.paint_page,
+                                      batch.color_texture_page,
                                       batch.sampling_flags,
                                       batch.blend_mode)
             }
@@ -568,14 +570,12 @@ where
         &self.quad_vertex_indices_buffer
     }
 
-    fn upload_paint_data(&mut self, paint_data: &PaintData) {
+    fn add_texture_data(&mut self, texture_data: &TextureData) {
         // Clear out old paint textures.
-        for paint_texture in self.paint_textures.drain(..) {
-            match paint_texture {
-                PaintTexture::Texture(paint_texture) => {
-                    self.texture_cache.release_texture(paint_texture);
-                }
-                PaintTexture::RenderTarget(_) => {}
+        for old_texture_page in self.texture_pages.drain(..) {
+            match old_texture_page {
+                TexturePage::Texture(texture) => self.texture_cache.release_texture(texture),
+                TexturePage::RenderTarget(_) => {}
             }
         }
 
@@ -586,28 +586,28 @@ where
         }
 
         // Build up new paint textures and render targets.
-        for paint_page_data in &paint_data.pages {
-            let paint_size = paint_page_data.size;
-            let paint_texture = self.texture_cache.create_texture(&mut self.device,
+        for texture_page_data in &texture_data.pages {
+            let texture_size = texture_page_data.size;
+            let texture_page = self.texture_cache.create_texture(&mut self.device,
                                                                   TextureFormat::RGBA8,
-                                                                  paint_size);
-            match paint_page_data.contents {
-                PaintPageContents::RenderTarget(render_target_id) => {
-                    let framebuffer = self.device.create_framebuffer(paint_texture);
+                                                                  texture_size);
+            match texture_page_data.contents {
+                TexturePageContents::RenderTarget(render_target_id) => {
+                    let framebuffer = self.device.create_framebuffer(texture_page);
                     self.render_targets.push(RenderTargetInfo {
                         framebuffer,
                         must_preserve_contents: false
                     });
 
-                    self.paint_textures.push(PaintTexture::RenderTarget(render_target_id));
+                    self.texture_pages.push(TexturePage::RenderTarget(render_target_id));
                 }
-                PaintPageContents::Texels(ref paint_texels) => {
-                    let texels = color::color_slice_to_u8_slice(paint_texels);
-                    self.device.upload_to_texture(&paint_texture,
-                                                  RectI::new(Vector2I::default(), paint_size),
+                TexturePageContents::Texels(ref texels) => {
+                    let texels = color::color_slice_to_u8_slice(texels);
+                    self.device.upload_to_texture(&texture_page,
+                                                  RectI::new(Vector2I::default(), texture_size),
                                                   TextureDataRef::U8(texels));
 
-                    self.paint_textures.push(PaintTexture::Texture(paint_texture));
+                    self.texture_pages.push(TexturePage::Texture(texture_page));
                 }
             }
         }
@@ -807,7 +807,7 @@ where
 
     fn draw_alpha_tiles(&mut self,
                         tile_count: u32,
-                        paint_page: PaintPageId,
+                        color_texture_page: TexturePageId,
                         sampling_flags: TextureSamplingFlags,
                         blend_mode: BlendMode) {
         let blend_mode_program = BlendModeProgram::from_blend_mode(blend_mode);
@@ -866,7 +866,7 @@ where
                 // transparent black paint color doesn't zero out the mask.
                 &self.clear_paint_texture
             }
-            _ => self.paint_texture(paint_page),
+            _ => self.texture_page(color_texture_page),
         };
 
         self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
@@ -1031,7 +1031,7 @@ where
 
     fn draw_solid_tiles(&mut self,
                         tile_count: u32,
-                        paint_page: PaintPageId,
+                        color_texture_page: TexturePageId,
                         sampling_flags: TextureSamplingFlags) {
         let clear_color = self.clear_color_for_draw_operation();
 
@@ -1043,9 +1043,9 @@ where
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
 
-        let paint_texture = self.paint_texture(paint_page);
-        self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
-        textures.push(paint_texture);
+        let texture_page = self.texture_page(color_texture_page);
+        self.device.set_texture_sampling_mode(texture_page, sampling_flags);
+        textures.push(texture_page);
         uniforms.push((&self.solid_tile_program.paint_texture_uniform,
                        UniformData::TextureUnit(0)));
 
@@ -1430,10 +1430,10 @@ where
                    Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
     }
 
-    fn paint_texture(&self, paint_page: PaintPageId) -> &D::Texture {
-        match self.paint_textures[paint_page.0 as usize] {
-            PaintTexture::Texture(ref texture) => texture,
-            PaintTexture::RenderTarget(render_target_id) => {
+    fn texture_page(&self, id: TexturePageId) -> &D::Texture {
+        match self.texture_pages[id.0 as usize] {
+            TexturePage::Texture(ref texture) => texture,
+            TexturePage::RenderTarget(render_target_id) => {
                 let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
                 self.device.framebuffer_texture(framebuffer)
             }
@@ -1568,7 +1568,7 @@ impl<D> TextureCache<D> where D: Device {
     }
 }
 
-enum PaintTexture<D> where D: Device {
+enum TexturePage<D> where D: Device {
     Texture(D::Texture),
     RenderTarget(RenderTargetId),
 }
