@@ -16,6 +16,7 @@ use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::TextureSamplingFlags;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
@@ -37,8 +38,16 @@ pub enum RenderCommand {
         needs_readable_framebuffer: bool,
     },
 
-    // Uploads texture data for use with subsequent rendering commands to the GPU.
-    AddTextureData(TextureData),
+    // Allocates texture pages for the frame.
+    AllocateTexturePages(Vec<TexturePageDescriptor>),
+
+    // Uploads data to a texture page.
+    UploadTexelData { page: TexturePageId, texels: Vec<ColorU>, rect: RectI },
+
+    // Associates a render target with a texture page.
+    //
+    // TODO(pcwalton): Add a rect to this so we can render to subrects of a page.
+    DeclareRenderTarget { render_target_id: RenderTargetId, texture_page_id: TexturePageId },
 
     // Adds fills to the queue.
     AddFills(Vec<FillBatchPrimitive>),
@@ -73,24 +82,12 @@ pub enum RenderCommand {
     Finish { build_time: Duration },
 }
 
-#[derive(Clone, Debug)]
-pub struct TextureData {
-    pub pages: Vec<TexturePageData>,
-}
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TexturePageId(pub u32);
 
 #[derive(Clone, Debug)]
-pub struct TexturePageData {
+pub struct TexturePageDescriptor {
     pub size: Vector2I,
-    pub contents: TexturePageContents,
-}
-
-#[derive(Clone, Debug)]
-pub enum TexturePageContents {
-    Texels(Vec<ColorU>),
-    RenderTarget(RenderTargetId),
 }
 
 #[derive(Clone, Debug)]
@@ -214,8 +211,17 @@ impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
-            RenderCommand::AddTextureData(ref texture_data) => {
-                write!(formatter, "AddTextureData(x{})", texture_data.pages.len())
+            RenderCommand::AllocateTexturePages(ref pages) => {
+                write!(formatter, "AllocateTexturePages(x{})", pages.len())
+            }
+            RenderCommand::UploadTexelData { page, rect, .. } => {
+                write!(formatter, "UploadTexelData({:?}, {:?})", page, rect)
+            }
+            RenderCommand::DeclareRenderTarget { render_target_id, texture_page_id } => {
+                write!(formatter,
+                       "DeclareRenderTarget({:?}, {:?})",
+                       render_target_id,
+                       texture_page_id)
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),

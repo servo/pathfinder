@@ -110,10 +110,12 @@ impl<'a> SceneBuilder<'a> {
 
         // Build paint data.
         let PaintInfo {
-            data: texture_data,
+            render_commands,
             metadata: paint_metadata,
         } = self.scene.build_paint_info();
-        self.listener.send(RenderCommand::AddTextureData(texture_data));
+        for render_command in render_commands {
+            self.listener.send(render_command);
+        }
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
 

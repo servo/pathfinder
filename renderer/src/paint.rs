@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::allocator::{AllocationMode, TextureAllocator, TextureLocation};
-use crate::gpu_data::{TextureData, TexturePageContents, TexturePageData, TexturePageId};
+use crate::gpu_data::{RenderCommand, TexturePageDescriptor, TexturePageId};
 use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
@@ -24,6 +24,7 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::fmt::{self, Debug, Formatter};
+use std::mem;
 
 // The size of a gradient tile.
 //
@@ -153,8 +154,8 @@ impl Paint {
 }
 
 pub struct PaintInfo {
-    /// The data that is sent to the renderer.
-    pub data: TextureData,
+    /// The render commands needed to prepare the textures.
+    pub render_commands: Vec<RenderCommand>,
     /// The metadata for each paint.
     ///
     /// The indices of this vector are paint IDs.
@@ -220,8 +221,9 @@ impl Palette {
                     // 1. Use repeating/clamp on the sides.
                     // 2. Choose an optimal size for the gradient that minimizes memory usage while
                     //    retaining quality.
-                    texture_location = allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
-                                                      AllocationMode::Atlas);
+                    texture_location =  
+                        allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
+                                           AllocationMode::Atlas);
                     sampling_flags = TextureSamplingFlags::empty();
                 }
                 Paint::Pattern(ref pattern) => {
@@ -297,67 +299,86 @@ impl Palette {
             }
         }
 
-        // Render the actual texels.
-        //
-        // TODO(pcwalton): This is slow. Do more on GPU.
-        let mut texture_data = TextureData { pages: vec![] };
+        // Allocate textures.
+        let mut texture_page_descriptors = vec![];
         for page_index in 0..allocator.page_count() {
-            let page_index = TexturePageId(page_index);
-            let page_size = allocator.page_size(page_index);
-            if let Some(render_target_id) = allocator.page_render_target_id(page_index) {
-                texture_data.pages.push(TexturePageData {
-                    size: page_size,
-                    contents: TexturePageContents::RenderTarget(render_target_id),
-                });
-                continue;
-            }
-
-            let page_area = page_size.x() as usize * page_size.y() as usize;
-            let texels = vec![ColorU::default(); page_area];
-            texture_data.pages.push(TexturePageData {
-                size: page_size,
-                contents: TexturePageContents::Texels(texels),
-            });
+            let page_size = allocator.page_size(TexturePageId(page_index));
+            texture_page_descriptors.push(TexturePageDescriptor { size: page_size });
         }
 
+        // Allocate the texels.
+        //
+        // TODO(pcwalton): This is slow. Do more on GPU.
+        let mut page_texels = vec![];
+        for page_index in 0..allocator.page_count() {
+            let page_id = TexturePageId(page_index);
+            let page_size = allocator.page_size(page_id);
+            match allocator.page_render_target_id(page_id) {
+                Some(_) => page_texels.push(vec![]),
+                None => {
+                    let page_area = page_size.x() as usize * page_size.y() as usize;
+                    page_texels.push(vec![ColorU::default(); page_area]);
+                }
+            }
+        }
+
+        // Draw to texels.
+        //
+        // TODO(pcwalton): Do more of this on GPU.
         for (paint, metadata) in self.paints.iter().zip(metadata.iter()) {
             let texture_page = metadata.texture_page;
-            let paint_page_data = &mut texture_data.pages[texture_page.0 as usize];
-            let page_size = paint_page_data.size;
+            let texels = &mut page_texels[texture_page.0 as usize];
+            let page_size = allocator.page_size(texture_page);
             let page_scale = allocator.page_scale(texture_page);
 
-            match paint_page_data.contents {
-                TexturePageContents::Texels(ref mut texels) => {
-                    match paint {
-                        Paint::Color(color) => {
-                            put_pixel(metadata.texture_rect.origin(), *color, texels, page_size);
-                        }
-                        Paint::Gradient(ref gradient) => {
-                            self.render_gradient(gradient,
-                                                 metadata.texture_rect,
-                                                 &metadata.texture_transform,
-                                                 texels,
-                                                 page_size,
-                                                 page_scale);
-                        }
-                        Paint::Pattern(ref pattern) => {
-                            match pattern.source {
-                                PatternSource::RenderTarget(_) => {}
-                                PatternSource::Image(ref image) => {
-                                    self.render_image(image,
-                                                      metadata.texture_rect,
-                                                      texels,
-                                                      page_size);
-                                }
-                            }
+            match paint {
+                Paint::Color(color) => {
+                    put_pixel(metadata.texture_rect.origin(), *color, texels, page_size);
+                }
+                Paint::Gradient(ref gradient) => {
+                    self.render_gradient(gradient,
+                                         metadata.texture_rect,
+                                         &metadata.texture_transform,
+                                         texels,
+                                         page_size,
+                                         page_scale);
+                }
+                Paint::Pattern(ref pattern) => {
+                    match pattern.source {
+                        PatternSource::RenderTarget(_) => {}
+                        PatternSource::Image(ref image) => {
+                            self.render_image(image, metadata.texture_rect, texels, page_size);
                         }
                     }
                 }
-                TexturePageContents::RenderTarget(_) => {}
             }
         }
 
-        return PaintInfo { data: texture_data, metadata };
+        // Create render commands.
+        let mut render_commands = vec![
+            RenderCommand::AllocateTexturePages(texture_page_descriptors)
+        ];
+        for page_index in 0..allocator.page_count() {
+            let page_id = TexturePageId(page_index);
+            let page_size = allocator.page_size(page_id);
+            match allocator.page_render_target_id(page_id) {
+                Some(render_target_id) => {
+                    render_commands.push(RenderCommand::DeclareRenderTarget {
+                        render_target_id,
+                        texture_page_id: page_id,
+                    });
+                }
+                None => {
+                    render_commands.push(RenderCommand::UploadTexelData {
+                        page: page_id,
+                        texels: mem::replace(&mut page_texels[page_index as usize], vec![]),
+                        rect: RectI::new(Vector2I::default(), page_size),
+                    });
+                }
+            }
+        }
+
+        PaintInfo { render_commands, metadata }
     }
 
     // TODO(pcwalton): This is slow. Do on GPU instead.

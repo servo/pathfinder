@@ -20,10 +20,10 @@ use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArr
 use crate::gpu::shaders::{TileFilterBasicProgram, TileFilterBlurProgram, TileFilterProgram};
 use crate::gpu::shaders::{TileFilterTextProgram, TileFilterVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, RenderCommand, RenderTargetTile};
-use crate::gpu_data::{SolidTileVertex, TextureData, TexturePageContents, TexturePageId};
+use crate::gpu_data::{SolidTileVertex, TexturePageDescriptor, TexturePageId};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_color::{self as color, ColorF};
+use pathfinder_color::{self as color, ColorF, ColorU};
 use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, DefringingKernel};
 use pathfinder_content::effects::{Effects, Filter};
 use pathfinder_content::fill::FillRule;
@@ -423,11 +423,20 @@ where
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
+        println!("{:?}", command);
         match *command {
             RenderCommand::Start { bounding_quad, path_count, needs_readable_framebuffer } => {
                 self.start_rendering(bounding_quad, path_count, needs_readable_framebuffer);
             }
-            RenderCommand::AddTextureData(ref paint_data) => self.add_texture_data(paint_data),
+            RenderCommand::AllocateTexturePages(ref texture_page_descriptors) => {
+                self.allocate_texture_pages(texture_page_descriptors)
+            }
+            RenderCommand::UploadTexelData { page, ref texels, rect } => {
+                self.upload_texel_data(page, texels, rect)
+            }
+            RenderCommand::DeclareRenderTarget { render_target_id, texture_page_id } => {
+                self.declare_render_target(render_target_id, texture_page_id)
+            }
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => {
                 self.draw_buffered_fills();
@@ -570,7 +579,7 @@ where
         &self.quad_vertex_indices_buffer
     }
 
-    fn add_texture_data(&mut self, texture_data: &TextureData) {
+    fn allocate_texture_pages(&mut self, texture_page_descriptors: &[TexturePageDescriptor]) {
         // Clear out old paint textures.
         for old_texture_page in self.texture_pages.drain(..) {
             let old_texture = self.device.destroy_framebuffer(old_texture_page.framebuffer);
@@ -580,31 +589,34 @@ where
         // Clear out old render targets.
         self.render_targets.clear();
 
-        // Build up new paint textures and render targets.
-        for texture_page_data in &texture_data.pages {
-            let texture_size = texture_page_data.size;
+        // Allocate textures.
+        for texture_page_descriptor in texture_page_descriptors {
+            let texture_size = texture_page_descriptor.size;
             let texture = self.texture_cache.create_texture(&mut self.device,
                                                             TextureFormat::RGBA8,
                                                             texture_size);
-            let texture_page_id = TexturePageId(self.texture_pages.len() as u32);
-            let must_preserve_contents;
-            match texture_page_data.contents {
-                TexturePageContents::RenderTarget(render_target_id) => {
-                    debug_assert_eq!(render_target_id.0, self.render_targets.len() as u32);
-                    self.render_targets.push(RenderTargetInfo { texture_page: texture_page_id });
-                    must_preserve_contents = false;
-                }
-                TexturePageContents::Texels(ref texels) => {
-                    let texels = color::color_slice_to_u8_slice(texels);
-                    self.device.upload_to_texture(&texture,
-                                                  RectI::new(Vector2I::default(), texture_size),
-                                                  TextureDataRef::U8(texels));
-                    must_preserve_contents = true;
-                }
-            }
             let framebuffer = self.device.create_framebuffer(texture);
-            self.texture_pages.push(TexturePage { framebuffer, must_preserve_contents });
+            self.texture_pages.push(TexturePage { framebuffer, must_preserve_contents: false });
         }
+    }
+
+    fn upload_texel_data(&mut self, page_id: TexturePageId, texels: &[ColorU], rect: RectI) {
+        let texture_page = &mut self.texture_pages[page_id.0 as usize];
+        let texture = self.device.framebuffer_texture(&texture_page.framebuffer);
+        let texels = color::color_slice_to_u8_slice(texels);
+        self.device.upload_to_texture(texture, rect, TextureDataRef::U8(texels));
+        texture_page.must_preserve_contents = true;
+    }
+
+    fn declare_render_target(&mut self,
+                             render_target_id: RenderTargetId,
+                             texture_page_id: TexturePageId) {
+        while self.render_targets.len() < render_target_id.0 as usize + 1 {
+            self.render_targets.push(RenderTargetInfo { texture_page: TexturePageId(!0) });
+        }
+        let mut render_target = &mut self.render_targets[render_target_id.0 as usize];
+        debug_assert_eq!(render_target.texture_page, TexturePageId(!0));
+        render_target.texture_page = texture_page_id;
     }
 
     fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile], fill_rule: FillRule) {
