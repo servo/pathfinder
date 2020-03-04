@@ -115,7 +115,7 @@ where
     dest_blend_framebuffer: D::Framebuffer,
     intermediate_dest_framebuffer: D::Framebuffer,
     texture_pages: Vec<TexturePage<D>>,
-    render_targets: Vec<RenderTargetInfo<D>>,
+    render_targets: Vec<RenderTargetInfo>,
     render_target_stack: Vec<RenderTargetId>,
 
     // This is a dummy texture consisting solely of a single `rgba(0, 0, 0, 255)` texel. It serves
@@ -573,43 +573,37 @@ where
     fn add_texture_data(&mut self, texture_data: &TextureData) {
         // Clear out old paint textures.
         for old_texture_page in self.texture_pages.drain(..) {
-            match old_texture_page {
-                TexturePage::Texture(texture) => self.texture_cache.release_texture(texture),
-                TexturePage::RenderTarget(_) => {}
-            }
+            let old_texture = self.device.destroy_framebuffer(old_texture_page.framebuffer);
+            self.texture_cache.release_texture(old_texture);
         }
 
         // Clear out old render targets.
-        for render_target in self.render_targets.drain(..) {
-            let texture = self.device.destroy_framebuffer(render_target.framebuffer);
-            self.texture_cache.release_texture(texture);
-        }
+        self.render_targets.clear();
 
         // Build up new paint textures and render targets.
         for texture_page_data in &texture_data.pages {
             let texture_size = texture_page_data.size;
-            let texture_page = self.texture_cache.create_texture(&mut self.device,
-                                                                  TextureFormat::RGBA8,
-                                                                  texture_size);
+            let texture = self.texture_cache.create_texture(&mut self.device,
+                                                            TextureFormat::RGBA8,
+                                                            texture_size);
+            let texture_page_id = TexturePageId(self.texture_pages.len() as u32);
+            let must_preserve_contents;
             match texture_page_data.contents {
                 TexturePageContents::RenderTarget(render_target_id) => {
-                    let framebuffer = self.device.create_framebuffer(texture_page);
-                    self.render_targets.push(RenderTargetInfo {
-                        framebuffer,
-                        must_preserve_contents: false
-                    });
-
-                    self.texture_pages.push(TexturePage::RenderTarget(render_target_id));
+                    debug_assert_eq!(render_target_id.0, self.render_targets.len() as u32);
+                    self.render_targets.push(RenderTargetInfo { texture_page: texture_page_id });
+                    must_preserve_contents = false;
                 }
                 TexturePageContents::Texels(ref texels) => {
                     let texels = color::color_slice_to_u8_slice(texels);
-                    self.device.upload_to_texture(&texture_page,
+                    self.device.upload_to_texture(&texture,
                                                   RectI::new(Vector2I::default(), texture_size),
                                                   TextureDataRef::U8(texels));
-
-                    self.texture_pages.push(TexturePage::Texture(texture_page));
+                    must_preserve_contents = true;
                 }
             }
+            let framebuffer = self.device.create_framebuffer(texture);
+            self.texture_pages.push(TexturePage { framebuffer, must_preserve_contents });
         }
     }
 
@@ -1148,7 +1142,8 @@ where
     pub fn draw_render_target(&self) -> RenderTarget<D> {
         match self.render_target_stack.last() {
             Some(&render_target_id) => {
-                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
+                let texture_page_id = self.render_target_texture_page_id(render_target_id);
+                let framebuffer = self.texture_page_framebuffer(texture_page_id);
                 RenderTarget::Framebuffer(framebuffer)
             }
             None => {
@@ -1258,9 +1253,9 @@ where
                                render_target_id: RenderTargetId,
                                direction: BlurDirection,
                                sigma: f32) {
-        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-        let source_texture = self.device.framebuffer_texture(source_framebuffer);
-        let source_texture_size = self.device.texture_size(source_texture);
+        let src_texture_page = self.render_target_texture_page_id(render_target_id);
+        let src_texture = self.texture_page(src_texture_page);
+        let src_texture_size = self.device.texture_size(src_texture);
 
         let sigma_inv = 1.0 / sigma;
         let gauss_coeff_x = SQRT_2_PI_INV * sigma_inv;
@@ -1271,7 +1266,7 @@ where
             BlurDirection::X => Vector2F::new(1.0, 0.0),
             BlurDirection::Y => Vector2F::new(0.0, 1.0),
         };
-        let src_offset_scale = src_offset / source_texture_size.to_f32();
+        let src_offset_scale = src_offset / src_texture_size.to_f32();
 
         let uniforms = vec![
             (&self.tile_filter_blur_program.src_offset_scale_uniform,
@@ -1304,8 +1299,8 @@ where
             blend_state: Option<BlendState>) {
         let clear_color = self.clear_color_for_draw_operation();
         let main_viewport = self.main_viewport();
-        let src_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-        let src_texture = self.device.framebuffer_texture(src_framebuffer);
+        let src_texture_page = self.render_target_texture_page_id(render_target_id);
+        let src_texture = self.texture_page(src_texture_page);
         let src_texture_size = self.device.texture_size(src_texture);
 
         uniforms.extend_from_slice(&[
@@ -1372,8 +1367,9 @@ where
 
     fn clear_color_for_draw_operation(&self) -> Option<ColorF> {
         let must_preserve_contents = match self.render_target_stack.last() {
-            Some(render_target_id) => {
-                self.render_targets[render_target_id.0 as usize].must_preserve_contents
+            Some(&render_target_id) => {
+                let texture_page = self.render_target_texture_page_id(render_target_id);
+                self.texture_pages[texture_page.0 as usize].must_preserve_contents
             }
             None => {
                 self.framebuffer_flags
@@ -1392,8 +1388,9 @@ where
 
     fn preserve_draw_framebuffer(&mut self) {
         match self.render_target_stack.last() {
-            Some(render_target_id) => {
-                self.render_targets[render_target_id.0 as usize].must_preserve_contents = true;
+            Some(&render_target_id) => {
+                let texture_page = self.render_target_texture_page_id(render_target_id);
+                self.texture_pages[texture_page.0 as usize].must_preserve_contents = true;
             }
             None => {
                 self.framebuffer_flags
@@ -1404,9 +1401,9 @@ where
 
     pub fn draw_viewport(&self) -> RectI {
         match self.render_target_stack.last() {
-            Some(render_target_id) => {
-                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-                let texture = self.device.framebuffer_texture(framebuffer);
+            Some(&render_target_id) => {
+                let texture_page = self.render_target_texture_page_id(render_target_id);
+                let texture = self.texture_page(texture_page);
                 RectI::new(Vector2I::default(), self.device.texture_size(texture))
             }
             None => self.main_viewport(),
@@ -1430,14 +1427,16 @@ where
                    Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
     }
 
+    fn render_target_texture_page_id(&self, render_target_id: RenderTargetId) -> TexturePageId {
+        self.render_targets[render_target_id.0 as usize].texture_page
+    }
+
+    fn texture_page_framebuffer(&self, id: TexturePageId) -> &D::Framebuffer {
+        &self.texture_pages[id.0 as usize].framebuffer
+    }
+
     fn texture_page(&self, id: TexturePageId) -> &D::Texture {
-        match self.texture_pages[id.0 as usize] {
-            TexturePage::Texture(ref texture) => texture,
-            TexturePage::RenderTarget(render_target_id) => {
-                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-                self.device.framebuffer_texture(framebuffer)
-            }
-        }
+        self.device.framebuffer_texture(&self.texture_page_framebuffer(id))
     }
 
     fn allocate_timer_query(&mut self) -> D::TimerQuery {
@@ -1568,14 +1567,13 @@ impl<D> TextureCache<D> where D: Device {
     }
 }
 
-enum TexturePage<D> where D: Device {
-    Texture(D::Texture),
-    RenderTarget(RenderTargetId),
-}
-
-struct RenderTargetInfo<D> where D: Device {
+struct TexturePage<D> where D: Device {
     framebuffer: D::Framebuffer,
     must_preserve_contents: bool,
+}
+
+struct RenderTargetInfo {
+    texture_page: TexturePageId,
 }
 
 trait ToBlendState {
