@@ -1899,6 +1899,7 @@ dependencies = [
  "pathfinder_geometry 0.4.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_renderer 0.1.0",
+ "pathfinder_resources 0.1.0",
  "pathfinder_simd 0.4.0",
  "wasm-bindgen 0.2.58 (registry+https://github.com/rust-lang/crates.io-index)",
  "web-sys 0.3.35 (registry+https://github.com/rust-lang/crates.io-index)",
