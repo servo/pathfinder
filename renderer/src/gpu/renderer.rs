@@ -20,7 +20,7 @@ use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArr
 use crate::gpu::shaders::{TileFilterBasicProgram, TileFilterBlurProgram, TileFilterProgram};
 use crate::gpu::shaders::{TileFilterTextProgram, TileFilterVertexArray};
 use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, RenderCommand, RenderTargetTile};
-use crate::gpu_data::{SolidTileVertex, TexturePageDescriptor, TexturePageId};
+use crate::gpu_data::{SolidTileVertex, TextureLocation, TexturePageDescriptor, TexturePageId};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF, ColorU};
@@ -430,11 +430,11 @@ where
             RenderCommand::AllocateTexturePages(ref texture_page_descriptors) => {
                 self.allocate_texture_pages(texture_page_descriptors)
             }
-            RenderCommand::UploadTexelData { page, ref texels, rect } => {
-                self.upload_texel_data(page, texels, rect)
+            RenderCommand::UploadTexelData { ref texels, location } => {
+                self.upload_texel_data(texels, location)
             }
-            RenderCommand::DeclareRenderTarget { render_target_id, texture_page_id } => {
-                self.declare_render_target(render_target_id, texture_page_id)
+            RenderCommand::DeclareRenderTarget { id, location } => {
+                self.declare_render_target(id, location)
             }
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => {
@@ -599,23 +599,25 @@ where
         }
     }
 
-    fn upload_texel_data(&mut self, page_id: TexturePageId, texels: &[ColorU], rect: RectI) {
-        let texture_page = &mut self.texture_pages[page_id.0 as usize];
+    fn upload_texel_data(&mut self, texels: &[ColorU], location: TextureLocation) {
+        let texture_page = &mut self.texture_pages[location.page.0 as usize];
         let texture = self.device.framebuffer_texture(&texture_page.framebuffer);
         let texels = color::color_slice_to_u8_slice(texels);
-        self.device.upload_to_texture(texture, rect, TextureDataRef::U8(texels));
+        self.device.upload_to_texture(texture, location.rect, TextureDataRef::U8(texels));
         texture_page.must_preserve_contents = true;
     }
 
     fn declare_render_target(&mut self,
                              render_target_id: RenderTargetId,
-                             texture_page_id: TexturePageId) {
+                             location: TextureLocation) {
         while self.render_targets.len() < render_target_id.0 as usize + 1 {
-            self.render_targets.push(RenderTargetInfo { texture_page: TexturePageId(!0) });
+            self.render_targets.push(RenderTargetInfo {
+                location: TextureLocation { page: TexturePageId(!0), rect: RectI::default() },
+            });
         }
         let mut render_target = &mut self.render_targets[render_target_id.0 as usize];
-        debug_assert_eq!(render_target.texture_page, TexturePageId(!0));
-        render_target.texture_page = texture_page_id;
+        debug_assert_eq!(render_target.location.page, TexturePageId(!0));
+        render_target.location = location;
     }
 
     fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile], fill_rule: FillRule) {
@@ -1153,7 +1155,7 @@ where
     pub fn draw_render_target(&self) -> RenderTarget<D> {
         match self.render_target_stack.last() {
             Some(&render_target_id) => {
-                let texture_page_id = self.render_target_texture_page_id(render_target_id);
+                let texture_page_id = self.render_target_location(render_target_id).page;
                 let framebuffer = self.texture_page_framebuffer(texture_page_id);
                 RenderTarget::Framebuffer(framebuffer)
             }
@@ -1264,7 +1266,7 @@ where
                                render_target_id: RenderTargetId,
                                direction: BlurDirection,
                                sigma: f32) {
-        let src_texture_page = self.render_target_texture_page_id(render_target_id);
+        let src_texture_page = self.render_target_location(render_target_id).page;
         let src_texture = self.texture_page(src_texture_page);
         let src_texture_size = self.device.texture_size(src_texture);
 
@@ -1310,8 +1312,10 @@ where
             blend_state: Option<BlendState>) {
         let clear_color = self.clear_color_for_draw_operation();
         let main_viewport = self.main_viewport();
-        let src_texture_page = self.render_target_texture_page_id(render_target_id);
-        let src_texture = self.texture_page(src_texture_page);
+
+        // TODO(pcwalton): Other viewports.
+        let src_texture_location = self.render_target_location(render_target_id);
+        let src_texture = self.texture_page(src_texture_location.page);
         let src_texture_size = self.device.texture_size(src_texture);
 
         uniforms.extend_from_slice(&[
@@ -1379,7 +1383,7 @@ where
     fn clear_color_for_draw_operation(&self) -> Option<ColorF> {
         let must_preserve_contents = match self.render_target_stack.last() {
             Some(&render_target_id) => {
-                let texture_page = self.render_target_texture_page_id(render_target_id);
+                let texture_page = self.render_target_location(render_target_id).page;
                 self.texture_pages[texture_page.0 as usize].must_preserve_contents
             }
             None => {
@@ -1400,7 +1404,7 @@ where
     fn preserve_draw_framebuffer(&mut self) {
         match self.render_target_stack.last() {
             Some(&render_target_id) => {
-                let texture_page = self.render_target_texture_page_id(render_target_id);
+                let texture_page = self.render_target_location(render_target_id).page;
                 self.texture_pages[texture_page.0 as usize].must_preserve_contents = true;
             }
             None => {
@@ -1412,11 +1416,7 @@ where
 
     pub fn draw_viewport(&self) -> RectI {
         match self.render_target_stack.last() {
-            Some(&render_target_id) => {
-                let texture_page = self.render_target_texture_page_id(render_target_id);
-                let texture = self.texture_page(texture_page);
-                RectI::new(Vector2I::default(), self.device.texture_size(texture))
-            }
+            Some(&render_target_id) => self.render_target_location(render_target_id).rect,
             None => self.main_viewport(),
         }
     }
@@ -1438,8 +1438,8 @@ where
                    Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
     }
 
-    fn render_target_texture_page_id(&self, render_target_id: RenderTargetId) -> TexturePageId {
-        self.render_targets[render_target_id.0 as usize].texture_page
+    fn render_target_location(&self, render_target_id: RenderTargetId) -> TextureLocation {
+        self.render_targets[render_target_id.0 as usize].location
     }
 
     fn texture_page_framebuffer(&self, id: TexturePageId) -> &D::Framebuffer {
@@ -1584,7 +1584,7 @@ struct TexturePage<D> where D: Device {
 }
 
 struct RenderTargetInfo {
-    texture_page: TexturePageId,
+    location: TextureLocation,
 }
 
 trait ToBlendState {

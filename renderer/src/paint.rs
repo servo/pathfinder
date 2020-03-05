@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::allocator::{AllocationMode, TextureAllocator, TextureLocation};
-use crate::gpu_data::{RenderCommand, TexturePageDescriptor, TexturePageId};
+use crate::allocator::{AllocationMode, TextureAllocator};
+use crate::gpu_data::{RenderCommand, TextureLocation, TexturePageDescriptor, TexturePageId};
 use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
@@ -24,7 +24,6 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::fmt::{self, Debug, Formatter};
-use std::mem;
 
 // The size of a gradient tile.
 //
@@ -199,10 +198,8 @@ impl Palette {
 
         // Assign render target locations.
         let mut render_target_locations = vec![];
-        for (render_target_index, render_target) in self.render_targets.iter().enumerate() {
-            let render_target_id = RenderTargetId(render_target_index as u32);
-            render_target_locations.push(allocator.allocate_render_target(render_target.size(),
-                                                                          render_target_id));
+        for render_target in &self.render_targets {
+            render_target_locations.push(allocator.allocate_image(render_target.size()));
         }
 
         // Assign paint locations.
@@ -313,18 +310,9 @@ impl Palette {
         // Allocate the texels.
         //
         // TODO(pcwalton): This is slow. Do more on GPU.
-        let mut page_texels = vec![];
-        for page_index in 0..allocator.page_count() {
-            let page_id = TexturePageId(page_index);
-            let page_size = allocator.page_size(page_id);
-            match allocator.page_render_target_id(page_id) {
-                Some(_) => page_texels.push(vec![]),
-                None => {
-                    let page_area = page_size.x() as usize * page_size.y() as usize;
-                    page_texels.push(vec![ColorU::default(); page_area]);
-                }
-            }
-        }
+        let mut page_texels: Vec<_> = metadata.iter().map(|metadata| {
+            Texels::new(allocator.page_size(metadata.texture_page))
+        }).collect();
 
         // Draw to texels.
         //
@@ -332,26 +320,22 @@ impl Palette {
         for (paint, metadata) in self.paints.iter().zip(metadata.iter()) {
             let texture_page = metadata.texture_page;
             let texels = &mut page_texels[texture_page.0 as usize];
-            let page_size = allocator.page_size(texture_page);
-            let page_scale = allocator.page_scale(texture_page);
 
             match paint {
                 Paint::Color(color) => {
-                    put_pixel(metadata.texture_rect.origin(), *color, texels, page_size);
+                    texels.put_texel(metadata.texture_rect.origin(), *color);
                 }
                 Paint::Gradient(ref gradient) => {
                     self.render_gradient(gradient,
                                          metadata.texture_rect,
                                          &metadata.texture_transform,
-                                         texels,
-                                         page_size,
-                                         page_scale);
+                                         texels);
                 }
                 Paint::Pattern(ref pattern) => {
                     match pattern.source {
                         PatternSource::RenderTarget(_) => {}
                         PatternSource::Image(ref image) => {
-                            self.render_image(image, metadata.texture_rect, texels, page_size);
+                            self.render_image(image, metadata.texture_rect, texels);
                         }
                     }
                 }
@@ -362,23 +346,19 @@ impl Palette {
         let mut render_commands = vec![
             RenderCommand::AllocateTexturePages(texture_page_descriptors)
         ];
-        for page_index in 0..allocator.page_count() {
-            let page_id = TexturePageId(page_index);
-            let page_size = allocator.page_size(page_id);
-            match allocator.page_render_target_id(page_id) {
-                Some(render_target_id) => {
-                    render_commands.push(RenderCommand::DeclareRenderTarget {
-                        render_target_id,
-                        texture_page_id: page_id,
-                    });
-                }
-                None => {
-                    render_commands.push(RenderCommand::UploadTexelData {
-                        page: page_id,
-                        texels: mem::replace(&mut page_texels[page_index as usize], vec![]),
-                        rect: RectI::new(Vector2I::default(), page_size),
-                    });
-                }
+        for (index, location) in render_target_locations.into_iter().enumerate() {
+            let id = RenderTargetId(index as u32);
+            render_commands.push(RenderCommand::DeclareRenderTarget { id, location });
+        }
+        for (page_index, texels) in page_texels.into_iter().enumerate() {
+            if let Some(texel_data) = texels.data {
+                let page_id = TexturePageId(page_index as u32);
+                let page_size = allocator.page_size(page_id);
+                let rect = RectI::new(Vector2I::default(), page_size);
+                render_commands.push(RenderCommand::UploadTexelData {
+                    texels: texel_data,
+                    location: TextureLocation { page: page_id, rect },
+                });
             }
         }
 
@@ -390,9 +370,7 @@ impl Palette {
                        gradient: &Gradient,
                        tex_rect: RectI,
                        tex_transform: &Transform2F,
-                       texels: &mut [ColorU],
-                       tex_size: Vector2I,
-                       tex_scale: Vector2F) {
+                       texels: &mut Texels) {
         match *gradient.geometry() {
             GradientGeometry::Linear(gradient_line) => {
                 // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
@@ -404,12 +382,13 @@ impl Palette {
                 for y in 0..(GRADIENT_TILE_LENGTH as i32) {
                     for x in 0..(GRADIENT_TILE_LENGTH as i32) {
                         let point = tex_rect.origin() + Vector2I::new(x, y);
-                        let vector = point.to_f32().scale_xy(tex_scale) - gradient_line.from();
+                        let vector = point.to_f32().scale_xy(texels.scale()) -
+                            gradient_line.from();
 
                         let mut t = gradient_line.vector().projection_coefficient(vector);
                         t = util::clamp(t, 0.0, 1.0);
 
-                        put_pixel(point, gradient.sample(t), texels, tex_size);
+                        texels.put_texel(point, gradient.sample(t));
                     }
                 }
             }
@@ -530,27 +509,20 @@ impl Palette {
                             }
                         };
 
-                        put_pixel(point, color, texels, tex_size);
+                        texels.put_texel(point, color);
                     }
                 }
             }
         }
     }
 
-    fn render_image(&self,
-                    image: &Image,
-                    tex_rect: RectI,
-                    texels: &mut [ColorU],
-                    tex_size: Vector2I) {
+    fn render_image(&self, image: &Image, tex_rect: RectI, texels: &mut Texels) {
         let image_size = image.size();
         for y in 0..image_size.y() {
             let dest_origin = tex_rect.origin() + Vector2I::new(0, y);
-            let dest_start_index = paint_texel_index(dest_origin, tex_size);
             let src_start_index = y as usize * image_size.x() as usize;
-            let dest_end_index = dest_start_index + image_size.x() as usize;
             let src_end_index = src_start_index + image_size.x() as usize;
-            texels[dest_start_index..dest_end_index].copy_from_slice(
-                &image.pixels()[src_start_index..src_end_index]);
+            texels.blit_scanline(dest_origin, &image.pixels()[src_start_index..src_end_index]);
         }
     }
 }
@@ -565,12 +537,41 @@ impl PaintMetadata {
     }
 }
 
-fn paint_texel_index(position: Vector2I, tex_size: Vector2I) -> usize {
-    position.y() as usize * tex_size.x() as usize + position.x() as usize
+struct Texels {
+    data: Option<Vec<ColorU>>,
+    size: Vector2I,
 }
 
-fn put_pixel(position: Vector2I, color: ColorU, texels: &mut [ColorU], tex_size: Vector2I) {
-    texels[paint_texel_index(position, tex_size)] = color
+impl Texels {
+    fn new(size: Vector2I) -> Texels {
+        Texels { data: None, size }
+    }
+
+    fn texel_index(&self, position: Vector2I) -> usize {
+        position.y() as usize * self.size.x() as usize + position.x() as usize
+    }
+
+    fn allocate_texels_if_necessary(&mut self) {
+        if self.data.is_none() {
+            let area = self.size.x() as usize * self.size.y() as usize;
+            self.data = Some(vec![ColorU::transparent_black(); area]);
+        }
+    }
+
+    fn blit_scanline(&mut self, dest_origin: Vector2I, src: &[ColorU]) {
+        self.allocate_texels_if_necessary();
+        let start_index = self.texel_index(dest_origin);
+        let end_index = start_index + src.len();
+        self.data.as_mut().unwrap()[start_index..end_index].copy_from_slice(src)
+    }
+
+    fn put_texel(&mut self, position: Vector2I, color: ColorU) {
+        self.blit_scanline(position, &[color])
+    }
+
+    fn scale(&self) -> Vector2F {
+        Vector2F::splat(1.0) / self.size.to_f32()
+    }
 }
 
 fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {

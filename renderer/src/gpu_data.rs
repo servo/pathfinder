@@ -42,12 +42,12 @@ pub enum RenderCommand {
     AllocateTexturePages(Vec<TexturePageDescriptor>),
 
     // Uploads data to a texture page.
-    UploadTexelData { page: TexturePageId, texels: Vec<ColorU>, rect: RectI },
+    UploadTexelData { texels: Vec<ColorU>, location: TextureLocation },
 
     // Associates a render target with a texture page.
     //
     // TODO(pcwalton): Add a rect to this so we can render to subrects of a page.
-    DeclareRenderTarget { render_target_id: RenderTargetId, texture_page_id: TexturePageId },
+    DeclareRenderTarget { id: RenderTargetId, location: TextureLocation },
 
     // Adds fills to the queue.
     AddFills(Vec<FillBatchPrimitive>),
@@ -88,6 +88,12 @@ pub struct TexturePageId(pub u32);
 #[derive(Clone, Debug)]
 pub struct TexturePageDescriptor {
     pub size: Vector2I,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct TextureLocation {
+    pub page: TexturePageId,
+    pub rect: RectI,
 }
 
 #[derive(Clone, Debug)]
@@ -214,14 +220,11 @@ impl Debug for RenderCommand {
             RenderCommand::AllocateTexturePages(ref pages) => {
                 write!(formatter, "AllocateTexturePages(x{})", pages.len())
             }
-            RenderCommand::UploadTexelData { page, rect, .. } => {
-                write!(formatter, "UploadTexelData({:?}, {:?})", page, rect)
+            RenderCommand::UploadTexelData { ref texels, location } => {
+                write!(formatter, "UploadTexelData({:?}, {:?})", texels, location)
             }
-            RenderCommand::DeclareRenderTarget { render_target_id, texture_page_id } => {
-                write!(formatter,
-                       "DeclareRenderTarget({:?}, {:?})",
-                       render_target_id,
-                       texture_page_id)
+            RenderCommand::DeclareRenderTarget { id, location } => {
+                write!(formatter, "DeclareRenderTarget({:?}, {:?})", id, location)
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
