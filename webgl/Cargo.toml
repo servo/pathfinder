@@ -6,12 +6,14 @@ authors = ["Sebastian Köln <s3bk@protonmail.com>"]
 
 [dependencies]
 wasm-bindgen = "*"
-log = "0.4.8"
 
 [dependencies.image]
 version = "0.21"
 default-features = false
 features = ["png_codec"]
+
+[dependencies.pathfinder_log]
+path = "../log"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"

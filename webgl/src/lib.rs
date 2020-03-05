@@ -11,7 +11,7 @@
 //! A WebGL implementation of the device abstraction.
 
 #[macro_use]
-extern crate log;
+extern crate pathfinder_log;
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
