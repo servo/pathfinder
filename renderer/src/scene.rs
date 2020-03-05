@@ -46,9 +46,7 @@ impl Scene {
         }
     }
 
-    pub fn push_path(&mut self, mut path: DrawPath) {
-        path.outline.transform(&path.transform());
-
+    pub fn push_path(&mut self, path: DrawPath) {
         self.bounds = self.bounds.union_rect(path.outline.bounds());
         self.paths.push(path);
 
@@ -225,7 +223,6 @@ impl<'a> Iterator for PathIter<'a> {
 pub struct DrawPath {
     outline: Outline,
     paint: PaintId,
-    transform: Transform2F,
     clip_path: Option<ClipPathId>,
     fill_rule: FillRule,
     blend_mode: BlendMode,
@@ -275,7 +272,6 @@ impl DrawPath {
         DrawPath {
             outline,
             paint,
-            transform: Transform2F::default(),
             clip_path: None,
             fill_rule: FillRule::Winding,
             blend_mode: BlendMode::SrcOver,
@@ -287,16 +283,6 @@ impl DrawPath {
     #[inline]
     pub fn outline(&self) -> &Outline {
         &self.outline
-    }
-
-    #[inline]
-    pub(crate) fn transform(&self) -> Transform2F {
-        self.transform
-    }
-
-    #[inline]
-    pub fn set_transform(&mut self, new_transform: Transform2F) {
-        self.transform = new_transform
     }
 
     #[inline]

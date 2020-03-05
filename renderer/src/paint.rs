@@ -146,9 +146,7 @@ impl Paint {
                     }
                 }
             }
-            Paint::Pattern(_) => {
-                // TODO(pcwalton): Implement this.
-            }
+            Paint::Pattern(ref mut pattern) => pattern.transform = *transform * pattern.transform,
         }
     }
 }
@@ -283,18 +281,24 @@ impl Palette {
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(gradient_tile_scale / view_box_size.to_f32())
                 }
-                Paint::Pattern(Pattern { source: PatternSource::Image(_), .. }) => {
+                Paint::Pattern(Pattern { source: PatternSource::Image(_), transform, .. }) => {
                     let texture_origin_uv =
                         rect_to_uv(metadata.texture_rect, texture_scale).origin();
                     Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(texture_scale)
+                        Transform2F::from_scale(texture_scale) *
+                        transform.inverse()
                 }
-                Paint::Pattern(Pattern { source: PatternSource::RenderTarget(_), .. }) => {
+                Paint::Pattern(Pattern {
+                    source: PatternSource::RenderTarget(_),
+                    transform,
+                    ..
+                }) => {
                     // FIXME(pcwalton): Only do this in GL, not Metal!
                     let texture_origin_uv = rect_to_uv(metadata.texture_rect,
                                                        texture_scale).lower_left();
                     Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(texture_scale.scale_xy(Vector2F::new(1.0, -1.0)))
+                        Transform2F::from_scale(texture_scale.scale_xy(Vector2F::new(1.0, -1.0))) *
+                        transform.inverse()
                 }
             }
         }
@@ -553,13 +557,10 @@ impl Palette {
 
 impl PaintMetadata {
     // TODO(pcwalton): Apply clamp/repeat to tile rect.
-    pub(crate) fn calculate_tex_coords(&self,
-                                       tile_position: Vector2I,
-                                       path_transform_inv: Transform2F)
-                                       -> Vector2F {
+    pub(crate) fn calculate_tex_coords(&self, tile_position: Vector2I) -> Vector2F {
         let tile_size = Vector2I::new(TILE_WIDTH as i32, TILE_HEIGHT as i32);
         let position = tile_position.scale_xy(tile_size).to_f32();
-        let tex_coords = self.texture_transform * path_transform_inv * position;
+        let tex_coords = self.texture_transform * position;
         tex_coords
     }
 }

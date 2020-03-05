@@ -223,20 +223,21 @@ impl BuiltSVG {
     }
 
     fn push_draw_path(&mut self,
-                      outline: Outline,
+                      mut outline: Outline,
                       name: String,
                       state: &State,
                       paint: &UsvgPaint,
                       opacity: Opacity,
                       fill_rule: UsvgFillRule) {
-        let style = self.scene.push_paint(&Paint::from_svg_paint(paint, &mut self.result_flags));
+        outline.transform(&state.transform);
+        let paint = Paint::from_svg_paint(paint, &state.transform, &mut self.result_flags);
+        let style = self.scene.push_paint(&paint);
         let fill_rule = FillRule::from_usvg_fill_rule(fill_rule);
         let mut path = DrawPath::new(outline, style);
         path.set_clip_path(state.clip_path);
         path.set_fill_rule(fill_rule);
         path.set_name(name);
         path.set_opacity((opacity.value() * 255.0) as u8);
-        path.set_transform(state.transform);
         self.scene.push_path(path);
     }
 }
@@ -284,21 +285,29 @@ impl Display for BuildResultFlags {
 }
 
 trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Self;
+    fn from_svg_paint(svg_paint: &UsvgPaint,
+                      transform: &Transform2F,
+                      result_flags: &mut BuildResultFlags)
+                      -> Self;
 }
 
 impl PaintExt for Paint {
     #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint,
+                      transform: &Transform2F,
+                      result_flags: &mut BuildResultFlags)
+                      -> Paint {
         // TODO(pcwalton): Support gradients.
-        Paint::Color(match *svg_paint {
+        let mut paint = Paint::Color(match *svg_paint {
             UsvgPaint::Color(color) => ColorU::from_svg_color(color),
             UsvgPaint::Link(_) => {
                 // TODO(pcwalton)
                 result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
                 ColorU::black()
             }
-        })
+        });
+        paint.apply_transform(transform);
+        paint
     }
 }
 

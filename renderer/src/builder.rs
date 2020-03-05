@@ -188,7 +188,6 @@ impl<'a> SceneBuilder<'a> {
             blend_mode: path_object.blend_mode(),
             opacity: path_object.opacity(),
             built_clip_path,
-            transform_inv: path_object.transform().inverse(),
         }));
 
         tiler.generate_tiles();
@@ -359,10 +358,7 @@ impl<'a> SceneBuilder<'a> {
                         let solid_tiles = &built_draw_path.path.solid_tiles;
                         let path_index = (path_subindex + start_index) as u32;
                         let path = &self.scene.paths[path_index as usize];
-                        let metadata = DepthMetadata {
-                            paint_id: path.paint(),
-                            transform: path.transform(),
-                        };
+                        let metadata = DepthMetadata { paint_id: path.paint() };
                         z_buffer.update(solid_tiles, current_depth, metadata);
                         current_depth += 1;
                     }
@@ -762,9 +758,7 @@ impl AlphaTileVertex {
            draw_tiling_path_info: &DrawTilingPathInfo)
            -> AlphaTileVertex {
         let tile_position = tile_origin + tile_offset;
-        let transform_inv = draw_tiling_path_info.transform_inv;
-        let color_uv = draw_tiling_path_info.paint_metadata.calculate_tex_coords(tile_position,
-                                                                                 transform_inv);
+        let color_uv = draw_tiling_path_info.paint_metadata.calculate_tex_coords(tile_position);
         let mask_uv = calculate_mask_uv(tile_index, tile_offset);
         AlphaTileVertex {
             tile_x: tile_position.x() as i16,

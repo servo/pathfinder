@@ -11,17 +11,21 @@
 //! Raster image patterns.
 
 use crate::render_target::RenderTargetId;
+use crate::util;
 use pathfinder_color::{self as color, ColorU};
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2I;
 use std::fmt::{self, Debug, Formatter};
+use std::hash::{Hash, Hasher};
 
 #[cfg(feature = "pf-image")]
 use image::RgbaImage;
 
 /// A raster image pattern.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Pattern {
     pub source: PatternSource,
+    pub transform: Transform2F,
     pub flags: PatternFlags,
 }
 
@@ -51,8 +55,8 @@ bitflags! {
 
 impl Pattern {
     #[inline]
-    pub fn new(source: PatternSource, flags: PatternFlags) -> Pattern {
-        Pattern { source, flags }
+    pub fn new(source: PatternSource, transform: Transform2F, flags: PatternFlags) -> Pattern {
+        Pattern { source, transform, flags }
     }
 }
 
@@ -104,5 +108,15 @@ impl Debug for Image {
     #[inline]
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "(image {}×{} px)", self.size.x(), self.size.y())
+    }
+}
+
+impl Eq for Pattern {}
+
+impl Hash for Pattern {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.source.hash(state);
+        util::hash_transform2f(self.transform, state);
+        self.flags.hash(state);
     }
 }

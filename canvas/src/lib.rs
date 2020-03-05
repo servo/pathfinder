@@ -101,9 +101,11 @@ impl CanvasRenderingContext2D {
         let paint = self.current_state.resolve_paint(&paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        let mut path = DrawPath::new(path.into_outline(), paint_id);
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
+
+        let mut path = DrawPath::new(outline, paint_id);
         path.set_blend_mode(BlendMode::Clear);
-        path.set_transform(self.current_state.transform);
         self.scene.push_path(path);
     }
 
@@ -245,7 +247,7 @@ impl CanvasRenderingContext2D {
         self.current_state.clip_path = Some(clip_path_id);
     }
 
-    fn push_path(&mut self, outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
+    fn push_path(&mut self, mut outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
         let transform = self.current_state.transform;
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
@@ -259,13 +261,15 @@ impl CanvasRenderingContext2D {
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
             let paint_id = self.scene.push_paint(&paint);
 
-            let mut path = DrawPath::new(outline.clone(), paint_id);
+            let mut outline = outline.clone();
+            outline.transform(&(Transform2F::from_translation(self.current_state.shadow_offset) *
+                                transform));
+
+            let mut path = DrawPath::new(outline, paint_id);
             path.set_clip_path(clip_path);
             path.set_fill_rule(fill_rule);
             path.set_blend_mode(blend_mode);
             path.set_opacity(opacity);
-            path.set_transform(Transform2F::from_translation(self.current_state.shadow_offset) *
-                               transform);
             self.scene.push_path(path);
 
             self.composite_shadow_blur_render_targets_if_needed(shadow_blur_render_target_ids);
@@ -273,13 +277,13 @@ impl CanvasRenderingContext2D {
         }
 
         let render_target_id = self.push_render_target_if_needed(composite_op);
+        outline.transform(&transform);
 
         let mut path = DrawPath::new(outline, paint_id);
         path.set_clip_path(clip_path);
         path.set_fill_rule(fill_rule);
         path.set_blend_mode(blend_mode);
         path.set_opacity(opacity);
-        path.set_transform(transform);
         self.scene.push_path(path);
 
         self.composite_render_target_if_needed(composite_op, render_target_id);

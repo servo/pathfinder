@@ -18,7 +18,6 @@ use pathfinder_content::segment::Segment;
 use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use std::cmp::Ordering;
 use std::mem;
@@ -52,10 +51,6 @@ pub(crate) struct DrawTilingPathInfo<'a> {
     pub(crate) paint_metadata: &'a PaintMetadata,
     pub(crate) blend_mode: BlendMode,
     pub(crate) opacity: u8,
-    // The inverse of the path transform.
-    //
-    // We calculate texture transforms with this.
-    pub(crate) transform_inv: Transform2F,
     pub(crate) built_clip_path: Option<&'a BuiltPath>,
 }
 

@@ -423,7 +423,6 @@ where
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
-        println!("{:?}", command);
         match *command {
             RenderCommand::Start { bounding_quad, path_count, needs_readable_framebuffer } => {
                 self.start_rendering(bounding_quad, path_count, needs_readable_framebuffer);

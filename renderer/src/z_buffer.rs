@@ -16,7 +16,6 @@ use crate::paint::{PaintId, PaintMetadata};
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2I;
 use vec_map::VecMap;
 
@@ -32,7 +31,6 @@ pub(crate) struct SolidTiles {
 #[derive(Clone, Copy)]
 pub(crate) struct DepthMetadata {
     pub(crate) paint_id: PaintId,
-    pub(crate) transform: Transform2F,
 }
 impl ZBuffer {
     pub(crate) fn new(view_box: RectF) -> ZBuffer {
@@ -73,7 +71,6 @@ impl ZBuffer {
 
             let depth_metadata = self.depth_metadata[depth as usize];
             let paint_metadata = &paint_metadata[depth_metadata.paint_id.0 as usize];
-            let transform = depth_metadata.transform;
 
             let tile_position = tile_coords + self.buffer.rect.origin();
 
@@ -93,16 +90,10 @@ impl ZBuffer {
 
             let batch = solid_tiles.batches.last_mut().unwrap();
             batch.vertices.extend_from_slice(&[
-                SolidTileVertex::new(tile_position, transform, paint_metadata),
-                SolidTileVertex::new(tile_position + Vector2I::new(1, 0),
-                                     transform,
-                                     paint_metadata),
-                SolidTileVertex::new(tile_position + Vector2I::new(0, 1),
-                                     transform,
-                                     paint_metadata),
-                SolidTileVertex::new(tile_position + Vector2I::new(1, 1),
-                                     transform,
-                                     paint_metadata),
+                SolidTileVertex::new(tile_position, paint_metadata),
+                SolidTileVertex::new(tile_position + Vector2I::new(1, 0), paint_metadata),
+                SolidTileVertex::new(tile_position + Vector2I::new(0, 1), paint_metadata),
+                SolidTileVertex::new(tile_position + Vector2I::new(1, 1), paint_metadata),
             ]);
         }
 
@@ -111,9 +102,9 @@ impl ZBuffer {
 }
 
 impl SolidTileVertex {
-    fn new(tile_position: Vector2I, transform: Transform2F, paint_metadata: &PaintMetadata)
+    fn new(tile_position: Vector2I, paint_metadata: &PaintMetadata)
            -> SolidTileVertex {
-        let color_uv = paint_metadata.calculate_tex_coords(tile_position, transform);
+        let color_uv = paint_metadata.calculate_tex_coords(tile_position);
         SolidTileVertex {
             tile_x: tile_position.x() as i16,
             tile_y: tile_position.y() as i16,

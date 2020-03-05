@@ -9,10 +9,10 @@
 // except according to those terms.
 
 use crate::sorted_vector::SortedVector;
+use crate::util;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::util;
-use pathfinder_simd::default::F32x4;
+use pathfinder_geometry::util as geometry_util;
 use std::cmp::{Ordering, PartialOrd};
 use std::convert;
 use std::hash::{Hash, Hasher};
@@ -47,31 +47,17 @@ impl Hash for Gradient {
         match self.geometry {
             GradientGeometry::Linear(line) => {
                 (0).hash(state);
-                hash_line_segment(line, state);
+                util::hash_line_segment(line, state);
             }
             GradientGeometry::Radial { line, start_radius, end_radius } => {
                 (1).hash(state);
-                hash_line_segment(line, state);
-                hash_f32(start_radius, state);
-                hash_f32(end_radius, state);
+                util::hash_line_segment(line, state);
+                util::hash_f32(start_radius, state);
+                util::hash_f32(end_radius, state);
             }
         }
 
         self.stops.hash(state);
-
-        fn hash_line_segment<H>(line_segment: LineSegment2F, state: &mut H) where H: Hasher {
-            unsafe {
-                let data: [u32; 4] = mem::transmute::<F32x4, [u32; 4]>(line_segment.0);
-                data.hash(state);
-            }
-        }
-
-        fn hash_f32<H>(value: f32, state: &mut H) where H: Hasher {
-            unsafe {
-                let data: u32 = mem::transmute::<f32, u32>(value);
-                data.hash(state);
-            }
-        }
     }
 }
 
@@ -128,7 +114,7 @@ impl Gradient {
             return ColorU::transparent_black();
         }
 
-        t = util::clamp(t, 0.0, 1.0);
+        t = geometry_util::clamp(t, 0.0, 1.0);
         let last_index = self.stops.len() - 1;
         let upper_index = self.stops.binary_search_by(|stop| {
             stop.offset.partial_cmp(&t).unwrap_or(Ordering::Less)
