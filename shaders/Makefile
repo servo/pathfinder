@@ -30,17 +30,16 @@ SHADERS=\
 	tile_alpha_softlight.fs.glsl \
 	tile_copy.fs.glsl \
 	tile_copy.vs.glsl \
-	tile_filter.vs.glsl \
-	tile_filter_blur.fs.glsl \
-	tile_filter_text.fs.glsl \
 	tile_solid.fs.glsl \
 	tile_solid.vs.glsl \
+	tile_solid_filter_blur.fs.glsl \
+	tile_solid_filter_text.fs.glsl \
 	$(EMPTY)
 
 INCLUDES=\
 	tile_alpha_sample.inc.glsl \
-	tile_filter_text_convolve.inc.glsl \
-	tile_filter_text_gamma_correct.inc.glsl \
+	tile_solid_filter_text_convolve.inc.glsl \
+	tile_solid_filter_text_gamma_correct.inc.glsl \
 	$(EMPTY)
 
 OUT=\

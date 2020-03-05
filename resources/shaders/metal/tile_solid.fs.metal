@@ -6,8 +6,8 @@ using namespace metal;
 
 struct spvDescriptorSetBuffer0
 {
-    texture2d<float> uPaintTexture [[id(0)]];
-    sampler uPaintTextureSmplr [[id(1)]];
+    texture2d<float> uColorTexture [[id(0)]];
+    sampler uColorTextureSmplr [[id(1)]];
 };
 
 struct main0_out
@@ -23,7 +23,7 @@ struct main0_in
 fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    float4 color = spvDescriptorSet0.uPaintTexture.sample(spvDescriptorSet0.uPaintTextureSmplr, in.vColorTexCoord);
+    float4 color = spvDescriptorSet0.uColorTexture.sample(spvDescriptorSet0.uColorTextureSmplr, in.vColorTexCoord);
     out.oFragColor = float4(color.xyz * color.w, color.w);
     return out;
 }

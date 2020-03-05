@@ -16,13 +16,13 @@
 
 precision highp float;
 
-uniform sampler2D uSrc;
+uniform sampler2D uColorTexture;
 uniform vec2 uSrcSize;
 uniform vec4 uFGColor;
 uniform vec4 uBGColor;
 uniform int uGammaCorrectionEnabled;
 
-in vec2 vTexCoord;
+in vec2 vColorTexCoord;
 
 out vec4 oFragColor;
 
@@ -94,14 +94,14 @@ float convolve7Tap(vec4 alpha0, vec3 alpha1){
 
 
 float sample1Tap(float offset){
-    return texture(uSrc, vec2(vTexCoord . x + offset, vTexCoord . y)). r;
+    return texture(uColorTexture, vec2(vColorTexCoord . x + offset, vColorTexCoord . y)). r;
 }
 
 void main(){
 
     vec3 alpha;
     if(uKernel . w == 0.0){
-        alpha = texture(uSrc, vTexCoord). rrr;
+        alpha = texture(uColorTexture, vColorTexCoord). rrr;
     } else {
         vec4 alphaLeft, alphaRight;
         float alphaCenter;

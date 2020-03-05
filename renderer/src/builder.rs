@@ -13,10 +13,10 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeProgram, MASK_TILES_ACROSS};
 use crate::gpu_data::{AlphaTile, AlphaTileBatch, AlphaTileVertex, FillBatchPrimitive, MaskTile};
-use crate::gpu_data::{MaskTileVertex, RenderCommand, RenderTargetTile, RenderTargetTileBatch};
-use crate::gpu_data::{RenderTargetTileVertex, SolidTileBatch, TexturePageId, TileObjectPrimitive};
+use crate::gpu_data::{MaskTileVertex, RenderCommand, SolidTile, SolidTileBatch};
+use crate::gpu_data::{TexturePageId, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, RenderCommandListener};
-use crate::paint::{PaintInfo, PaintMetadata};
+use crate::paint::{PaintInfo, PaintMetadata, RenderTargetMetadata};
 use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, DrawTilingPathInfo, TILE_HEIGHT, TILE_WIDTH, Tiler, TilingPathInfo};
@@ -63,13 +63,13 @@ struct BuiltDrawPath {
 pub(crate) struct BuiltPath {
     pub mask_tiles: Vec<MaskTile>,
     pub alpha_tiles: Vec<AlphaTile>,
-    pub solid_tiles: Vec<SolidTile>,
+    pub solid_tiles: Vec<SolidTileInfo>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
     pub fill_rule: FillRule,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct SolidTile {
+pub(crate) struct SolidTileInfo {
     pub(crate) coords: Vector2I,
 }
 
@@ -111,7 +111,8 @@ impl<'a> SceneBuilder<'a> {
         // Build paint data.
         let PaintInfo {
             render_commands,
-            metadata: paint_metadata,
+            paint_metadata,
+            render_target_metadata,
         } = self.scene.build_paint_info();
         for render_command in render_commands {
             self.listener.send(render_command);
@@ -132,7 +133,10 @@ impl<'a> SceneBuilder<'a> {
                                  &built_clip_paths)
         });
 
-        self.finish_building(&paint_metadata, built_clip_paths, built_draw_paths);
+        self.finish_building(&paint_metadata,
+                             &render_target_metadata,
+                             built_clip_paths,
+                             built_draw_paths);
 
         let build_time = Instant::now() - start_time;
         self.listener.send(RenderCommand::Finish { build_time });
@@ -197,13 +201,14 @@ impl<'a> SceneBuilder<'a> {
         BuiltDrawPath {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
-            color_texture_page: paint_metadata.texture_page,
+            color_texture_page: paint_metadata.location.page,
             sampling_flags: paint_metadata.sampling_flags,
         }
     }
 
     fn cull_tiles(&self,
                   paint_metadata: &[PaintMetadata],
+                  render_target_metadata: &[RenderTargetMetadata],
                   built_clip_paths: Vec<BuiltPath>,
                   built_draw_paths: Vec<BuiltDrawPath>)
                   -> CulledTiles {
@@ -254,17 +259,28 @@ impl<'a> SceneBuilder<'a> {
                     let tile_rect = tiles::round_rect_out_to_tile_bounds(effective_view_box);
                     let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
                     let mut tiles = vec![];
+                    let uv_scale = Vector2F::splat(1.0) / tile_rect.lower_right().to_f32();
+                    let metadata = &render_target_metadata[render_target.0 as usize];
                     for tile_y in tile_rect.min_y()..tile_rect.max_y() {
                         for tile_x in tile_rect.min_x()..tile_rect.max_x() {
                             let tile_coords = Vector2I::new(tile_x, tile_y);
-                            if layer_z_buffer.test(tile_coords, current_depth) {
-                                tiles.push(RenderTargetTile::new(tile_coords));
+                            if !layer_z_buffer.test(tile_coords, current_depth) {
+                                continue;
                             }
+
+                            let uv_rect =
+                                RectI::new(tile_coords, Vector2I::splat(1)).to_f32()
+                                                                           .scale_xy(uv_scale);
+                            tiles.push(SolidTile::from_texture_rect(tile_coords, uv_rect));
                         }
                     }
-                    let batch = RenderTargetTileBatch { tiles, render_target, effects };
-                    culled_tiles.display_list
-                                .push(CulledDisplayItem::DrawRenderTargetTiles(batch));
+                    let batch = SolidTileBatch {
+                        tiles,
+                        color_texture_page: metadata.location.page,
+                        sampling_flags: TextureSamplingFlags::empty(),
+                        effects,
+                    };
+                    culled_tiles.display_list.push(CulledDisplayItem::DrawSolidTiles(batch));
                     current_depth += 1;
                 }
 
@@ -396,9 +412,6 @@ impl<'a> SceneBuilder<'a> {
                 CulledDisplayItem::DrawAlphaTiles(batch) => {
                     self.listener.send(RenderCommand::DrawAlphaTiles(batch))
                 }
-                CulledDisplayItem::DrawRenderTargetTiles(batch) => {
-                    self.listener.send(RenderCommand::DrawRenderTargetTiles(batch))
-                }
                 CulledDisplayItem::PushRenderTarget(render_target_id) => {
                     self.listener.send(RenderCommand::PushRenderTarget(render_target_id))
                 }
@@ -411,10 +424,14 @@ impl<'a> SceneBuilder<'a> {
 
     fn finish_building(&mut self,
                        paint_metadata: &[PaintMetadata],
+                       render_target_metadata: &[RenderTargetMetadata],
                        built_clip_paths: Vec<BuiltPath>,
                        built_draw_paths: Vec<BuiltDrawPath>) {
         self.listener.send(RenderCommand::FlushFills);
-        let culled_tiles = self.cull_tiles(paint_metadata, built_clip_paths, built_draw_paths);
+        let culled_tiles = self.cull_tiles(paint_metadata,
+                                           render_target_metadata,
+                                           built_clip_paths,
+                                           built_draw_paths);
         self.pack_tiles(culled_tiles);
     }
 
@@ -460,10 +477,10 @@ impl BuiltPath {
     }
 }
 
-impl SolidTile {
+impl SolidTileInfo {
     #[inline]
-    pub(crate) fn new(coords: Vector2I) -> SolidTile {
-        SolidTile { coords }
+    pub(crate) fn new(coords: Vector2I) -> SolidTileInfo {
+        SolidTileInfo { coords }
     }
 }
 
@@ -476,7 +493,6 @@ struct CulledTiles {
 enum CulledDisplayItem {
     DrawSolidTiles(SolidTileBatch),
     DrawAlphaTiles(AlphaTileBatch),
-    DrawRenderTargetTiles(RenderTargetTileBatch),
     PushRenderTarget(RenderTargetId),
     PopRenderTarget,
 }
@@ -793,22 +809,5 @@ impl CulledTiles {
             FillRule::Winding => self.mask_winding_tiles.extend_from_slice(&built_path.mask_tiles),
             FillRule::EvenOdd => self.mask_evenodd_tiles.extend_from_slice(&built_path.mask_tiles),
         }
-    }
-}
-
-impl RenderTargetTile {
-    fn new(tile_coords: Vector2I) -> RenderTargetTile {
-        RenderTargetTile {
-            upper_left:  RenderTargetTileVertex::new(tile_coords),
-            upper_right: RenderTargetTileVertex::new(tile_coords + Vector2I::new(1, 0)),
-            lower_left:  RenderTargetTileVertex::new(tile_coords + Vector2I::new(0, 1)),
-            lower_right: RenderTargetTileVertex::new(tile_coords + Vector2I::splat(1)),
-        }
-    }
-}
-
-impl RenderTargetTileVertex {
-    fn new(tile_coords: Vector2I) -> RenderTargetTileVertex {
-        RenderTargetTileVertex { tile_x: tile_coords.x() as i16, tile_y: tile_coords.y() as i16 }
     }
 }
