@@ -14,25 +14,25 @@ use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu::shaders::{AlphaTileBlendModeProgram, AlphaTileDodgeBurnProgram};
 use crate::gpu::shaders::{AlphaTileHSLProgram, AlphaTileOverlayProgram};
-use crate::gpu::shaders::{AlphaTileProgram, AlphaTileVertexArray, CopyTileProgram};
-use crate::gpu::shaders::{CopyTileVertexArray, FillProgram, FillVertexArray, FilterBasicProgram};
-use crate::gpu::shaders::{FilterBasicVertexArray,FilterBlurProgram, FilterBlurVertexArray};
-use crate::gpu::shaders::{FilterTextProgram, FilterTextVertexArray, MAX_FILLS_PER_BATCH};
-use crate::gpu::shaders::{MaskTileProgram, MaskTileVertexArray, ReprojectionProgram};
-use crate::gpu::shaders::{ReprojectionVertexArray, SolidTileProgram, SolidTileVertexArray};
-use crate::gpu::shaders::{StencilProgram, StencilVertexArray};
-use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, PaintData, PaintPageContents};
-use crate::gpu_data::{PaintPageId, RenderCommand, SolidTileVertex};
+use crate::gpu::shaders::{AlphaTileProgram, AlphaTileVertexArray, BlitProgram, BlitVertexArray};
+use crate::gpu::shaders::{CopyTileProgram, CopyTileVertexArray, FillProgram, FillVertexArray};
+use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MaskTileProgram, MaskTileVertexArray};
+use crate::gpu::shaders::{ReprojectionProgram, ReprojectionVertexArray, SolidTileProgram};
+use crate::gpu::shaders::{SolidTileVertexArray, StencilProgram, StencilVertexArray};
+use crate::gpu::shaders::{TileFilterBasicProgram, TileFilterBlurProgram, TileFilterProgram};
+use crate::gpu::shaders::{TileFilterTextProgram, TileFilterVertexArray};
+use crate::gpu_data::{AlphaTile, FillBatchPrimitive, MaskTile, RenderCommand, RenderTargetTile};
+use crate::gpu_data::{SolidTileVertex, TextureLocation, TexturePageDescriptor, TexturePageId};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_color::{self as color, ColorF};
+use pathfinder_color::{self as color, ColorF, ColorU};
 use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, DefringingKernel};
 use pathfinder_content::effects::{Effects, Filter};
 use pathfinder_content::fill::FillRule;
-use pathfinder_content::pattern::RenderTargetId;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
@@ -80,6 +80,7 @@ where
     // Core data
     dest_framebuffer: DestFramebuffer<D>,
     options: RendererOptions,
+    blit_program: BlitProgram<D>,
     fill_program: FillProgram<D>,
     mask_winding_tile_program: MaskTileProgram<D>,
     mask_evenodd_tile_program: MaskTileProgram<D>,
@@ -92,6 +93,7 @@ where
     alpha_tile_difference_program: AlphaTileBlendModeProgram<D>,
     alpha_tile_exclusion_program: AlphaTileBlendModeProgram<D>,
     alpha_tile_hsl_program: AlphaTileHSLProgram<D>,
+    blit_vertex_array: BlitVertexArray<D>,
     mask_winding_tile_vertex_array: MaskTileVertexArray<D>,
     mask_evenodd_tile_vertex_array: MaskTileVertexArray<D>,
     copy_tile_vertex_array: CopyTileVertexArray<D>,
@@ -114,8 +116,8 @@ where
     mask_framebuffer: D::Framebuffer,
     dest_blend_framebuffer: D::Framebuffer,
     intermediate_dest_framebuffer: D::Framebuffer,
-    paint_textures: Vec<PaintTexture<D>>,
-    render_targets: Vec<RenderTargetInfo<D>>,
+    texture_pages: Vec<TexturePage<D>>,
+    render_targets: Vec<RenderTargetInfo>,
     render_target_stack: Vec<RenderTargetId>,
 
     // This is a dummy texture consisting solely of a single `rgba(0, 0, 0, 255)` texel. It serves
@@ -124,12 +126,13 @@ where
     clear_paint_texture: D::Texture,
 
     // Filter shaders
-    filter_basic_program: FilterBasicProgram<D>,
-    filter_basic_vertex_array: FilterBasicVertexArray<D>,
-    filter_blur_program: FilterBlurProgram<D>,
-    filter_blur_vertex_array: FilterBlurVertexArray<D>,
-    filter_text_program: FilterTextProgram<D>,
-    filter_text_vertex_array: FilterTextVertexArray<D>,
+    tile_filter_basic_program: TileFilterBasicProgram<D>,
+    tile_filter_blur_program: TileFilterBlurProgram<D>,
+    tile_filter_text_program: TileFilterTextProgram<D>,
+    tile_filter_basic_vertex_array: TileFilterVertexArray<D>,
+    tile_filter_blur_vertex_array: TileFilterVertexArray<D>,
+    tile_filter_text_vertex_array: TileFilterVertexArray<D>,
+    tile_filter_vertex_buffer: D::Buffer,
     gamma_lut_texture: D::Texture,
 
     // Stencil shader
@@ -167,6 +170,7 @@ where
                dest_framebuffer: DestFramebuffer<D>,
                options: RendererOptions)
                -> Renderer<D> {
+        let blit_program = BlitProgram::new(&device, resources);
         let fill_program = FillProgram::new(&device, resources);
         let mask_winding_tile_program = MaskTileProgram::new(FillRule::Winding,
                                                              &device,
@@ -188,9 +192,9 @@ where
                                                                           resources,
                                                                           "tile_alpha_exclusion");
         let alpha_tile_hsl_program = AlphaTileHSLProgram::new(&device, resources);
-        let filter_basic_program = FilterBasicProgram::new(&device, resources);
-        let filter_blur_program = FilterBlurProgram::new(&device, resources);
-        let filter_text_program = FilterTextProgram::new(&device, resources);
+        let tile_filter_basic_program = TileFilterBasicProgram::new(&device, resources);
+        let tile_filter_blur_program = TileFilterBlurProgram::new(&device, resources);
+        let tile_filter_text_program = TileFilterTextProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
 
@@ -198,6 +202,7 @@ where
         let gamma_lut_texture = device.create_texture_from_png(resources, "lut/gamma");
 
         let alpha_tile_vertex_buffer = device.create_buffer();
+        let tile_filter_vertex_buffer = device.create_buffer();
         let quad_vertex_positions_buffer = device.create_buffer();
         device.allocate_buffer(
             &quad_vertex_positions_buffer,
@@ -214,6 +219,12 @@ where
         );
         let quads_vertex_indices_buffer = device.create_buffer();
 
+        let blit_vertex_array = BlitVertexArray::new(
+            &device,
+            &blit_program,
+            &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
+        );
         let fill_vertex_array = FillVertexArray::new(
             &device,
             &fill_program,
@@ -283,23 +294,23 @@ where
             &solid_tile_program,
             &quads_vertex_indices_buffer,
         );
-        let filter_basic_vertex_array = FilterBasicVertexArray::new(
+        let tile_filter_basic_vertex_array = TileFilterVertexArray::new(
             &device,
-            &filter_basic_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &tile_filter_basic_program.tile_filter_program,
+            &tile_filter_vertex_buffer,
+            &quads_vertex_indices_buffer,
         );
-        let filter_blur_vertex_array = FilterBlurVertexArray::new(
+        let tile_filter_blur_vertex_array = TileFilterVertexArray::new(
             &device,
-            &filter_blur_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &tile_filter_blur_program.tile_filter_program,
+            &tile_filter_vertex_buffer,
+            &quads_vertex_indices_buffer,
         );
-        let filter_text_vertex_array = FilterTextVertexArray::new(
+        let tile_filter_text_vertex_array = TileFilterVertexArray::new(
             &device,
-            &filter_text_program,
-            &quad_vertex_positions_buffer,
-            &quad_vertex_indices_buffer,
+            &tile_filter_text_program.tile_filter_program,
+            &tile_filter_vertex_buffer,
+            &quads_vertex_indices_buffer,
         );
         let stencil_vertex_array = StencilVertexArray::new(&device, &stencil_program);
         let reprojection_vertex_array = ReprojectionVertexArray::new(
@@ -340,6 +351,7 @@ where
 
             dest_framebuffer,
             options,
+            blit_program,
             fill_program,
             mask_winding_tile_program,
             mask_evenodd_tile_program,
@@ -352,6 +364,7 @@ where
             alpha_tile_difference_program,
             alpha_tile_exclusion_program,
             alpha_tile_hsl_program,
+            blit_vertex_array,
             mask_winding_tile_vertex_array,
             mask_evenodd_tile_vertex_array,
             copy_tile_vertex_array,
@@ -374,17 +387,18 @@ where
             mask_framebuffer,
             dest_blend_framebuffer,
             intermediate_dest_framebuffer,
-            paint_textures: vec![],
+            texture_pages: vec![],
             render_targets: vec![],
             render_target_stack: vec![],
             clear_paint_texture,
 
-            filter_basic_program,
-            filter_basic_vertex_array,
-            filter_blur_program,
-            filter_blur_vertex_array,
-            filter_text_program,
-            filter_text_vertex_array,
+            tile_filter_basic_program,
+            tile_filter_basic_vertex_array,
+            tile_filter_blur_program,
+            tile_filter_blur_vertex_array,
+            tile_filter_text_program,
+            tile_filter_text_vertex_array,
+            tile_filter_vertex_buffer,
             gamma_lut_texture,
 
             stencil_program,
@@ -420,7 +434,15 @@ where
             RenderCommand::Start { bounding_quad, path_count, needs_readable_framebuffer } => {
                 self.start_rendering(bounding_quad, path_count, needs_readable_framebuffer);
             }
-            RenderCommand::AddPaintData(ref paint_data) => self.upload_paint_data(paint_data),
+            RenderCommand::AllocateTexturePages(ref texture_page_descriptors) => {
+                self.allocate_texture_pages(texture_page_descriptors)
+            }
+            RenderCommand::UploadTexelData { ref texels, location } => {
+                self.upload_texel_data(texels, location)
+            }
+            RenderCommand::DeclareRenderTarget { id, location } => {
+                self.declare_render_target(id, location)
+            }
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => {
                 self.draw_buffered_fills();
@@ -435,21 +457,25 @@ where
                 self.push_render_target(render_target_id)
             }
             RenderCommand::PopRenderTarget => self.pop_render_target(),
-            RenderCommand::DrawRenderTarget { render_target, effects } => {
-                self.draw_entire_render_target(render_target, effects)
+            RenderCommand::DrawRenderTargetTiles(ref batch) => {
+                let count = batch.tiles.len();
+                self.upload_render_target_tiles(&batch.tiles);
+                self.draw_render_target_tiles(count as u32, batch.render_target, batch.effects)
             }
             RenderCommand::DrawSolidTiles(ref batch) => {
                 let count = batch.vertices.len() / 4;
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(&batch.vertices);
-                self.draw_solid_tiles(count as u32, batch.paint_page, batch.sampling_flags);
+                self.draw_solid_tiles(count as u32,
+                                      batch.color_texture_page,
+                                      batch.sampling_flags);
             }
             RenderCommand::DrawAlphaTiles(ref batch) => {
                 let count = batch.tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(&batch.tiles);
                 self.draw_alpha_tiles(count as u32,
-                                      batch.paint_page,
+                                      batch.color_texture_page,
                                       batch.sampling_flags,
                                       batch.blend_mode)
             }
@@ -561,49 +587,46 @@ where
         &self.quad_vertex_indices_buffer
     }
 
-    fn upload_paint_data(&mut self, paint_data: &PaintData) {
+    fn allocate_texture_pages(&mut self, texture_page_descriptors: &[TexturePageDescriptor]) {
         // Clear out old paint textures.
-        for paint_texture in self.paint_textures.drain(..) {
-            match paint_texture {
-                PaintTexture::Texture(paint_texture) => {
-                    self.texture_cache.release_texture(paint_texture);
-                }
-                PaintTexture::RenderTarget(_) => {}
-            }
+        for old_texture_page in self.texture_pages.drain(..) {
+            let old_texture = self.device.destroy_framebuffer(old_texture_page.framebuffer);
+            self.texture_cache.release_texture(old_texture);
         }
 
         // Clear out old render targets.
-        for render_target in self.render_targets.drain(..) {
-            let texture = self.device.destroy_framebuffer(render_target.framebuffer);
-            self.texture_cache.release_texture(texture);
+        self.render_targets.clear();
+
+        // Allocate textures.
+        for texture_page_descriptor in texture_page_descriptors {
+            let texture_size = texture_page_descriptor.size;
+            let texture = self.texture_cache.create_texture(&mut self.device,
+                                                            TextureFormat::RGBA8,
+                                                            texture_size);
+            let framebuffer = self.device.create_framebuffer(texture);
+            self.texture_pages.push(TexturePage { framebuffer, must_preserve_contents: false });
         }
+    }
 
-        // Build up new paint textures and render targets.
-        for paint_page_data in &paint_data.pages {
-            let paint_size = paint_page_data.size;
-            let paint_texture = self.texture_cache.create_texture(&mut self.device,
-                                                                  TextureFormat::RGBA8,
-                                                                  paint_size);
-            match paint_page_data.contents {
-                PaintPageContents::RenderTarget(render_target_id) => {
-                    let framebuffer = self.device.create_framebuffer(paint_texture);
-                    self.render_targets.push(RenderTargetInfo {
-                        framebuffer,
-                        must_preserve_contents: false
-                    });
+    fn upload_texel_data(&mut self, texels: &[ColorU], location: TextureLocation) {
+        let texture_page = &mut self.texture_pages[location.page.0 as usize];
+        let texture = self.device.framebuffer_texture(&texture_page.framebuffer);
+        let texels = color::color_slice_to_u8_slice(texels);
+        self.device.upload_to_texture(texture, location.rect, TextureDataRef::U8(texels));
+        texture_page.must_preserve_contents = true;
+    }
 
-                    self.paint_textures.push(PaintTexture::RenderTarget(render_target_id));
-                }
-                PaintPageContents::Texels(ref paint_texels) => {
-                    let texels = color::color_slice_to_u8_slice(paint_texels);
-                    self.device.upload_to_texture(&paint_texture,
-                                                  RectI::new(Vector2I::default(), paint_size),
-                                                  TextureDataRef::U8(texels));
-
-                    self.paint_textures.push(PaintTexture::Texture(paint_texture));
-                }
-            }
+    fn declare_render_target(&mut self,
+                             render_target_id: RenderTargetId,
+                             location: TextureLocation) {
+        while self.render_targets.len() < render_target_id.0 as usize + 1 {
+            self.render_targets.push(RenderTargetInfo {
+                location: TextureLocation { page: TexturePageId(!0), rect: RectI::default() },
+            });
         }
+        let mut render_target = &mut self.render_targets[render_target_id.0 as usize];
+        debug_assert_eq!(render_target.location.page, TexturePageId(!0));
+        render_target.location = location;
     }
 
     fn upload_mask_tiles(&mut self, mask_tiles: &[MaskTile], fill_rule: FillRule) {
@@ -637,6 +660,14 @@ where
                                     BufferTarget::Vertex,
                                     BufferUploadMode::Dynamic);
         self.ensure_index_buffer(alpha_tiles.len());
+    }
+
+    fn upload_render_target_tiles(&mut self, render_target_tiles: &[RenderTargetTile]) {
+        self.device.allocate_buffer(&self.tile_filter_vertex_buffer,
+                                    BufferData::Memory(&render_target_tiles),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
+        self.ensure_index_buffer(render_target_tiles.len());
     }
 
     fn ensure_index_buffer(&mut self, mut length: usize) {
@@ -792,7 +823,7 @@ where
 
     fn draw_alpha_tiles(&mut self,
                         tile_count: u32,
-                        paint_page: PaintPageId,
+                        color_texture_page: TexturePageId,
                         sampling_flags: TextureSamplingFlags,
                         blend_mode: BlendMode) {
         let blend_mode_program = BlendModeProgram::from_blend_mode(blend_mode);
@@ -851,14 +882,13 @@ where
                 // transparent black paint color doesn't zero out the mask.
                 &self.clear_paint_texture
             }
-            _ => self.paint_texture(paint_page),
+            _ => self.texture_page(color_texture_page),
         };
 
         self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
 
         textures.push(paint_texture);
-        uniforms.push((&self.alpha_tile_program.paint_texture_uniform,
-                       UniformData::TextureUnit(1)));
+        uniforms.push((&alpha_tile_program.paint_texture_uniform, UniformData::TextureUnit(1)));
 
         match blend_mode_program {
             BlendModeProgram::Regular => {}
@@ -1017,7 +1047,7 @@ where
 
     fn draw_solid_tiles(&mut self,
                         tile_count: u32,
-                        paint_page: PaintPageId,
+                        color_texture_page: TexturePageId,
                         sampling_flags: TextureSamplingFlags) {
         let clear_color = self.clear_color_for_draw_operation();
 
@@ -1029,9 +1059,9 @@ where
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
         ];
 
-        let paint_texture = self.paint_texture(paint_page);
-        self.device.set_texture_sampling_mode(paint_texture, sampling_flags);
-        textures.push(paint_texture);
+        let texture_page = self.texture_page(color_texture_page);
+        self.device.set_texture_sampling_mode(texture_page, sampling_flags);
+        textures.push(texture_page);
         uniforms.push((&self.solid_tile_program.paint_texture_uniform,
                        UniformData::TextureUnit(0)));
 
@@ -1134,7 +1164,8 @@ where
     pub fn draw_render_target(&self) -> RenderTarget<D> {
         match self.render_target_stack.last() {
             Some(&render_target_id) => {
-                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
+                let texture_page_id = self.render_target_location(render_target_id).page;
+                let framebuffer = self.texture_page_framebuffer(texture_page_id);
                 RenderTarget::Framebuffer(framebuffer)
             }
             None => {
@@ -1161,118 +1192,92 @@ where
     }
 
     // FIXME(pcwalton): This is inefficient and should eventually go away.
-    fn draw_entire_render_target(&mut self, render_target_id: RenderTargetId, effects: Effects) {
+    fn draw_render_target_tiles(&mut self,
+                                count: u32,
+                                render_target_id: RenderTargetId,
+                                effects: Effects) {
         match effects.filter {
             Filter::Composite(composite_op) => {
-                self.composite_render_target(render_target_id, composite_op)
+                self.composite_render_target(count, render_target_id, composite_op)
             }
             Filter::Text { fg_color, bg_color, defringing_kernel, gamma_correction } => {
-                self.draw_text_render_target(render_target_id,
+                self.draw_text_render_target(count,
+                                             render_target_id,
                                              fg_color,
                                              bg_color,
                                              defringing_kernel,
                                              gamma_correction)
             }
             Filter::Blur { direction, sigma } => {
-                self.draw_blur_render_target(render_target_id, direction, sigma)
+                self.draw_blur_render_target(count, render_target_id, direction, sigma)
             }
         }
 
         self.preserve_draw_framebuffer();
     }
 
-    fn composite_render_target(&self,
+    fn composite_render_target(&mut self,
+                               tile_count: u32,
                                render_target_id: RenderTargetId,
                                composite_op: CompositeOp) {
-        let clear_color = self.clear_color_for_draw_operation();
-        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-        let source_texture = self.device.framebuffer_texture(source_framebuffer);
-        let main_viewport = self.main_viewport();
+        self.finish_drawing_render_target_tiles(&self.tile_filter_basic_program
+                                                     .tile_filter_program,
+                                                &self.tile_filter_basic_vertex_array,
+                                                tile_count,
+                                                render_target_id,
+                                                vec![],
+                                                vec![],
+                                                composite_op.to_blend_state());
 
-        let uniforms = vec![
-            (&self.filter_basic_program.framebuffer_size_uniform,
-             UniformData::Vec2(main_viewport.size().to_f32().0)),
-            (&self.filter_basic_program.source_uniform, UniformData::TextureUnit(0)),
-        ];
-
-        let blend_state = composite_op.to_blend_state();
-
-        self.device.draw_elements(6, &RenderState {
-            target: &self.draw_render_target(),
-            program: &self.filter_basic_program.program,
-            vertex_array: &self.filter_basic_vertex_array.vertex_array,
-            primitive: Primitive::Triangles,
-            textures: &[&source_texture],
-            uniforms: &uniforms,
-            viewport: main_viewport,
-            options: RenderOptions {
-                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
-                blend: blend_state,
-                ..RenderOptions::default()
-            },
-        });
+        self.preserve_draw_framebuffer();
     }
 
-    fn draw_text_render_target(&self,
+    fn draw_text_render_target(&mut self,
+                               tile_count: u32,
                                render_target_id: RenderTargetId,
                                fg_color: ColorF,
                                bg_color: ColorF,
                                defringing_kernel: Option<DefringingKernel>,
                                gamma_correction: bool) {
-        let clear_color = self.clear_color_for_draw_operation();
-        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-        let source_texture = self.device.framebuffer_texture(source_framebuffer);
-        let source_texture_size = self.device.texture_size(source_texture);
-        let main_viewport = self.main_viewport();
-
+        let textures = vec![&self.gamma_lut_texture];
         let mut uniforms = vec![
-            (&self.filter_text_program.framebuffer_size_uniform,
-             UniformData::Vec2(main_viewport.size().to_f32().0)),
-            (&self.filter_text_program.source_uniform, UniformData::TextureUnit(0)),
-            (&self.filter_text_program.source_size_uniform,
-             UniformData::Vec2(source_texture_size.0.to_f32x2())),
-            (&self.filter_text_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
-            (&self.filter_text_program.fg_color_uniform, UniformData::Vec4(fg_color.0)),
-            (&self.filter_text_program.bg_color_uniform, UniformData::Vec4(bg_color.0)),
-            (&self.filter_text_program.gamma_correction_enabled_uniform,
+            (&self.tile_filter_text_program.gamma_lut_uniform, UniformData::TextureUnit(0)),
+            (&self.tile_filter_text_program.fg_color_uniform, UniformData::Vec4(fg_color.0)),
+            (&self.tile_filter_text_program.bg_color_uniform, UniformData::Vec4(bg_color.0)),
+            (&self.tile_filter_text_program.gamma_correction_enabled_uniform,
              UniformData::Int(gamma_correction as i32)),
         ];
 
         match defringing_kernel {
             Some(ref kernel) => {
-                uniforms.push((&self.filter_text_program.kernel_uniform,
+                uniforms.push((&self.tile_filter_text_program.kernel_uniform,
                                UniformData::Vec4(F32x4::from_slice(&kernel.0))));
             }
             None => {
-                uniforms.push((&self.filter_text_program.kernel_uniform,
+                uniforms.push((&self.tile_filter_text_program.kernel_uniform,
                                UniformData::Vec4(F32x4::default())));
             }
         }
 
-        self.device.draw_elements(6, &RenderState {
-            target: &self.draw_render_target(),
-            program: &self.filter_text_program.program,
-            vertex_array: &self.filter_text_vertex_array.vertex_array,
-            primitive: Primitive::Triangles,
-            textures: &[&source_texture, &self.gamma_lut_texture],
-            uniforms: &uniforms,
-            viewport: main_viewport,
-            options: RenderOptions {
-                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
-                ..RenderOptions::default()
-            },
-        });
+        self.finish_drawing_render_target_tiles(&self.tile_filter_text_program.tile_filter_program,
+                                                &self.tile_filter_text_vertex_array,
+                                                tile_count,
+                                                render_target_id,
+                                                uniforms,
+                                                textures,
+                                                None);
+
+        self.preserve_draw_framebuffer();
     }
 
-    fn draw_blur_render_target(&self,
+    fn draw_blur_render_target(&mut self,
+                               tile_count: u32,
                                render_target_id: RenderTargetId,
                                direction: BlurDirection,
                                sigma: f32) {
-        let clear_color = self.clear_color_for_draw_operation();
-        let source_framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-        let source_texture = self.device.framebuffer_texture(source_framebuffer);
-        let source_texture_size = self.device.texture_size(source_texture);
-        let main_viewport = self.main_viewport();
+        let src_texture_page = self.render_target_location(render_target_id).page;
+        let src_texture = self.texture_page(src_texture_page);
+        let src_texture_size = self.device.texture_size(src_texture);
 
         let sigma_inv = 1.0 / sigma;
         let gauss_coeff_x = SQRT_2_PI_INV * sigma_inv;
@@ -1283,31 +1288,67 @@ where
             BlurDirection::X => Vector2F::new(1.0, 0.0),
             BlurDirection::Y => Vector2F::new(0.0, 1.0),
         };
-        let src_offset_scale = src_offset / source_texture_size.to_f32();
+        let src_offset_scale = src_offset / src_texture_size.to_f32();
 
         let uniforms = vec![
-            (&self.filter_blur_program.framebuffer_size_uniform,
-             UniformData::Vec2(main_viewport.size().to_f32().0)),
-            (&self.filter_blur_program.src_uniform, UniformData::TextureUnit(0)),
-            (&self.filter_blur_program.src_offset_scale_uniform,
+            (&self.tile_filter_blur_program.src_offset_scale_uniform,
              UniformData::Vec2(src_offset_scale.0)),
-            (&self.filter_blur_program.initial_gauss_coeff_uniform,
+            (&self.tile_filter_blur_program.initial_gauss_coeff_uniform,
              UniformData::Vec3([gauss_coeff_x, gauss_coeff_y, gauss_coeff_z])),
-            (&self.filter_blur_program.support_uniform,
+            (&self.tile_filter_blur_program.support_uniform,
              UniformData::Int(f32::ceil(1.5 * sigma) as i32 * 2)),
         ];
 
-        self.device.draw_elements(6, &RenderState {
+        self.finish_drawing_render_target_tiles(&self.tile_filter_blur_program.tile_filter_program,
+                                                &self.tile_filter_blur_vertex_array,
+                                                tile_count,
+                                                render_target_id,
+                                                uniforms,
+                                                vec![],
+                                                CompositeOp::SrcOver.to_blend_state());
+
+        self.preserve_draw_framebuffer();
+    }
+
+    fn finish_drawing_render_target_tiles<'a>(
+            &'a self,
+            tile_filter_program: &'a TileFilterProgram<D>,
+            tile_filter_vertex_array: &'a TileFilterVertexArray<D>,
+            tile_count: u32,
+            render_target_id: RenderTargetId,
+            mut uniforms: Vec<(&'a D::Uniform, UniformData)>,
+            mut textures: Vec<&'a D::Texture>,
+            blend_state: Option<BlendState>) {
+        let clear_color = self.clear_color_for_draw_operation();
+        let main_viewport = self.main_viewport();
+
+        // TODO(pcwalton): Other viewports.
+        let src_texture_location = self.render_target_location(render_target_id);
+        let src_texture = self.texture_page(src_texture_location.page);
+        let src_texture_size = self.device.texture_size(src_texture);
+
+        uniforms.extend_from_slice(&[
+            (&tile_filter_program.src_uniform, UniformData::TextureUnit(textures.len() as u32)),
+            (&tile_filter_program.src_size_uniform,
+             UniformData::Vec2(src_texture_size.0.to_f32x2())),
+            (&tile_filter_program.transform_uniform,
+             UniformData::Mat4(self.tile_transform().to_columns())),
+            (&tile_filter_program.tile_size_uniform,
+             UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
+        ]);
+        textures.push(src_texture);
+
+        self.device.draw_elements(6 * tile_count, &RenderState {
             target: &self.draw_render_target(),
-            program: &self.filter_blur_program.program,
-            vertex_array: &self.filter_blur_vertex_array.vertex_array,
+            program: &tile_filter_program.program,
+            vertex_array: &tile_filter_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            textures: &[&source_texture],
+            textures: &textures,
             uniforms: &uniforms,
             viewport: main_viewport,
             options: RenderOptions {
                 clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
-                blend: CompositeOp::SrcOver.to_blend_state(),
+                blend: blend_state,
                 ..RenderOptions::default()
             },
         });
@@ -1320,13 +1361,13 @@ where
 
         let main_viewport = self.main_viewport();
 
-        let uniforms = [(&self.filter_basic_program.source_uniform, UniformData::TextureUnit(0))];
+        let uniforms = [(&self.blit_program.src_uniform, UniformData::TextureUnit(0))];
         let textures = [(self.device.framebuffer_texture(&self.intermediate_dest_framebuffer))];
 
         self.device.draw_elements(6, &RenderState {
             target: &RenderTarget::Default,
-            program: &self.filter_basic_program.program,
-            vertex_array: &self.filter_basic_vertex_array.vertex_array,
+            program: &self.blit_program.program,
+            vertex_array: &self.blit_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &textures[..],
             uniforms: &uniforms[..],
@@ -1350,8 +1391,9 @@ where
 
     fn clear_color_for_draw_operation(&self) -> Option<ColorF> {
         let must_preserve_contents = match self.render_target_stack.last() {
-            Some(render_target_id) => {
-                self.render_targets[render_target_id.0 as usize].must_preserve_contents
+            Some(&render_target_id) => {
+                let texture_page = self.render_target_location(render_target_id).page;
+                self.texture_pages[texture_page.0 as usize].must_preserve_contents
             }
             None => {
                 self.framebuffer_flags
@@ -1370,8 +1412,9 @@ where
 
     fn preserve_draw_framebuffer(&mut self) {
         match self.render_target_stack.last() {
-            Some(render_target_id) => {
-                self.render_targets[render_target_id.0 as usize].must_preserve_contents = true;
+            Some(&render_target_id) => {
+                let texture_page = self.render_target_location(render_target_id).page;
+                self.texture_pages[texture_page.0 as usize].must_preserve_contents = true;
             }
             None => {
                 self.framebuffer_flags
@@ -1382,11 +1425,7 @@ where
 
     pub fn draw_viewport(&self) -> RectI {
         match self.render_target_stack.last() {
-            Some(render_target_id) => {
-                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-                let texture = self.device.framebuffer_texture(framebuffer);
-                RectI::new(Vector2I::default(), self.device.texture_size(texture))
-            }
+            Some(&render_target_id) => self.render_target_location(render_target_id).rect,
             None => self.main_viewport(),
         }
     }
@@ -1408,14 +1447,16 @@ where
                    Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
     }
 
-    fn paint_texture(&self, paint_page: PaintPageId) -> &D::Texture {
-        match self.paint_textures[paint_page.0 as usize] {
-            PaintTexture::Texture(ref texture) => texture,
-            PaintTexture::RenderTarget(render_target_id) => {
-                let framebuffer = &self.render_targets[render_target_id.0 as usize].framebuffer;
-                self.device.framebuffer_texture(framebuffer)
-            }
-        }
+    fn render_target_location(&self, render_target_id: RenderTargetId) -> TextureLocation {
+        self.render_targets[render_target_id.0 as usize].location
+    }
+
+    fn texture_page_framebuffer(&self, id: TexturePageId) -> &D::Framebuffer {
+        &self.texture_pages[id.0 as usize].framebuffer
+    }
+
+    fn texture_page(&self, id: TexturePageId) -> &D::Texture {
+        self.device.framebuffer_texture(&self.texture_page_framebuffer(id))
     }
 
     fn allocate_timer_query(&mut self) -> D::TimerQuery {
@@ -1546,14 +1587,13 @@ impl<D> TextureCache<D> where D: Device {
     }
 }
 
-enum PaintTexture<D> where D: Device {
-    Texture(D::Texture),
-    RenderTarget(RenderTargetId),
-}
-
-struct RenderTargetInfo<D> where D: Device {
+struct TexturePage<D> where D: Device {
     framebuffer: D::Framebuffer,
     must_preserve_contents: bool,
+}
+
+struct RenderTargetInfo {
+    location: TextureLocation,
 }
 
 trait ToBlendState {

@@ -44,12 +44,15 @@ pub(crate) struct Tiler<'a, L: RenderCommandListener> {
 #[derive(Clone, Copy)]
 pub(crate) enum TilingPathInfo<'a> {
     Clip,
-    Draw {
-        paint_metadata: &'a PaintMetadata,
-        blend_mode: BlendMode,
-        opacity: u8,
-        built_clip_path: Option<&'a BuiltPath>,
-    },
+    Draw(DrawTilingPathInfo<'a>),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DrawTilingPathInfo<'a> {
+    pub(crate) paint_metadata: &'a PaintMetadata,
+    pub(crate) blend_mode: BlendMode,
+    pub(crate) opacity: u8,
+    pub(crate) built_clip_path: Option<&'a BuiltPath>,
 }
 
 impl<'a, L: RenderCommandListener> Tiler<'a, L> {
@@ -129,11 +132,9 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
     }
 
     fn pack_and_cull_draw_path(&mut self) {
-        let (paint_metadata, blend_mode, opacity, built_clip_path) = match self.path_info {
+        let draw_tiling_path_info = match self.path_info {
             TilingPathInfo::Clip => unreachable!(),
-            TilingPathInfo::Draw { paint_metadata, blend_mode, opacity, built_clip_path } => {
-                (paint_metadata, blend_mode, opacity, built_clip_path)
-            }
+            TilingPathInfo::Draw(draw_tiling_path_info) => draw_tiling_path_info,
         };
 
         for (draw_tile_index, draw_tile) in self.object_builder
@@ -146,7 +147,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                                   .local_tile_index_to_coords(draw_tile_index as u32);
 
             // Figure out what clip tile we need, if any.
-            let clip_tile = match built_clip_path {
+            let clip_tile = match draw_tiling_path_info.built_clip_path {
                 None => None,
                 Some(built_clip_path) => {
                     match built_clip_path.tiles.get(tile_coords) {
@@ -183,7 +184,9 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
 
                 // Next, if this is a solid tile that completely occludes the background, record
                 // that fact and stop here.
-                if paint_metadata.is_opaque && blend_mode.occludes_backdrop() && opacity == !0 {
+                if draw_tiling_path_info.paint_metadata.is_opaque &&
+                        draw_tiling_path_info.blend_mode.occludes_backdrop() &&
+                        draw_tiling_path_info.opacity == !0 {
                     self.object_builder.built_path.solid_tiles.push(SolidTile::new(tile_coords));
                     continue;
                 }
@@ -211,8 +214,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                                            mask_tile_index,
                                            tile_coords,
                                            self.object_index,
-                                           opacity,
-                                           paint_metadata);
+                                           &draw_tiling_path_info);
 
         }
     }

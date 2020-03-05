@@ -16,7 +16,8 @@ use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, Effects
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
-use pathfinder_content::pattern::{Pattern, PatternFlags, RenderTargetId};
+use pathfinder_content::pattern::{Pattern, PatternFlags};
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -96,12 +97,12 @@ impl CanvasRenderingContext2D {
         let mut path = Path2D::new();
         path.rect(rect);
 
-        let mut outline = path.into_outline();
-        outline.transform(&self.current_state.transform);
-
         let paint = Paint::transparent_black();
         let paint = self.current_state.resolve_paint(&paint);
         let paint_id = self.scene.push_paint(&paint);
+
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
 
         let mut path = DrawPath::new(outline, paint_id);
         path.set_blend_mode(BlendMode::Clear);
@@ -198,13 +199,9 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D, fill_rule: FillRule) {
-        let mut outline = path.into_outline();
-        outline.transform(&self.current_state.transform);
-
         let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
         let paint_id = self.scene.push_paint(&paint);
-
-        self.push_path(outline, paint_id, fill_rule);
+        self.push_path(path.into_outline(), paint_id, fill_rule);
     }
 
     #[inline]
@@ -236,7 +233,6 @@ impl CanvasRenderingContext2D {
         stroke_to_fill.offset();
         outline = stroke_to_fill.into_outline();
 
-        outline.transform(&self.current_state.transform);
         self.push_path(outline, paint_id, FillRule::Winding);
     }
 
@@ -251,7 +247,8 @@ impl CanvasRenderingContext2D {
         self.current_state.clip_path = Some(clip_path_id);
     }
 
-    fn push_path(&mut self, outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
+    fn push_path(&mut self, mut outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
+        let transform = self.current_state.transform;
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
         let composite_op = self.current_state.global_composite_operation.to_composite_op();
@@ -265,7 +262,9 @@ impl CanvasRenderingContext2D {
             let paint_id = self.scene.push_paint(&paint);
 
             let mut outline = outline.clone();
-            outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
+            outline.transform(&(Transform2F::from_translation(self.current_state.shadow_offset) *
+                                transform));
+
             let mut path = DrawPath::new(outline, paint_id);
             path.set_clip_path(clip_path);
             path.set_fill_rule(fill_rule);
@@ -278,6 +277,7 @@ impl CanvasRenderingContext2D {
         }
 
         let render_target_id = self.push_render_target_if_needed(composite_op);
+        outline.transform(&transform);
 
         let mut path = DrawPath::new(outline, paint_id);
         path.set_clip_path(clip_path);
@@ -598,6 +598,7 @@ impl Path2D {
         }
     }
 
+<<<<<<< HEAD
     /// Add other path to this path.
     ///
     /// note: any non-closed subpaths will be closed
@@ -622,6 +623,9 @@ impl Path2D {
     }
     
     fn into_outline(mut self) -> Outline {
+=======
+    pub fn into_outline(mut self) -> Outline {
+>>>>>>> 9935c9fdffc8d86383b56b7993973393479d9863
         self.flush_current_contour();
         self.outline
     }

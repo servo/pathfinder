@@ -14,8 +14,9 @@ use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
-use pathfinder_content::pattern::RenderTargetId;
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::TextureSamplingFlags;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
@@ -37,8 +38,16 @@ pub enum RenderCommand {
         needs_readable_framebuffer: bool,
     },
 
-    // Uploads paint data for use with subsequent rendering commands to the GPU.
-    AddPaintData(PaintData),
+    // Allocates texture pages for the frame.
+    AllocateTexturePages(Vec<TexturePageDescriptor>),
+
+    // Uploads data to a texture page.
+    UploadTexelData { texels: Vec<ColorU>, location: TextureLocation },
+
+    // Associates a render target with a texture page.
+    //
+    // TODO(pcwalton): Add a rect to this so we can render to subrects of a page.
+    DeclareRenderTarget { id: RenderTargetId, location: TextureLocation },
 
     // Adds fills to the queue.
     AddFills(Vec<FillBatchPrimitive>),
@@ -62,41 +71,35 @@ pub enum RenderCommand {
     // Draws a batch of solid tiles to the render target on top of the stack.
     DrawSolidTiles(SolidTileBatch),
 
-    // Draws an entire render target to the render target on top of the stack.
+    // Draws a batch of render target tiles to the render target on top of the stack.
     //
-    // FIXME(pcwalton): This draws the entire render target, so it's inefficient. We should get rid
-    // of this command and transition all uses to `DrawAlphaTiles`/`DrawSolidTiles`. The reason it
-    // exists is that we don't have logic to create tiles for blur bounding regions yet.
-    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
+    // FIXME(pcwalton): We should get rid of this command and transition all uses to
+    // `DrawAlphaTiles`/`DrawSolidTiles`. The reason it exists is that we don't have logic to
+    // create tiles for blur bounding regions yet.
+    DrawRenderTargetTiles(RenderTargetTileBatch),
 
     // Presents a rendered frame.
     Finish { build_time: Duration },
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct TexturePageId(pub u32);
+
 #[derive(Clone, Debug)]
-pub struct PaintData {
-    pub pages: Vec<PaintPageData>,
+pub struct TexturePageDescriptor {
+    pub size: Vector2I,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct PaintPageId(pub u32);
-
-#[derive(Clone, Debug)]
-pub struct PaintPageData {
-    pub size: Vector2I,
-    pub contents: PaintPageContents,
-}
-
-#[derive(Clone, Debug)]
-pub enum PaintPageContents {
-    Texels(Vec<ColorU>),
-    RenderTarget(RenderTargetId),
+pub struct TextureLocation {
+    pub page: TexturePageId,
+    pub rect: RectI,
 }
 
 #[derive(Clone, Debug)]
 pub struct AlphaTileBatch {
     pub tiles: Vec<AlphaTile>,
-    pub paint_page: PaintPageId,
+    pub color_texture_page: TexturePageId,
     pub blend_mode: BlendMode,
     pub sampling_flags: TextureSamplingFlags,
 }
@@ -104,8 +107,15 @@ pub struct AlphaTileBatch {
 #[derive(Clone, Debug)]
 pub struct SolidTileBatch {
     pub vertices: Vec<SolidTileVertex>,
-    pub paint_page: PaintPageId,
+    pub color_texture_page: TexturePageId,
     pub sampling_flags: TextureSamplingFlags,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderTargetTileBatch {
+    pub tiles: Vec<RenderTargetTile>,
+    pub render_target: RenderTargetId,
+    pub effects: Effects,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +174,15 @@ pub struct AlphaTile {
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
+pub struct RenderTargetTile {
+    pub upper_left: RenderTargetTileVertex,
+    pub upper_right: RenderTargetTileVertex,
+    pub lower_left: RenderTargetTileVertex,
+    pub lower_right: RenderTargetTileVertex,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
 pub struct MaskTileVertex {
     pub mask_u: u16,
     pub mask_v: u16,
@@ -187,12 +206,25 @@ pub struct AlphaTileVertex {
     pub pad: u8,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct RenderTargetTileVertex {
+    pub tile_x: i16,
+    pub tile_y: i16,
+}
+
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
-            RenderCommand::AddPaintData(ref paint_data) => {
-                write!(formatter, "AddPaintData(x{})", paint_data.pages.len())
+            RenderCommand::AllocateTexturePages(ref pages) => {
+                write!(formatter, "AllocateTexturePages(x{})", pages.len())
+            }
+            RenderCommand::UploadTexelData { ref texels, location } => {
+                write!(formatter, "UploadTexelData({:?}, {:?})", texels, location)
+            }
+            RenderCommand::DeclareRenderTarget { id, location } => {
+                write!(formatter, "DeclareRenderTarget({:?}, {:?})", id, location)
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
@@ -203,14 +235,11 @@ impl Debug for RenderCommand {
                 write!(formatter, "PushRenderTarget({:?})", render_target_id)
             }
             RenderCommand::PopRenderTarget => write!(formatter, "PopRenderTarget"),
-            RenderCommand::DrawRenderTarget { render_target, .. } => {
-                write!(formatter, "DrawRenderTarget({:?})", render_target)
-            }
             RenderCommand::DrawAlphaTiles(ref batch) => {
                 write!(formatter,
                        "DrawAlphaTiles(x{}, {:?}, {:?}, {:?})",
                        batch.tiles.len(),
-                       batch.paint_page,
+                       batch.color_texture_page,
                        batch.blend_mode,
                        batch.sampling_flags)
             }
@@ -218,8 +247,14 @@ impl Debug for RenderCommand {
                 write!(formatter,
                        "DrawSolidTiles(x{}, {:?}, {:?})",
                        batch.vertices.len(),
-                       batch.paint_page,
+                       batch.color_texture_page,
                        batch.sampling_flags)
+            }
+            RenderCommand::DrawRenderTargetTiles(ref batch) => {
+                write!(formatter,
+                       "DrawRenderTarget(x{}, {:?})",
+                       batch.tiles.len(),
+                       batch.render_target)
             }
             RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }

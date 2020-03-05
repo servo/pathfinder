@@ -133,7 +133,6 @@ impl BuiltSVG {
                     path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
                     let path = UsvgPathToSegments::new(path.data.iter().cloned());
-                    let path = Transform2FPathIter::new(path, &state.transform);
                     let outline = Outline::from_segments(path);
 
                     let name = format!("Fill({})", node.id());
@@ -158,8 +157,7 @@ impl BuiltSVG {
 
                     let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
                     stroke_to_fill.offset();
-                    let mut outline = stroke_to_fill.into_outline();
-                    outline.transform(&state.transform);
+                    let outline = stroke_to_fill.into_outline();
 
                     let name = format!("Stroke({})", node.id());
                     self.push_draw_path(outline,
@@ -225,13 +223,15 @@ impl BuiltSVG {
     }
 
     fn push_draw_path(&mut self,
-                      outline: Outline,
+                      mut outline: Outline,
                       name: String,
                       state: &State,
                       paint: &UsvgPaint,
                       opacity: Opacity,
                       fill_rule: UsvgFillRule) {
-        let style = self.scene.push_paint(&Paint::from_svg_paint(paint, &mut self.result_flags));
+        outline.transform(&state.transform);
+        let paint = Paint::from_svg_paint(paint, &state.transform, &mut self.result_flags);
+        let style = self.scene.push_paint(&paint);
         let fill_rule = FillRule::from_usvg_fill_rule(fill_rule);
         let mut path = DrawPath::new(outline, style);
         path.set_clip_path(state.clip_path);
@@ -285,21 +285,29 @@ impl Display for BuildResultFlags {
 }
 
 trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Self;
+    fn from_svg_paint(svg_paint: &UsvgPaint,
+                      transform: &Transform2F,
+                      result_flags: &mut BuildResultFlags)
+                      -> Self;
 }
 
 impl PaintExt for Paint {
     #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint,
+                      transform: &Transform2F,
+                      result_flags: &mut BuildResultFlags)
+                      -> Paint {
         // TODO(pcwalton): Support gradients.
-        Paint::Color(match *svg_paint {
+        let mut paint = Paint::Color(match *svg_paint {
             UsvgPaint::Color(color) => ColorU::from_svg_color(color),
             UsvgPaint::Link(_) => {
                 // TODO(pcwalton)
                 result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
                 ColorU::black()
             }
-        })
+        });
+        paint.apply_transform(transform);
+        paint
     }
 }
 

@@ -18,7 +18,7 @@ use crate::paint::{Paint, PaintId, PaintInfo, Palette};
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
-use pathfinder_content::pattern::RenderTargetId;
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
