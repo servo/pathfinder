@@ -283,7 +283,7 @@ impl Device for GLDevice {
                                      info_log.len() as GLint,
                                      ptr::null_mut(),
                                      info_log.as_mut_ptr() as *mut GLchar); ck();
-                error!("Shader info log:\n{}", String::from_utf8_lossy(&info_log));
+                pa_error!("Shader info log:\n{}", String::from_utf8_lossy(&info_log));
                 panic!("{:?} shader '{}' compilation failed", kind, name);
             }
 

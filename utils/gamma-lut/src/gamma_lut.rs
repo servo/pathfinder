@@ -227,7 +227,7 @@ pub fn build_gamma_correcting_lut(table: &mut [u8; 256], src: u8, contrast: f32,
             let result = (out - dst) / (src - dst);
 
             *v = round_to_u8(255.0 * result);
-            pa_debug!("Setting {:?} to {:?}", ii as u8, *v);
+            debug!("Setting {:?} to {:?}", ii as u8, *v);
 
             ii += 1.0;
         }

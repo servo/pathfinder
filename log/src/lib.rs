@@ -1,44 +1,48 @@
-#[cfg(feature="log_warn")]
-#[macro_use]
-extern crate log;
+pub extern crate log;
 
 #[macro_export]
 macro_rules! pa_log {
-    ($(t:tt)*) => (
+    ($($t:tt)*) => (
         #[cfg(feature="log_warn")]
-        log!($($t)*)
+        $crate::log::log!($($t)*)
     )
 }
 
 #[macro_export]
 macro_rules! pa_debug {
-    ($(t:tt)*) => (
+    ($($t:tt)*) => (
         #[cfg(feature="log_debug")]
-        debug!($($t)*)
+        $crate::log::debug!($($t)*)
     )
 }
 
 #[macro_export]
 macro_rules! pa_trace {
-    ($(t:tt)*) => (
+    ($($t:tt)*) => (
         #[cfg(feature="log_trace")]
-        trace!($($t)*)
+        $crate::log::trace!($($t)*)
     )
 }
 
 #[macro_export]
 macro_rules! pa_info {
-    ($(t:tt)*) => (
+    ($($t:tt)*) => (
         #[cfg(feature="log_info")]
-        info!($($t)*)
+        $crate::log::info!($($t)*)
     )
 }
 
 #[macro_export]
 macro_rules! pa_warn {
-    ($(t:tt)*) => (
+    ($($t:tt)*) => (
         #[cfg(feature="log_warn")]
-        warn!($($t)*)
+        $crate::log::warn!($($t)*)
     )
 }
 
+#[macro_export]
+macro_rules! pa_error {
+    ($($t:tt)*) => (
+        $crate::log::error!($($t)*)
+    )
+}

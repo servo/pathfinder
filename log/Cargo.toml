@@ -5,11 +5,10 @@ authors = ["Sebastian K <s3bk@protonmail.com>"]
 edition = "2018"
 
 [features]
-log_trace = ["log", "log_debug"]
-log_debug = ["log", "log_info"]
-log_info = ["log", "log_warn"]
-log_warn = ["log"]
+log_trace = ["log_debug"]
+log_debug = ["log_info"]
+log_info = ["log_warn"]
+log_warn = []
 
 [dependencies.log]
 version = "0.4.8"
-optional = true
