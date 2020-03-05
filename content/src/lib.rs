@@ -15,7 +15,7 @@
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
-extern crate log;
+extern crate pathfinder_log;
 
 pub mod clip;
 pub mod dash;

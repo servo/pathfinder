@@ -11,7 +11,7 @@
 //! An OpenGL implementation of the device abstraction.
 
 #[macro_use]
-extern crate log;
+extern crate pathfinder_log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLsync};
 use gl::types::{GLuint, GLvoid};

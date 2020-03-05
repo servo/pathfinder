@@ -99,7 +99,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
         self.pack_and_cull();
 
         // Done!
-        debug!("{:#?}", self.object_builder.built_path);
+        pa_debug!("{:#?}", self.object_builder.built_path);
     }
 
     fn generate_strip(&mut self, strip_origin_y: i32) {
@@ -234,8 +234,8 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
 
         let tile_top = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
 
-        debug!("---------- tile y {}({}) ----------", tile_y, tile_top);
-        debug!("old active edges: {:#?}", self.old_active_edges);
+        pa_debug!("---------- tile y {}({}) ----------", tile_y, tile_top);
+        pa_debug!("old active edges: {:#?}", self.old_active_edges);
 
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.
@@ -247,7 +247,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                     -1
                 };
 
-            debug!(
+            pa_debug!(
                 "tile Y {}({}): segment_x={} edge_winding={} current_tile_x={} \
                  current_subtile_x={} current_winding={}",
                 tile_y,
@@ -258,7 +258,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 current_subtile_x,
                 current_winding
             );
-            debug!(
+            pa_debug!(
                 "... segment={:#?} crossing={:?}",
                 active_edge.segment, active_edge.crossing
             );
@@ -287,7 +287,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
 
             // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
-                debug!(
+                pa_debug!(
                     "... emitting backdrop {} @ tile {}",
                     current_winding, current_tile_x
                 );
@@ -325,7 +325,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
             current_winding += edge_winding;
 
             // Process the edge.
-            debug!("about to process existing active edge {:#?}", active_edge);
+            pa_debug!("about to process existing active edge {:#?}", active_edge);
             debug_assert!(f32::abs(active_edge.crossing.y() - tile_top) < 0.1);
             active_edge.process(self.scene_builder, &mut self.object_builder, tile_y);
             if !active_edge.segment.is_none() {
@@ -344,7 +344,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
         let next_endpoint_index = contour.next_endpoint_index_of(point_index.point());
 
-        debug!(
+        pa_debug!(
             "adding new active edge, tile_y={} point_index={} prev={} next={} pos={:?} \
              prevpos={:?} nextpos={:?}",
             tile_y,
@@ -357,7 +357,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
         );
 
         if contour.point_is_logically_above(point_index.point(), prev_endpoint_index) {
-            debug!("... adding prev endpoint");
+            pa_debug!("... adding prev endpoint");
 
             process_active_segment(
                 contour,
@@ -373,11 +373,11 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 y: contour.position_of(prev_endpoint_index).y(),
             });
 
-            debug!("... done adding prev endpoint");
+            pa_debug!("... done adding prev endpoint");
         }
 
         if contour.point_is_logically_above(point_index.point(), next_endpoint_index) {
-            debug!(
+            pa_debug!(
                 "... adding next endpoint {} -> {}",
                 point_index.point(),
                 next_endpoint_index
@@ -397,7 +397,7 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 y: contour.position_of(next_endpoint_index).y(),
             });
 
-            debug!("... done adding next endpoint");
+            pa_debug!("... done adding next endpoint");
         }
     }
 
@@ -449,10 +449,10 @@ fn process_active_segment<L: RenderCommandListener>(
     tile_y: i32,
 ) {
     let mut active_edge = ActiveEdge::from_segment(&contour.segment_after(from_endpoint_index));
-    debug!("... process_active_segment({:#?})", active_edge);
+    pa_debug!("... process_active_segment({:#?})", active_edge);
     active_edge.process(builder, object_builder, tile_y);
     if !active_edge.segment.is_none() {
-        debug!("... ... pushing resulting active edge: {:#?}", active_edge);
+        pa_debug!("... ... pushing resulting active edge: {:#?}", active_edge);
         active_edges.push(active_edge);
     }
 }
@@ -502,7 +502,7 @@ impl ActiveEdge {
                object_builder: &mut ObjectBuilder,
                tile_y: i32) {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
-        debug!(
+        pa_debug!(
             "process_active_edge({:#?}, tile_y={}({}))",
             self, tile_y, tile_bottom
         );
@@ -552,7 +552,7 @@ impl ActiveEdge {
                 split_t = next_t;
             }
 
-            debug!(
+            pa_debug!(
                 "... tile_y={} winding={} segment={:?} t={} before_segment={:?}
                     after_segment={:?}",
                 tile_y, winding, segment, split_t, before_segment, after_segment
@@ -585,7 +585,7 @@ impl ActiveEdge {
         tile_y: i32,
     ) -> Option<LineSegment2F> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
-        debug!(
+        pa_debug!(
             "process_line_segment({:?}, tile_y={}) tile_bottom={}",
             line_segment, tile_y, tile_bottom
         );

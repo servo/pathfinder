@@ -1836,9 +1836,9 @@ dependencies = [
  "arrayvec 0.5.1",
  "bitflags",
  "image 0.23.0",
- "log",
  "pathfinder_color",
  "pathfinder_geometry",
+ "pathfinder_log",
  "pathfinder_simd",
  "quickcheck",
  "smallvec",
@@ -1884,7 +1884,6 @@ dependencies = [
 name = "pathfinder_geometry"
 version = "0.4.0"
 dependencies = [
- "log",
  "pathfinder_simd",
 ]
 
@@ -1894,9 +1893,9 @@ version = "0.1.0"
 dependencies = [
  "gl",
  "half",
- "log",
  "pathfinder_geometry",
  "pathfinder_gpu",
+ "pathfinder_log",
  "pathfinder_resources",
  "pathfinder_simd",
 ]
@@ -1912,6 +1911,13 @@ dependencies = [
  "pathfinder_geometry",
  "pathfinder_resources",
  "pathfinder_simd",
+]
+
+[[package]]
+name = "pathfinder_log"
+version = "0.1.0"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -1972,11 +1978,11 @@ dependencies = [
  "bitflags",
  "byteorder",
  "hashbrown",
- "log",
  "pathfinder_color",
  "pathfinder_content",
  "pathfinder_geometry",
  "pathfinder_gpu",
+ "pathfinder_log",
  "pathfinder_resources",
  "pathfinder_simd",
  "pathfinder_ui",

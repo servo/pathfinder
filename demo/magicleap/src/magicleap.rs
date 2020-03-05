@@ -124,9 +124,9 @@ impl Window for MagicLeapWindow {
         self.begin_frame();
         let eye = match view {
             View::Stereo(eye) if (eye as usize) < ML_VIRTUAL_CAMERA_COUNT => eye as usize,
-            _ => { debug!("Asked for unexpected view: {:?}", view); 0 }
+            _ => { pa_debug!("Asked for unexpected view: {:?}", view); 0 }
         };
-        debug!("Making {} current.", eye);
+        pa_debug!("Making {} current.", eye);
         let viewport = self.virtual_camera_array.viewport;
         let color_id = self.virtual_camera_array.color_id.as_gl_uint();
         let depth_id = self.virtual_camera_array.depth_id.as_gl_uint();
@@ -138,7 +138,7 @@ impl Window for MagicLeapWindow {
             gl::FramebufferTextureLayer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, depth_id, 0, layer_id);
             gl::Viewport(viewport.x as i32, viewport.y as i32, viewport.w as i32, viewport.h as i32);
         }
-        debug!("Made {} current.", eye);
+        pa_debug!("Made {} current.", eye);
     }
 
     fn present(&mut self) {
@@ -157,7 +157,7 @@ fn get_proc_address(s: &str) -> *const c_void {
 
 impl MagicLeapWindow {
     pub fn new(egl_display: EGLDisplay, egl_context: EGLContext) -> MagicLeapWindow {
-        debug!("Creating MagicLeapWindow");
+        pa_debug!("Creating MagicLeapWindow");
         let mut framebuffer_id = 0;
         let graphics_options = MLGraphicsOptions::default();
         let mut graphics_client =  unsafe { mem::zeroed() };
@@ -180,7 +180,7 @@ impl MagicLeapWindow {
             .max()
             .unwrap_or_default();
         let resource_loader = FilesystemResourceLoader::locate();
-        debug!("Created MagicLeapWindow");
+        pa_debug!("Created MagicLeapWindow");
         MagicLeapWindow {
             framebuffer_id,
             graphics_client,
@@ -212,23 +212,23 @@ impl MagicLeapWindow {
 
     fn begin_frame(&mut self) {
         if !self.in_frame {
-            debug!("PF beginning frame");
+            pa_debug!("PF beginning frame");
             let mut params = unsafe { mem::zeroed() };
             unsafe {
                 gl::BindFramebuffer(gl::FRAMEBUFFER, self.framebuffer_id);
                 MLGraphicsInitFrameParams(&mut params).unwrap();
                 let mut result = MLGraphicsBeginFrame(self.graphics_client, &params, &mut self.frame_handle, &mut self.virtual_camera_array);
                 if result == ML_RESULT_TIMEOUT {
-                    info!("PF frame timeout");
+                    pa_info!("PF frame timeout");
                     let mut sleep = Duration::from_millis(1);
                     let max_sleep = Duration::from_secs(5);
                     while result == ML_RESULT_TIMEOUT {
                         sleep = (sleep * 2).min(max_sleep);
-                        info!("PF exponential backoff {}ms", sleep.as_millis());
+                        pa_info!("PF exponential backoff {}ms", sleep.as_millis());
                         thread::sleep(sleep);
                         result = MLGraphicsBeginFrame(self.graphics_client, &params, &mut self.frame_handle, &mut self.virtual_camera_array);
                     }
-                    info!("PF frame finished timeout");
+                    pa_info!("PF frame finished timeout");
                 }
                 result.unwrap();
             }
@@ -254,13 +254,13 @@ impl MagicLeapWindow {
                 .collect();
             self.in_frame = true;
             self.pose_event = Some(camera_transforms);
-            debug!("PF begun frame");
+            pa_debug!("PF begun frame");
         }
     }
 
     fn end_frame(&mut self) {
         if self.in_frame {
-            debug!("PF ending frame");
+            pa_debug!("PF ending frame");
             unsafe {
                 gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
                 for i in 0..self.virtual_camera_array.num_virtual_cameras {
@@ -270,7 +270,7 @@ impl MagicLeapWindow {
                 MLGraphicsEndFrame(self.graphics_client, self.frame_handle).unwrap();
             }
             self.in_frame = false;
-            debug!("PF ended frame");
+            pa_debug!("PF ended frame");
         }
     }
 }

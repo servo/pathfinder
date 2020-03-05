@@ -210,10 +210,10 @@ impl Offset for Segment {
             return;
         }
 
-        debug!("--- SPLITTING ---");
-        debug!("... PRE-SPLIT: {:?}", self);
+        pa_debug!("--- SPLITTING ---");
+        pa_debug!("... PRE-SPLIT: {:?}", self);
         let (before, after) = self.split(0.5);
-        debug!("... AFTER-SPLIT: {:?} {:?}", before, after);
+        pa_debug!("... AFTER-SPLIT: {:?} {:?}", before, after);
         before.offset(distance, join, contour);
         after.offset(distance, join, contour);
     }
@@ -325,7 +325,7 @@ impl Offset for Segment {
             let (this_p, other_p) = (self.sample(t), other.sample(t));
             let vector = this_p - other_p;
             let square_distance = vector.square_length();
-            debug!(
+            pa_debug!(
                 "this_p={:?} other_p={:?} vector={:?} sqdist={:?} min={:?} max={:?}",
                 this_p, other_p, vector, square_distance, min, max
             );

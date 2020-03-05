@@ -138,15 +138,15 @@ impl<W> DemoApp<W> where W: Window {
             _ => return,
         };
 
-        debug!(
+        pa_debug!(
             "scene_transform.perspective={:?}",
             scene_transform.perspective
         );
-        debug!(
+        pa_debug!(
             "scene_transform.modelview_to_eye={:?}",
             scene_transform.modelview_to_eye
         );
-        debug!("modelview transform={:?}", modelview_transform);
+        pa_debug!("modelview transform={:?}", modelview_transform);
 
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
         self.window.make_current(View::Stereo(render_scene_index));
@@ -176,15 +176,15 @@ impl<W> DemoApp<W> where W: Window {
             modelview_transform.to_transform() *
             quad_scale_transform;
 
-        debug!(
+        pa_debug!(
             "eye transform({}).modelview_to_eye={:?}",
             render_scene_index, eye_transform.modelview_to_eye
         );
-        debug!(
+        pa_debug!(
             "eye transform_matrix({})={:?}",
             render_scene_index, eye_transform_matrix
         );
-        debug!("---");
+        pa_debug!("---");
 
         self.renderer.reproject_texture(
             scene_texture,

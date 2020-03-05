@@ -7,8 +7,10 @@ edition = "2018"
 [dependencies]
 arrayvec = "0.5"
 bitflags = "1.0"
-log = "0.4"
 smallvec = "1.2"
+
+[dependencies.pathfinder_log]
+path = "../log"
 
 [dependencies.image]
 version = "0.23"

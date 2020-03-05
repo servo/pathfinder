@@ -81,7 +81,7 @@ pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_co
     let logger = MagicLeapLogger::new(tag, level);
     log::set_boxed_logger(Box::new(logger)).unwrap();
     log::set_max_level(level);
-    info!("Initialized logging");
+    pa_info!("Initialized logging");
 
     let window = MagicLeapWindow::new(egl_display, egl_context);
     let window_size = window.size();
@@ -93,7 +93,7 @@ pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_co
     options.jobs = Some(3);
 
     let demo = DemoApp::new(window, window_size, options);
-    info!("Initialized app");
+    pa_info!("Initialized app");
 
     let (sender, receiver) = crossbeam_channel::unbounded();
     Box::into_raw(Box::new(ImmersiveApp { sender, receiver, demo })) as *mut c_void
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo_load(app: *mut c_void, svg_fi
     let app = app as *mut ImmersiveApp;
     if let Some(app) = app.as_mut() {
         let svg_filename = CStr::from_ptr(svg_filename).to_string_lossy().into_owned();
-        info!("Loading {}.", svg_filename);
+        pa_info!("Loading {}.", svg_filename);
         let _ = app.sender.send(Event::OpenSVG(SVGPath::Resource(svg_filename)));
     }
 }
@@ -158,17 +158,17 @@ pub extern "C" fn magicleap_pathfinder_init() -> *mut c_void {
     let logger = MagicLeapLogger::new(tag, level);
     log::set_boxed_logger(Box::new(logger)).unwrap();
     log::set_max_level(level);
-    info!("Initialized logging");
+    pa_info!("Initialized logging");
 
     gl::load_with(|s| egl::get_proc_address(s) as *const c_void);
-    info!("Initialized gl");
+    pa_info!("Initialized gl");
 
     let pf = MagicLeapPathfinder {
         renderers: HashMap::new(),
         svgs: HashMap::new(),
         resources: FilesystemResourceLoader::locate(),
     };
-    info!("Initialized pf");
+    pa_info!("Initialized pf");
 
     Box::into_raw(Box::new(pf)) as *mut c_void
 }

@@ -34,6 +34,7 @@ members = [
     "utils/svg-to-skia",
     "utils/convert",
     "webgl",
+    "log",
 ]
 
 default-members = [
@@ -63,4 +64,5 @@ default-members = [
     "utils/gamma-lut",
     "utils/svg-to-skia",
     "utils/convert",
+    "log",
 ]

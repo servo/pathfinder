@@ -75,7 +75,7 @@ impl<'a> ContourDilator<'a> {
             }
             let next_vector = (next_position - position).normalize();
 
-            debug!(
+            pa_debug!(
                 "prev={} cur={} next={}",
                 prev_point_index, current_point_index, next_point_index
             );
@@ -90,7 +90,7 @@ impl<'a> ContourDilator<'a> {
             };
             let new_position = position - scaled_bisector;
 
-            debug!(
+            pa_debug!(
                 "dilate(): prev={}({:?}) cur={}({:?}) next={}({:?}) bisector={:?}({:?}, {:?})",
                 prev_point_index,
                 prev_position,
@@ -107,7 +107,7 @@ impl<'a> ContourDilator<'a> {
             let mut point_index = current_point_index;
             while point_index != next_point_index {
                 self.contour.points[point_index as usize] = new_position;
-                debug!("... updating {:?}", point_index);
+                pa_debug!("... updating {:?}", point_index);
                 point_index = self.contour.next_point_index_of(point_index);
             }
 

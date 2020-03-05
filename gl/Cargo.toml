@@ -11,8 +11,8 @@ crate-type = ["rlib", "staticlib"]
 gl = "0.14"
 half = "1.4"
 
-[dependencies.log]
-version = "0.4"
+[dependencies.pathfinder_log]
+path = "../log"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"

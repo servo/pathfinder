@@ -16,8 +16,8 @@ serde = "1.0"
 serde_json = "1.0"
 smallvec = "1.2"
 
-[dependencies.log]
-version = "0.4"
+[dependencies.pathfinder_log]
+path = "../log"
 
 [dependencies.pathfinder_color]
 path = "../color"

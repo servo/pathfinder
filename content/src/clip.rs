@@ -26,7 +26,7 @@ impl TEdge for Edge {
     #[inline]
     fn point_is_inside(&self, point: Vector2F) -> bool {
         let area = (self.0.to() - self.0.from()).det(point - self.0.from());
-        debug!("point_is_inside({:?}, {:?}), area={}", self, point, area);
+        pa_debug!("point_is_inside({:?}, {:?}), area={}", self, point, area);
         area >= 0.0
     }
 
@@ -79,7 +79,7 @@ trait TEdge: Debug {
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
         let from_inside = self.point_is_inside(segment.baseline.from());
-        debug!(
+        pa_debug!(
             "point {:?} inside {:?}: {:?}",
             segment.baseline.from(),
             self,
@@ -139,7 +139,7 @@ trait TEdge: Debug {
         mut t_min: f32,
         mut t_max: f32,
     ) -> Option<f32> {
-        debug!(
+        pa_debug!(
             "... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
             self, segment, t_min, t_max
         );
@@ -213,7 +213,7 @@ where
         match edge.trivially_test_segment(&segment) {
             EdgeRelativeLocation::Outside => return,
             EdgeRelativeLocation::Inside => {
-                debug!("trivial test inside, pushing segment");
+                pa_debug!("trivial test inside, pushing segment");
                 self.push_segment(&segment);
                 return;
             }
@@ -221,21 +221,21 @@ where
         }
 
         // We have a potential intersection.
-        debug!("potential intersection: {:?} edge: {:?}", segment, edge);
+        pa_debug!("potential intersection: {:?} edge: {:?}", segment, edge);
         let mut starts_inside = edge.point_is_inside(segment.baseline.from());
         let intersection_ts = edge.intersect_segment(&segment);
         let mut last_t = 0.0;
-        debug!("... intersections: {:?}", intersection_ts);
+        pa_debug!("... intersections: {:?}", intersection_ts);
         for t in intersection_ts {
             let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
 
             // Push the split segment if appropriate.
-            debug!(
+            pa_debug!(
                 "... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
                 edge, before_split, t, starts_inside
             );
             if starts_inside {
-                debug!("... split segment case, pushing segment");
+                pa_debug!("... split segment case, pushing segment");
                 self.push_segment(&before_split);
             }
 
@@ -247,7 +247,7 @@ where
 
         // No more intersections. Push the last segment if applicable.
         if starts_inside {
-            debug!("... last segment case, pushing segment");
+            pa_debug!("... last segment case, pushing segment");
             self.push_segment(&segment);
         }
     }
@@ -391,19 +391,19 @@ impl PolygonClipper3D {
     pub fn clip(mut self) -> Vec<Vector4F> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 
-        debug!("before clipping against bottom: {:?}", self.subject);
+        pa_debug!("before clipping against bottom: {:?}", self.subject);
         self.clip_against(Edge3D::Bottom);
-        debug!("before clipping against top: {:?}", self.subject);
+        pa_debug!("before clipping against top: {:?}", self.subject);
         self.clip_against(Edge3D::Top);
-        debug!("before clipping against left: {:?}", self.subject);
+        pa_debug!("before clipping against left: {:?}", self.subject);
         self.clip_against(Edge3D::Left);
-        debug!("before clipping against right: {:?}", self.subject);
+        pa_debug!("before clipping against right: {:?}", self.subject);
         self.clip_against(Edge3D::Right);
-        debug!("before clipping against far: {:?}", self.subject);
+        pa_debug!("before clipping against far: {:?}", self.subject);
         self.clip_against(Edge3D::Far);
-        debug!("before clipping against near: {:?}", self.subject);
+        pa_debug!("before clipping against near: {:?}", self.subject);
         self.clip_against(Edge3D::Near);
-        debug!("after clipping: {:?}", self.subject);
+        pa_debug!("after clipping: {:?}", self.subject);
 
         self.subject
     }

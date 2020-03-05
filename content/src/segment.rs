@@ -381,7 +381,7 @@ impl<'s> CubicSegment<'s> {
             }
             t0 = t;
             t1 = 0.0;
-            debug!("...  t=(newton) {}", t);
+            pa_debug!("...  t=(newton) {}", t);
         } else {
             // Algebraically compute the values for t.
             let discrim = f32::sqrt(v1 * v1 - v0 * v2);
@@ -390,7 +390,7 @@ impl<'s> CubicSegment<'s> {
             t0 = (v0_to_v1 + discrim) * denom_recip;
             t1 = (v0_to_v1 - discrim) * denom_recip;
 
-            debug!("... t=({} +/- {})/{} t0={} t1={}", v0_to_v1, discrim, denom, t0, t1);
+            pa_debug!("... t=({} +/- {})/{} t0={} t1={}", v0_to_v1, discrim, denom, t0, t1);
         }
 
         return match (

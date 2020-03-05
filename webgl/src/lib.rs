@@ -355,7 +355,7 @@ impl WebGlDevice {
         output.push_str(&source[pos..]);
         /*
         for (line_nr, line) in output.lines().enumerate() {
-            debug!("{:3}: {}", line_nr + 1, line);
+            pa_debug!("{:3}: {}", line_nr + 1, line);
         }
         */
         output
@@ -506,7 +506,7 @@ impl Device for WebGlDevice {
             .get_shader_parameter(&gl_shader, WebGl::COMPILE_STATUS);
         if !compile_status.as_bool().unwrap_or(false) {
             if let Some(info_log) = self.context.get_shader_info_log(&gl_shader) {
-                info!("Shader info log:\n{}", info_log);
+                pa_info!("Shader info log:\n{}", info_log);
             }
             panic!("{:?} shader '{}' compilation failed", kind, name);
         }
@@ -537,7 +537,7 @@ impl Device for WebGlDevice {
             .unwrap_or(false)
         {
             if let Some(info_log) = self.context.get_program_info_log(&gl_program) {
-                info!("Program info log for {}:\n{}", name, info_log);
+                pa_info!("Program info log for {}:\n{}", name, info_log);
             }
             panic!("Program {:?} linking failed", name);
         }
@@ -616,7 +616,7 @@ impl Device for WebGlDevice {
     }
 
     fn create_framebuffer(&self, texture: WebGlTexture) -> WebGlFramebuffer {
-        debug!(
+        pa_debug!(
             "texture size = {:?}, format = {:?}",
             texture.size, texture.format
         );

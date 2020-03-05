@@ -490,7 +490,7 @@ impl ObjectBuilder {
         segment: LineSegment2F,
         tile_coords: Vector2I,
     ) {
-        debug!("add_fill({:?} ({:?}))", segment, tile_coords);
+        pa_debug!("add_fill({:?} ({:?}))", segment, tile_coords);
 
         // Ensure this fill is in bounds. If not, cull it.
         if self.tile_coords_to_local_index(tile_coords).is_none() {
@@ -511,7 +511,7 @@ impl ObjectBuilder {
 
         // Cull degenerate fills.
         if from_x == to_x {
-            debug!("... culling!");
+            pa_debug!("... culling!");
             return;
         }
 
@@ -523,7 +523,7 @@ impl ObjectBuilder {
         let px = (px >> 8).to_i32x4() | (px >> 4).to_i32x4().yxwz();
 
         // Pack instance data.
-        debug!("... OK, pushing");
+        pa_debug!("... OK, pushing");
         self.fills.push(FillBatchPrimitive {
             px: LineSegmentU4 { from: px[0] as u8, to: px[2] as u8 },
             subpx: LineSegmentU8 {
@@ -573,7 +573,7 @@ impl ObjectBuilder {
             LineSegment2F::new(right, left)
         };
 
-        debug!(
+        pa_debug!(
             "... emitting active fill {} -> {} winding {} @ tile {:?}",
             left.x(),
             right.x(),
@@ -597,7 +597,7 @@ impl ObjectBuilder {
         mut segment: LineSegment2F,
         tile_y: i32,
     ) {
-        debug!(
+        pa_debug!(
             "... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
             segment,
             tile_y,
@@ -616,7 +616,7 @@ impl ObjectBuilder {
         let segment_tile_left = f32::floor(segment_left) as i32 / TILE_WIDTH as i32;
         let segment_tile_right =
             util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32);
-        debug!(
+        pa_debug!(
             "segment_tile_left={} segment_tile_right={} tile_rect={:?}",
             segment_tile_left,
             segment_tile_right,
