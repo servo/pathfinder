@@ -1,0 +1,15 @@
+[package]
+name = "pathfinder_log"
+version = "0.1.0"
+authors = ["Sebastian K <s3bk@protonmail.com>"]
+edition = "2018"
+
+[features]
+log_trace = ["log", "log_debug"]
+log_debug = ["log", "log_info"]
+log_info = ["log", "log_warn"]
+log_warn = ["log"]
+
+[dependencies.log]
+version = "0.4.8"
+optional = true
