@@ -504,7 +504,7 @@ impl State {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Path2D {
     outline: Outline,
     current_contour: Contour,
@@ -608,6 +608,49 @@ impl Path2D {
             self.outline.push_contour(mem::replace(&mut self.current_contour, Contour::new()));
         }
     }
+}
+
+#[test]
+fn test_simple_path() {
+    let mut path = Path2D::new();
+    path.move_to(Vector2F::new(0., 1.));
+    path.close_path();
+
+    let path_string = format!("{:?}", path.into_outline());
+    assert_eq!("M 0 1 L 0 1 z", path_string);
+}
+
+#[test]
+fn test_longer_open_path() {
+    let mut path = Path2D::new();
+    path.move_to(Vector2F::new(0., 1.));
+    path.line_to(Vector2F::new(2., 3.));
+
+    let path_string = format!("{:?}", path.into_outline());
+    assert_eq!("M 0 1 L 2 3", path_string);
+}
+
+#[test]
+fn test_even_longer_open_path() {
+    let mut path = Path2D::new();
+    path.move_to(Vector2F::new(0., 1.));
+    path.line_to(Vector2F::new(2., 3.));
+    path.line_to(Vector2F::new(4., 5.));
+
+    let path_string = format!("{:?}", path.into_outline());
+    assert_eq!("M 0 1 L 2 3 L 4 5", path_string);
+}
+
+#[test]
+fn test_even_longer_closed_path() {
+    let mut path = Path2D::new();
+    path.move_to(Vector2F::new(0., 1.));
+    path.line_to(Vector2F::new(2., 3.));
+    path.line_to(Vector2F::new(4., 5.));
+    path.close_path();
+
+    let path_string = format!("{:?}", path.into_outline());
+    assert_eq!("M 0 1 L 2 3 L 4 5 L 0 1 z", path_string);
 }
 
 #[derive(Clone)]
