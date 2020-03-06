@@ -213,6 +213,7 @@ impl Palette {
 
         // Assign paint locations.
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
+        let mut gradient_tile_builder = GradientTileBuilder::new();
         for paint in &self.paints {
             let (texture_location, mut sampling_flags);
             match paint {
@@ -220,12 +221,17 @@ impl Palette {
                     texture_location = solid_color_tile_builder.allocate(&mut allocator);
                     sampling_flags = TextureSamplingFlags::empty();
                 }
-                Paint::Gradient(_) => {
+                Paint::Gradient(Gradient { geometry: GradientGeometry::Linear(_), .. }) => {
+                    // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
+                    texture_location = gradient_tile_builder.allocate(&mut allocator);
+                    sampling_flags = TextureSamplingFlags::empty();
+                }
+                Paint::Gradient(Gradient { geometry: GradientGeometry::Radial { .. }, .. }) => {
                     // TODO(pcwalton): Optimize this:
                     // 1. Use repeating/clamp on the sides.
                     // 2. Choose an optimal size for the gradient that minimizes memory usage while
                     //    retaining quality.
-                    texture_location =  
+                    texture_location =
                         allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
                                            AllocationMode::Atlas);
                     sampling_flags = TextureSamplingFlags::empty();
@@ -279,7 +285,19 @@ impl Palette {
                     let vector = rect_to_inset_uv(metadata.location.rect, texture_scale).origin();
                     Transform2F { matrix: Matrix2x2F(F32x4::default()), vector }
                 }
-                Paint::Gradient(_) => {
+                Paint::Gradient(Gradient {
+                    geometry: GradientGeometry::Linear(gradient_line),
+                    ..
+                }) => {
+                    let v0 = metadata.location.rect.to_f32().center().y() * texture_scale.y();
+                    let length_inv = 1.0 / gradient_line.square_length();
+                    let (p0, d) = (gradient_line.from(), gradient_line.vector());
+                    Transform2F {
+                        matrix: Matrix2x2F::row_major(d.x(), d.y(), 0.0, 0.0).scale(length_inv),
+                        vector: Vector2F::new(-p0.dot(d) * length_inv, v0),
+                    }
+                }
+                Paint::Gradient(Gradient { geometry: GradientGeometry::Radial { .. }, .. }) => {
                     let texture_origin_uv =
                         rect_to_uv(metadata.location.rect, texture_scale).origin();
                     let gradient_tile_scale = texture_scale.scale(GRADIENT_TILE_LENGTH as f32);
@@ -318,9 +336,10 @@ impl Palette {
         // Allocate the texels.
         //
         // TODO(pcwalton): This is slow. Do more on GPU.
-        let mut page_texels: Vec<_> = paint_metadata.iter().map(|metadata| {
-            Texels::new(allocator.page_size(metadata.location.page))
-        }).collect();
+        let mut page_texels: Vec<_> =
+            texture_page_descriptors.iter()
+                                    .map(|descriptor| Texels::new(descriptor.size))
+                                    .collect();
 
         // Draw to texels.
         //
@@ -383,24 +402,15 @@ impl Palette {
                        tex_transform: &Transform2F,
                        texels: &mut Texels) {
         match *gradient.geometry() {
-            GradientGeometry::Linear(gradient_line) => {
+            GradientGeometry::Linear(_) => {
                 // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
-                let gradient_line = *tex_transform * gradient_line;
-
                 // TODO(pcwalton): Optimize this:
                 // 1. Calculate ∇t up front and use differencing in the inner loop.
                 // 2. Go four pixels at a time with SIMD.
-                for y in 0..(GRADIENT_TILE_LENGTH as i32) {
-                    for x in 0..(GRADIENT_TILE_LENGTH as i32) {
-                        let point = tex_rect.origin() + Vector2I::new(x, y);
-                        let vector = point.to_f32().scale_xy(texels.scale()) -
-                            gradient_line.from();
-
-                        let mut t = gradient_line.vector().projection_coefficient(vector);
-                        t = util::clamp(t, 0.0, 1.0);
-
-                        texels.put_texel(point, gradient.sample(t));
-                    }
+                for x in 0..(GRADIENT_TILE_LENGTH as i32) {
+                    let point = tex_rect.origin() + Vector2I::new(x, 0);
+                    let t = (x as f32 + 0.5) / GRADIENT_TILE_LENGTH as f32;
+                    texels.put_texel(point, gradient.sample(t));
                 }
             }
 
@@ -579,10 +589,6 @@ impl Texels {
     fn put_texel(&mut self, position: Vector2I, color: ColorU) {
         self.blit_scanline(position, &[color])
     }
-
-    fn scale(&self) -> Vector2F {
-        Vector2F::splat(1.0) / self.size.to_f32()
-    }
 }
 
 fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
@@ -629,6 +635,49 @@ impl SolidColorTileBuilder {
             };
             data.next_index += 1;
             tile_full = data.next_index == MAX_SOLID_COLORS_PER_TILE;
+        }
+
+        if tile_full {
+            self.0 = None;
+        }
+
+        location
+    }
+}
+
+// Gradient allocation
+
+struct GradientTileBuilder(Option<GradientTileBuilderData>);
+
+struct GradientTileBuilderData {
+    page: TexturePageId,
+    next_index: u32,
+}
+
+impl GradientTileBuilder {
+    fn new() -> GradientTileBuilder {
+        GradientTileBuilder(None)
+    }
+
+    fn allocate(&mut self, allocator: &mut TextureAllocator) -> TextureLocation {
+        if self.0.is_none() {
+            let size = Vector2I::splat(GRADIENT_TILE_LENGTH as i32);
+            self.0 = Some(GradientTileBuilderData {
+                page: allocator.allocate(size, AllocationMode::OwnPage).page,
+                next_index: 0,
+            })
+        }
+
+        let (location, tile_full);
+        {
+            let mut data = self.0.as_mut().unwrap();
+            location = TextureLocation {
+                page: data.page,
+                rect: RectI::new(Vector2I::new(0, data.next_index as i32),
+                                 Vector2I::new(GRADIENT_TILE_LENGTH as i32, 1)),
+            };
+            data.next_index += 1;
+            tile_full = data.next_index == GRADIENT_TILE_LENGTH;
         }
 
         if tile_full {

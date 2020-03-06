@@ -20,7 +20,7 @@ use std::mem;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Gradient {
-    geometry: GradientGeometry,
+    pub geometry: GradientGeometry,
     stops: SortedVector<ColorStop>,
 }
 
