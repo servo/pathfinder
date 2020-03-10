@@ -31,7 +31,7 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use instant::Instant;
 use std::u16;
 
 pub(crate) struct SceneBuilder<'a> {

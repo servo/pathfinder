@@ -42,3 +42,6 @@ features = [
   'WebGlVertexArrayObject',
   'Window',
 ]
+
+[dependencies.pathfinder_resources]
+path = "../resources"
