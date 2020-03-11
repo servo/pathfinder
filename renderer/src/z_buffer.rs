@@ -10,13 +10,14 @@
 
 //! Software occlusion culling.
 
-use crate::builder::SolidTile;
-use crate::gpu_data::{SolidTileBatch, SolidTileVertex};
+use crate::builder::SolidTileInfo;
+use crate::gpu_data::{SolidTile, SolidTileBatch, SolidTileVertex};
 use crate::paint::{PaintId, PaintMetadata};
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
+use pathfinder_content::effects::{CompositeOp, Effects, Filter};
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use vec_map::VecMap;
 
 pub(crate) struct ZBuffer {
@@ -47,7 +48,7 @@ impl ZBuffer {
     }
 
     pub(crate) fn update(&mut self,
-                         solid_tiles: &[SolidTile],
+                         solid_tiles: &[SolidTileInfo],
                          depth: u32,
                          metadata: DepthMetadata) {
         self.depth_metadata.insert(depth as usize, metadata);
@@ -76,42 +77,76 @@ impl ZBuffer {
 
             // Create a batch if necessary.
             match solid_tiles.batches.last() {
-                Some(ref batch) if batch.color_texture_page == paint_metadata.texture_page &&
+                Some(ref batch) if batch.color_texture_page == paint_metadata.location.page &&
                     batch.sampling_flags == paint_metadata.sampling_flags => {}
                 _ => {
                     // Batch break.
+                    //
+                    // TODO(pcwalton): We could be more aggressive with batching here, since we
+                    // know there are no overlaps.
                     solid_tiles.batches.push(SolidTileBatch {
-                        color_texture_page: paint_metadata.texture_page,
+                        color_texture_page: paint_metadata.location.page,
                         sampling_flags: paint_metadata.sampling_flags,
-                        vertices: vec![],
+                        tiles: vec![],
+                        effects: Effects::new(Filter::Composite(CompositeOp::SrcOver)),
                     });
                 }
             }
 
             let batch = solid_tiles.batches.last_mut().unwrap();
-            batch.vertices.extend_from_slice(&[
-                SolidTileVertex::new(tile_position, paint_metadata),
-                SolidTileVertex::new(tile_position + Vector2I::new(1, 0), paint_metadata),
-                SolidTileVertex::new(tile_position + Vector2I::new(0, 1), paint_metadata),
-                SolidTileVertex::new(tile_position + Vector2I::new(1, 1), paint_metadata),
-            ]);
+            batch.tiles.push(SolidTile::from_paint_metadata(tile_position, paint_metadata));
         }
 
         solid_tiles
     }
 }
 
+impl SolidTile {
+    pub(crate) fn from_paint_metadata(tile_position: Vector2I, paint_metadata: &PaintMetadata)
+                                      -> SolidTile {
+        SolidTile {
+            upper_left: SolidTileVertex::from_paint_metadata(tile_position, paint_metadata),
+            upper_right: SolidTileVertex::from_paint_metadata(tile_position + Vector2I::new(1, 0),
+                                                              paint_metadata),
+            lower_left: SolidTileVertex::from_paint_metadata(tile_position + Vector2I::new(0, 1),
+                                                             paint_metadata),
+            lower_right: SolidTileVertex::from_paint_metadata(tile_position + Vector2I::new(1, 1),
+                                                              paint_metadata),
+        }
+    }
+
+    // The texture rect is in normalized coordinates.
+    pub(crate) fn from_texture_rect(tile_position: Vector2I, texture_rect: RectF) -> SolidTile {
+        SolidTile {
+            upper_left: SolidTileVertex::new(tile_position, texture_rect.origin()),
+            upper_right: SolidTileVertex::new(tile_position + Vector2I::new(1, 0),
+                                              texture_rect.upper_right()),
+            lower_left: SolidTileVertex::new(tile_position + Vector2I::new(0, 1),
+                                             texture_rect.lower_left()),
+            lower_right: SolidTileVertex::new(tile_position + Vector2I::new(1, 1),
+                                              texture_rect.lower_right()),
+        }
+    }
+}
+
 impl SolidTileVertex {
-    fn new(tile_position: Vector2I, paint_metadata: &PaintMetadata)
-           -> SolidTileVertex {
+    fn new(tile_position: Vector2I, color_tex_coords: Vector2F) -> SolidTileVertex {
+        SolidTileVertex {
+            tile_x: tile_position.x() as i16,
+            tile_y: tile_position.y() as i16,
+            color_u: color_tex_coords.x(),
+            color_v: color_tex_coords.y(),
+        }
+    }
+
+    fn from_paint_metadata(tile_position: Vector2I, paint_metadata: &PaintMetadata)
+                           -> SolidTileVertex {
         let color_uv = paint_metadata.calculate_tex_coords(tile_position);
         SolidTileVertex {
             tile_x: tile_position.x() as i16,
             tile_y: tile_position.y() as i16,
-            object_index: 0,
             color_u: color_uv.x(),
             color_v: color_uv.y(),
-            pad: 0,
         }
     }
 }

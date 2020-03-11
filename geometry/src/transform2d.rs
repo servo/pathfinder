@@ -71,6 +71,11 @@ impl Matrix2x2F {
     }
 
     #[inline]
+    pub fn scale(&self, factor: f32) -> Matrix2x2F {
+        Matrix2x2F(self.0 * F32x4::splat(factor))
+    }
+
+    #[inline]
     pub fn m11(&self) -> f32 {
         self.0[0]
     }

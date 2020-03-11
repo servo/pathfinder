@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder, SolidTile};
+use crate::builder::{BuiltPath, ObjectBuilder, SceneBuilder, SolidTileInfo};
 use crate::gpu_data::TileObjectPrimitive;
 use crate::paint::PaintMetadata;
 use crate::options::RenderCommandListener;
@@ -187,7 +187,10 @@ impl<'a, L: RenderCommandListener> Tiler<'a, L> {
                 if draw_tiling_path_info.paint_metadata.is_opaque &&
                         draw_tiling_path_info.blend_mode.occludes_backdrop() &&
                         draw_tiling_path_info.opacity == !0 {
-                    self.object_builder.built_path.solid_tiles.push(SolidTile::new(tile_coords));
+                    self.object_builder
+                        .built_path
+                        .solid_tiles
+                        .push(SolidTileInfo::new(tile_coords));
                     continue;
                 }
             }

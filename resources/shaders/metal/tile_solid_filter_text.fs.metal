@@ -11,8 +11,8 @@ struct spvDescriptorSetBuffer0
     texture2d<float> uGammaLUT [[id(0)]];
     sampler uGammaLUTSmplr [[id(1)]];
     constant float4* uKernel [[id(2)]];
-    texture2d<float> uSrc [[id(3)]];
-    sampler uSrcSmplr [[id(4)]];
+    texture2d<float> uColorTexture [[id(3)]];
+    sampler uColorTextureSmplr [[id(4)]];
     constant float2* uSrcSize [[id(5)]];
     constant int* uGammaCorrectionEnabled [[id(6)]];
     constant float4* uBGColor [[id(7)]];
@@ -26,21 +26,23 @@ struct main0_out
 
 struct main0_in
 {
-    float2 vTexCoord [[user(locn0)]];
+    float2 vColorTexCoord [[user(locn0)]];
 };
 
-float sample1Tap(thread const float& offset, thread texture2d<float> uSrc, thread const sampler uSrcSmplr, thread float2& vTexCoord)
+static inline __attribute__((always_inline))
+float sample1Tap(thread const float& offset, thread texture2d<float> uColorTexture, thread const sampler uColorTextureSmplr, thread float2& vColorTexCoord)
 {
-    return uSrc.sample(uSrcSmplr, float2(vTexCoord.x + offset, vTexCoord.y)).x;
+    return uColorTexture.sample(uColorTextureSmplr, float2(vColorTexCoord.x + offset, vColorTexCoord.y)).x;
 }
 
-void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, thread float4& outAlphaRight, thread const float& onePixel, thread float4 uKernel, thread texture2d<float> uSrc, thread const sampler uSrcSmplr, thread float2& vTexCoord)
+static inline __attribute__((always_inline))
+void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, thread float4& outAlphaRight, thread const float& onePixel, thread float4 uKernel, thread texture2d<float> uColorTexture, thread const sampler uColorTextureSmplr, thread float2& vColorTexCoord)
 {
     float _89;
     if (uKernel.x > 0.0)
     {
         float param = (-4.0) * onePixel;
-        _89 = sample1Tap(param, uSrc, uSrcSmplr, vTexCoord);
+        _89 = sample1Tap(param, uColorTexture, uColorTextureSmplr, vColorTexCoord);
     }
     else
     {
@@ -49,9 +51,9 @@ void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, threa
     float param_1 = (-3.0) * onePixel;
     float param_2 = (-2.0) * onePixel;
     float param_3 = (-1.0) * onePixel;
-    outAlphaLeft = float4(_89, sample1Tap(param_1, uSrc, uSrcSmplr, vTexCoord), sample1Tap(param_2, uSrc, uSrcSmplr, vTexCoord), sample1Tap(param_3, uSrc, uSrcSmplr, vTexCoord));
+    outAlphaLeft = float4(_89, sample1Tap(param_1, uColorTexture, uColorTextureSmplr, vColorTexCoord), sample1Tap(param_2, uColorTexture, uColorTextureSmplr, vColorTexCoord), sample1Tap(param_3, uColorTexture, uColorTextureSmplr, vColorTexCoord));
     float param_4 = 0.0;
-    outAlphaCenter = sample1Tap(param_4, uSrc, uSrcSmplr, vTexCoord);
+    outAlphaCenter = sample1Tap(param_4, uColorTexture, uColorTextureSmplr, vColorTexCoord);
     float param_5 = 1.0 * onePixel;
     float param_6 = 2.0 * onePixel;
     float param_7 = 3.0 * onePixel;
@@ -59,25 +61,28 @@ void sample9Tap(thread float4& outAlphaLeft, thread float& outAlphaCenter, threa
     if (uKernel.x > 0.0)
     {
         float param_8 = 4.0 * onePixel;
-        _134 = sample1Tap(param_8, uSrc, uSrcSmplr, vTexCoord);
+        _134 = sample1Tap(param_8, uColorTexture, uColorTextureSmplr, vColorTexCoord);
     }
     else
     {
         _134 = 0.0;
     }
-    outAlphaRight = float4(sample1Tap(param_5, uSrc, uSrcSmplr, vTexCoord), sample1Tap(param_6, uSrc, uSrcSmplr, vTexCoord), sample1Tap(param_7, uSrc, uSrcSmplr, vTexCoord), _134);
+    outAlphaRight = float4(sample1Tap(param_5, uColorTexture, uColorTextureSmplr, vColorTexCoord), sample1Tap(param_6, uColorTexture, uColorTextureSmplr, vColorTexCoord), sample1Tap(param_7, uColorTexture, uColorTextureSmplr, vColorTexCoord), _134);
 }
 
+static inline __attribute__((always_inline))
 float convolve7Tap(thread const float4& alpha0, thread const float3& alpha1, thread float4 uKernel)
 {
     return dot(alpha0, uKernel) + dot(alpha1, uKernel.zyx);
 }
 
+static inline __attribute__((always_inline))
 float gammaCorrectChannel(thread const float& bgColor, thread const float& fgColor, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr)
 {
     return uGammaLUT.sample(uGammaLUTSmplr, float2(fgColor, 1.0 - bgColor)).x;
 }
 
+static inline __attribute__((always_inline))
 float3 gammaCorrect(thread const float3& bgColor, thread const float3& fgColor, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr)
 {
     float param = bgColor.x;
@@ -95,7 +100,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     float3 alpha;
     if ((*spvDescriptorSet0.uKernel).w == 0.0)
     {
-        alpha = spvDescriptorSet0.uSrc.sample(spvDescriptorSet0.uSrcSmplr, in.vTexCoord).xxx;
+        alpha = spvDescriptorSet0.uColorTexture.sample(spvDescriptorSet0.uColorTextureSmplr, in.vColorTexCoord).xxx;
     }
     else
     {
@@ -103,7 +108,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
         float4 param;
         float param_1;
         float4 param_2;
-        sample9Tap(param, param_1, param_2, param_3, (*spvDescriptorSet0.uKernel), spvDescriptorSet0.uSrc, spvDescriptorSet0.uSrcSmplr, in.vTexCoord);
+        sample9Tap(param, param_1, param_2, param_3, (*spvDescriptorSet0.uKernel), spvDescriptorSet0.uColorTexture, spvDescriptorSet0.uColorTextureSmplr, in.vColorTexCoord);
         float4 alphaLeft = param;
         float alphaCenter = param_1;
         float4 alphaRight = param_2;

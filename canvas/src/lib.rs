@@ -598,7 +598,6 @@ impl Path2D {
         }
     }
 
-<<<<<<< HEAD
     /// Add other path to this path.
     ///
     /// note: any non-closed subpaths will be closed
@@ -622,10 +621,7 @@ impl Path2D {
         self
     }
     
-    fn into_outline(mut self) -> Outline {
-=======
     pub fn into_outline(mut self) -> Outline {
->>>>>>> 9935c9fdffc8d86383b56b7993973393479d9863
         self.flush_current_contour();
         self.outline
     }

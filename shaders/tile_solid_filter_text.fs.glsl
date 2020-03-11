@@ -1,8 +1,8 @@
 #version 330
 
-// pathfinder/shaders/tile_filter_text.fs.glsl
+// pathfinder/shaders/tile_solid_filter_text.fs.glsl
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -14,29 +14,29 @@
 
 precision highp float;
 
-uniform sampler2D uSrc;
+uniform sampler2D uColorTexture;
 uniform vec2 uSrcSize;
 uniform vec4 uFGColor;
 uniform vec4 uBGColor;
 uniform int uGammaCorrectionEnabled;
 
-in vec2 vTexCoord;
+in vec2 vColorTexCoord;
 
 out vec4 oFragColor;
 
-#include "tile_filter_text_gamma_correct.inc.glsl"
-#include "tile_filter_text_convolve.inc.glsl"
+#include "tile_solid_filter_text_gamma_correct.inc.glsl"
+#include "tile_solid_filter_text_convolve.inc.glsl"
 
 // Convolve horizontally in this pass.
 float sample1Tap(float offset) {
-    return texture(uSrc, vec2(vTexCoord.x + offset, vTexCoord.y)).r;
+    return texture(uColorTexture, vec2(vColorTexCoord.x + offset, vColorTexCoord.y)).r;
 }
 
 void main() {
     // Apply defringing if necessary.
     vec3 alpha;
     if (uKernel.w == 0.0) {
-        alpha = texture(uSrc, vTexCoord).rrr;
+        alpha = texture(uColorTexture, vColorTexCoord).rrr;
     } else {
         vec4 alphaLeft, alphaRight;
         float alphaCenter;

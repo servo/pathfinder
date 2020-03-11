@@ -82,7 +82,7 @@ impl<D: Display> ImmersiveDemo<D> {
         self.display.make_current()?;
 	let cameras = self.display.begin_frame()?;
 
-        pa_debug!("PF rendering a frame");
+        debug!("PF rendering a frame");
         let start = Instant::now();
 
         let svg_size = self.svg_size;
@@ -111,7 +111,7 @@ impl<D: Display> ImmersiveDemo<D> {
 
         if let Ok(reply) = self.scene_thread_proxy.receiver.recv() {
             for (camera, scene) in cameras.iter_mut().zip(reply.render_scenes) {
-                pa_debug!("PF rendering eye after {}ms", (Instant::now() - start).as_millis());
+                debug!("PF rendering eye after {}ms", (Instant::now() - start).as_millis());
                 camera.make_current()?;
   	        let bounds = camera.bounds();
                 let background = F32x4::new(0.0, 0.0, 0.0, 1.0);
@@ -122,7 +122,7 @@ impl<D: Display> ImmersiveDemo<D> {
             }
 	}
 
-	pa_debug!("PF rendered frame after {}ms", (Instant::now() - start).as_millis());
+	debug!("PF rendered frame after {}ms", (Instant::now() - start).as_millis());
         self.display.end_frame()?;
         Ok(())
     }

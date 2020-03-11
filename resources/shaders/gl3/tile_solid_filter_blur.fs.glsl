@@ -24,12 +24,12 @@
 
 precision highp float;
 
-uniform sampler2D uSrc;
+uniform sampler2D uColorTexture;
 uniform vec2 uSrcOffsetScale;
 uniform vec3 uInitialGaussCoeff;
 uniform int uSupport;
 
-in vec2 vTexCoord;
+in vec2 vColorTexCoord;
 
 out vec4 oFragColor;
 
@@ -37,7 +37,7 @@ void main(){
 
     vec3 gaussCoeff = uInitialGaussCoeff;
     float gaussSum = gaussCoeff . x;
-    vec4 color = texture(uSrc, vTexCoord)* gaussCoeff . x;
+    vec4 color = texture(uColorTexture, vColorTexCoord)* gaussCoeff . x;
     gaussCoeff . xy *= gaussCoeff . yz;
 
 
@@ -54,8 +54,8 @@ void main(){
         gaussPartialSum += gaussCoeff . x;
 
         vec2 srcOffset = uSrcOffsetScale *(float(i)+ gaussCoeff . x / gaussPartialSum);
-        color +=(texture(uSrc, vTexCoord - srcOffset)+ texture(uSrc, vTexCoord + srcOffset))*
-            gaussPartialSum;
+        color +=(texture(uColorTexture, vColorTexCoord - srcOffset)+
+                  texture(uColorTexture, vColorTexCoord + srcOffset))* gaussPartialSum;
 
         gaussSum += 2.0 * gaussPartialSum;
         gaussCoeff . xy *= gaussCoeff . yz;

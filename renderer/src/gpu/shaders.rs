@@ -16,9 +16,8 @@ use pathfinder_resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_VERTEX_SIZE: usize = 16;
+const SOLID_TILE_VERTEX_SIZE: usize = 12;
 const ALPHA_TILE_VERTEX_SIZE: usize = 20;
-const FILTER_TILE_VERTEX_SIZE: usize = 4;
 const MASK_TILE_VERTEX_SIZE: usize = 12;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
@@ -273,7 +272,6 @@ where
     D: Device,
 {
     pub vertex_array: D::VertexArray,
-    pub vertex_buffer: D::Buffer,
 }
 
 impl<D> SolidTileVertexArray<D>
@@ -283,9 +281,10 @@ where
     pub fn new(
         device: &D,
         solid_tile_program: &SolidTileProgram<D>,
+        solid_tile_vertex_buffer: &D::Buffer,
         quads_vertex_indices_buffer: &D::Buffer,
     ) -> SolidTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
 
         let tile_position_attr =
             device.get_vertex_attr(&solid_tile_program.program, "TilePosition").unwrap();
@@ -294,7 +293,7 @@ where
 
         // NB: The tile origin must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&vertex_array, solid_tile_vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
@@ -317,7 +316,7 @@ where
                                      });
         device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
-        SolidTileVertexArray { vertex_array, vertex_buffer }
+        SolidTileVertexArray { vertex_array }
     }
 }
 
@@ -421,20 +420,24 @@ pub struct SolidTileProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
-    pub paint_texture_uniform: D::Uniform,
+    pub color_texture_uniform: D::Uniform,
 }
 
 impl<D> SolidTileProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileProgram<D> {
-        let program = device.create_program(resources, "tile_solid");
+    pub fn new(device: &D, resources: &dyn ResourceLoader, program_name: &str)
+               -> SolidTileProgram<D> {
+        let program = device.create_program_from_shader_names(resources,
+                                                              program_name,
+                                                              "tile_solid",
+                                                              program_name);
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
+        let color_texture_uniform = device.get_uniform(&program, "ColorTexture");
         SolidTileProgram {
             program,
             transform_uniform,
             tile_size_uniform,
-            paint_texture_uniform,
+            color_texture_uniform,
         }
     }
 }
@@ -566,101 +569,25 @@ impl<D> AlphaTileDodgeBurnProgram<D> where D: Device {
     }
 }
 
-pub struct TileFilterProgram<D> where D: Device {
-    pub program: D::Program,
-    pub transform_uniform: D::Uniform,
-    pub tile_size_uniform: D::Uniform,
-    pub src_uniform: D::Uniform,
-    pub src_size_uniform: D::Uniform,
-}
-
-impl<D> TileFilterProgram<D> where D: Device {
-    pub fn new(device: &D,
-               resources: &dyn ResourceLoader,
-               program_name: &str,
-               fragment_shader_name: &str)
-               -> TileFilterProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              program_name,
-                                                              "tile_filter",
-                                                              fragment_shader_name);
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let src_uniform = device.get_uniform(&program, "Src");
-        let src_size_uniform = device.get_uniform(&program, "SrcSize");
-        TileFilterProgram {
-            program,
-            transform_uniform,
-            tile_size_uniform,
-            src_uniform,
-            src_size_uniform,
-        }
-    }
-}
-
-pub struct TileFilterBasicProgram<D> where D: Device {
-    pub tile_filter_program: TileFilterProgram<D>,
-}
-
-impl<D> TileFilterBasicProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileFilterBasicProgram<D> {
-        TileFilterBasicProgram {
-            tile_filter_program: TileFilterProgram::new(device, resources, "filter_basic", "blit"),
-        }
-    }
-}
-
-pub struct TileFilterVertexArray<D> where D: Device {
-    pub vertex_array: D::VertexArray,
-}
-
-impl<D> TileFilterVertexArray<D> where D: Device {
-    pub fn new(device: &D,
-               tile_filter_program: &TileFilterProgram<D>,
-               tile_filter_vertex_buffer: &D::Buffer,
-               quads_vertex_indices_buffer: &D::Buffer)
-               -> TileFilterVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-
-        let tile_position_attr =
-            device.get_vertex_attr(&tile_filter_program.program, "TilePosition").unwrap();
-
-        device.bind_buffer(&vertex_array, tile_filter_vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: FILTER_TILE_VERTEX_SIZE,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
-
-        TileFilterVertexArray { vertex_array }
-    }
-}
-
-pub struct TileFilterBlurProgram<D> where D: Device {
-    pub tile_filter_program: TileFilterProgram<D>,
+pub struct SolidTileBlurFilterProgram<D> where D: Device {
+    pub solid_tile_program: SolidTileProgram<D>,
     pub src_offset_scale_uniform: D::Uniform,
     pub initial_gauss_coeff_uniform: D::Uniform,
     pub support_uniform: D::Uniform,
 }
 
-impl<D> TileFilterBlurProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileFilterBlurProgram<D> {
-        let tile_filter_program = TileFilterProgram::new(device,
-                                                         resources,
-                                                         "tile_filter_blur",
-                                                         "tile_filter_blur");
-        let src_offset_scale_uniform = device.get_uniform(&tile_filter_program.program, 
+impl<D> SolidTileBlurFilterProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileBlurFilterProgram<D> {
+        let solid_tile_program = SolidTileProgram::new(device,
+                                                       resources,
+                                                       "tile_solid_filter_blur");
+        let src_offset_scale_uniform = device.get_uniform(&solid_tile_program.program, 
                                                           "SrcOffsetScale");
-        let initial_gauss_coeff_uniform = device.get_uniform(&tile_filter_program.program,
+        let initial_gauss_coeff_uniform = device.get_uniform(&solid_tile_program.program,
                                                              "InitialGaussCoeff");
-        let support_uniform = device.get_uniform(&tile_filter_program.program, "Support");
-        TileFilterBlurProgram {
-            tile_filter_program,
+        let support_uniform = device.get_uniform(&solid_tile_program.program, "Support");
+        SolidTileBlurFilterProgram {
+            solid_tile_program,
             src_offset_scale_uniform,
             initial_gauss_coeff_uniform,
             support_uniform,
@@ -668,8 +595,8 @@ impl<D> TileFilterBlurProgram<D> where D: Device {
     }
 }
 
-pub struct TileFilterTextProgram<D> where D: Device {
-    pub tile_filter_program: TileFilterProgram<D>,
+pub struct SolidTileTextFilterProgram<D> where D: Device {
+    pub solid_tile_program: SolidTileProgram<D>,
     pub kernel_uniform: D::Uniform,
     pub gamma_lut_uniform: D::Uniform,
     pub gamma_correction_enabled_uniform: D::Uniform,
@@ -677,20 +604,19 @@ pub struct TileFilterTextProgram<D> where D: Device {
     pub bg_color_uniform: D::Uniform,
 }
 
-impl<D> TileFilterTextProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileFilterTextProgram<D> {
-        let tile_filter_program = TileFilterProgram::new(device,
-                                                         resources,
-                                                         "tile_filter_text",
-                                                         "tile_filter_text");
-        let kernel_uniform = device.get_uniform(&tile_filter_program.program, "Kernel");
-        let gamma_lut_uniform = device.get_uniform(&tile_filter_program.program, "GammaLUT");
-        let gamma_correction_enabled_uniform = device.get_uniform(&tile_filter_program.program,
+impl<D> SolidTileTextFilterProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileTextFilterProgram<D> {
+        let solid_tile_program = SolidTileProgram::new(device,
+                                                       resources,
+                                                       "tile_solid_filter_text");
+        let kernel_uniform = device.get_uniform(&solid_tile_program.program, "Kernel");
+        let gamma_lut_uniform = device.get_uniform(&solid_tile_program.program, "GammaLUT");
+        let gamma_correction_enabled_uniform = device.get_uniform(&solid_tile_program.program,
                                                                   "GammaCorrectionEnabled");
-        let fg_color_uniform = device.get_uniform(&tile_filter_program.program, "FGColor");
-        let bg_color_uniform = device.get_uniform(&tile_filter_program.program, "BGColor");
-        TileFilterTextProgram {
-            tile_filter_program,
+        let fg_color_uniform = device.get_uniform(&solid_tile_program.program, "FGColor");
+        let bg_color_uniform = device.get_uniform(&solid_tile_program.program, "BGColor");
+        SolidTileTextFilterProgram {
+            solid_tile_program,
             kernel_uniform,
             gamma_lut_uniform,
             gamma_correction_enabled_uniform,

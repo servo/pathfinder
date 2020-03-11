@@ -1,4 +1,4 @@
-// pathfinder/shaders/tile_filter_text_convolve.inc.glsl
+// pathfinder/shaders/tile_solid_filter_text_convolve.inc.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
