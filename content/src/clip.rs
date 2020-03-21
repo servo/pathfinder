@@ -199,6 +199,7 @@ where
             }
         }
 
+        
         let input = self.contour_mut().take();
         for segment in input.iter() {
             self.clip_segment_against(segment, &edge);

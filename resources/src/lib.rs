@@ -19,6 +19,9 @@
 
 use std::io::Error as IOError;
 
+#[macro_use]
+extern crate pathfinder_log;
+
 pub mod embedded;
 pub mod fs;
 

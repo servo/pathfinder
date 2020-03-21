@@ -25,9 +25,10 @@ impl EmbeddedResourceLoader {
 
 impl ResourceLoader for EmbeddedResourceLoader {
     fn slurp(&self, virtual_path: &str) -> Result<Vec<u8>, IOError> {
+        pa_debug!("EmbeddedResourceLoader::slurp({})", virtual_path);
         match RESOURCES.iter().filter(|&(path, _)| *path == virtual_path).next() {
             Some((_, data)) => Ok(data.to_vec()),
-            None => Err(IOError::from(ErrorKind::NotFound)),
+            None => Err(IOError::new(ErrorKind::NotFound, format!("trying to read {}", virtual_path))),
         }
     }
 }

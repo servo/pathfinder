@@ -307,6 +307,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "canvas_svg"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "gl",
+ "pathfinder_canvas",
+ "pathfinder_color",
+ "pathfinder_content",
+ "pathfinder_geometry",
+ "pathfinder_gl",
+ "pathfinder_gpu",
+ "pathfinder_log",
+ "pathfinder_renderer",
+ "pathfinder_resources",
+ "pathfinder_svg",
+ "sdl2",
+ "sdl2-sys",
+ "usvg",
+]
+
+[[package]]
 name = "canvas_text"
 version = "0.1.0"
 dependencies = [
@@ -1969,6 +1990,9 @@ dependencies = [
 [[package]]
 name = "pathfinder_resources"
 version = "0.1.0"
+dependencies = [
+ "pathfinder_log",
+]
 
 [[package]]
 name = "pathfinder_simd"

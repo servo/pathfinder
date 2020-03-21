@@ -13,3 +13,6 @@ svg = []
 textures_lut = []
 textures_demo = []
 textures_debug = []
+
+[dependencies.pathfinder_log]
+path = "../log"

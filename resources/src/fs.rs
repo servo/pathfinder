@@ -50,6 +50,8 @@ impl FilesystemResourceLoader {
 
 impl ResourceLoader for FilesystemResourceLoader {
     fn slurp(&self, virtual_path: &str) -> Result<Vec<u8>, IOError> {
+        pa_debug!("FilesystemResourceLoader::slurp({})", virtual_path);
+
         let mut path = self.directory.clone();
         virtual_path
             .split('/')
