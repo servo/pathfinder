@@ -9,16 +9,13 @@
 // except according to those terms.
 
 use crate::gpu_data::FillBatchPrimitive;
-use pathfinder_content::fill::FillRule;
 use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_VERTEX_SIZE: usize = 12;
-const ALPHA_TILE_VERTEX_SIZE: usize = 20;
-const MASK_TILE_VERTEX_SIZE: usize = 12;
+const TILE_VERTEX_SIZE: usize = 40;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -150,173 +147,93 @@ where
     }
 }
 
-pub struct MaskTileVertexArray<D> where D: Device {
+pub struct TileVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
-    pub vertex_buffer: D::Buffer,
 }
 
-impl<D> MaskTileVertexArray<D> where D: Device {
+impl<D> TileVertexArray<D> where D: Device {
     pub fn new(device: &D,
-               mask_tile_program: &MaskTileProgram<D>,
+               tile_program: &TileProgram<D>,
+               tile_vertex_buffer: &D::Buffer,
                quads_vertex_indices_buffer: &D::Buffer)
-               -> MaskTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
-
-        let position_attr = device.get_vertex_attr(&mask_tile_program.program, "Position")
-                                  .unwrap();
-        let fill_tex_coord_attr = device.get_vertex_attr(&mask_tile_program.program,
-                                                         "FillTexCoord").unwrap();
-        let backdrop_attr = device.get_vertex_attr(&mask_tile_program.program, "Backdrop")
-                                  .unwrap();
-
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
-            stride: MASK_TILE_VERTEX_SIZE,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array, &fill_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
-            stride: MASK_TILE_VERTEX_SIZE,
-            offset: 4,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array, &backdrop_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: MASK_TILE_VERTEX_SIZE,
-            offset: 8,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
-
-        MaskTileVertexArray { vertex_array, vertex_buffer }
-    }
-}
-
-pub struct AlphaTileVertexArray<D> where D: Device {
-    pub vertex_array: D::VertexArray,
-}
-
-impl<D> AlphaTileVertexArray<D> where D: Device {
-    pub fn new(
-        device: &D,
-        alpha_tile_program: &AlphaTileProgram<D>,
-        alpha_tile_vertex_buffer: &D::Buffer,
-        quads_vertex_indices_buffer: &D::Buffer,
-    ) -> AlphaTileVertexArray<D> {
+               -> TileVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
         let tile_position_attr =
-            device.get_vertex_attr(&alpha_tile_program.program, "TilePosition").unwrap();
-        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                          "ColorTexCoord").unwrap();
-        let mask_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                         "MaskTexCoord").unwrap();
-        let opacity_attr = device.get_vertex_attr(&alpha_tile_program.program, "Opacity").unwrap();
+            device.get_vertex_attr(&tile_program.program, "TilePosition").unwrap();
+        let color_0_tex_coord_attr =
+            device.get_vertex_attr(&tile_program.program, "ColorTexCoord0").unwrap();
+        let color_1_tex_coord_attr =
+            device.get_vertex_attr(&tile_program.program, "ColorTexCoord1").unwrap();
+        let mask_0_tex_coord_attr =
+            device.get_vertex_attr(&tile_program.program, "MaskTexCoord0").unwrap();
+        let mask_1_tex_coord_attr =
+            device.get_vertex_attr(&tile_program.program, "MaskTexCoord1").unwrap();
+        let mask_backdrop_attr =
+            device.get_vertex_attr(&tile_program.program, "MaskBackdrop").unwrap();
 
-        device.bind_buffer(&vertex_array, alpha_tile_vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&vertex_array, tile_vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
-            stride: ALPHA_TILE_VERTEX_SIZE,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array, &mask_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
-            stride: ALPHA_TILE_VERTEX_SIZE,
-            offset: 4,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::F32,
-            stride: ALPHA_TILE_VERTEX_SIZE,
-            offset: 8,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array, &opacity_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U8,
-            stride: ALPHA_TILE_VERTEX_SIZE,
-            offset: 18,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
-
-        AlphaTileVertexArray { vertex_array }
-    }
-}
-
-pub struct SolidTileVertexArray<D>
-where
-    D: Device,
-{
-    pub vertex_array: D::VertexArray,
-}
-
-impl<D> SolidTileVertexArray<D>
-where
-    D: Device,
-{
-    pub fn new(
-        device: &D,
-        solid_tile_program: &SolidTileProgram<D>,
-        solid_tile_vertex_buffer: &D::Buffer,
-        quads_vertex_indices_buffer: &D::Buffer,
-    ) -> SolidTileVertexArray<D> {
-        let vertex_array = device.create_vertex_array();
-
-        let tile_position_attr =
-            device.get_vertex_attr(&solid_tile_program.program, "TilePosition").unwrap();
-        let color_tex_coord_attr =
-            device.get_vertex_attr(&solid_tile_program.program, "ColorTexCoord").unwrap();
-
-        // NB: The tile origin must be of type short, not unsigned short, to work around a macOS
-        // Radeon driver bug.
-        device.bind_buffer(&vertex_array, solid_tile_vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: SOLID_TILE_VERTEX_SIZE,
+            stride: TILE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
         });
         device.configure_vertex_attr(&vertex_array,
-                                     &color_tex_coord_attr,
+                                     &color_0_tex_coord_attr,
                                      &VertexAttrDescriptor {
-                                        size: 2,
-                                        class: VertexAttrClass::Float,
-                                        attr_type: VertexAttrType::F32,
-                                        stride: SOLID_TILE_VERTEX_SIZE,
-                                        offset: 4,
-                                        divisor: 0,
-                                        buffer_index: 0,
-                                     });
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
+            stride: TILE_VERTEX_SIZE,
+            offset: 4,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array,
+                                     &color_1_tex_coord_attr,
+                                     &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
+            stride: TILE_VERTEX_SIZE,
+            offset: 12,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &mask_0_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
+            stride: TILE_VERTEX_SIZE,
+            offset: 20,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &mask_1_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
+            stride: TILE_VERTEX_SIZE,
+            offset: 28,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.configure_vertex_attr(&vertex_array, &mask_backdrop_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: TILE_VERTEX_SIZE,
+            offset: 36,
+            divisor: 0,
+            buffer_index: 0,
+        });
         device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
-        SolidTileVertexArray { vertex_array }
+        TileVertexArray { vertex_array }
     }
 }
 
@@ -341,7 +258,7 @@ impl<D> CopyTileVertexArray<D> where D: Device {
             size: 2,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
-            stride: ALPHA_TILE_VERTEX_SIZE,
+            stride: TILE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
@@ -393,90 +310,57 @@ where
     }
 }
 
-pub struct MaskTileProgram<D> where D: Device {
-    pub program: D::Program,
-    pub fill_texture_uniform: D::Uniform,
-}
-
-impl<D> MaskTileProgram<D> where D: Device {
-    pub fn new(fill_rule: FillRule, device: &D, resources: &dyn ResourceLoader)
-               -> MaskTileProgram<D> {
-        let program_name = match fill_rule {
-            FillRule::Winding => "mask_winding",
-            FillRule::EvenOdd => "mask_evenodd",
-        };
-
-        let program = device.create_program_from_shader_names(resources,
-                                                              program_name,
-                                                              "mask",
-                                                              program_name);
-
-        let fill_texture_uniform = device.get_uniform(&program, "FillTexture");
-        MaskTileProgram { program, fill_texture_uniform }
-    }
-}
-
-pub struct SolidTileProgram<D> where D: Device {
+pub struct TileProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
-    pub color_texture_uniform: D::Uniform,
+    pub dest_texture_uniform: D::Uniform,
+    pub color_texture_0_uniform: D::Uniform,
+    pub color_texture_1_uniform: D::Uniform,
+    pub mask_texture_0_uniform: D::Uniform,
+    pub mask_texture_1_uniform: D::Uniform,
+    pub gamma_lut_uniform: D::Uniform,
+    pub color_texture_0_size_uniform: D::Uniform,
+    pub filter_params_0_uniform: D::Uniform,
+    pub filter_params_1_uniform: D::Uniform,
+    pub filter_params_2_uniform: D::Uniform,
+    pub dest_texture_size_uniform: D::Uniform,
+    pub ctrl_uniform: D::Uniform,
 }
 
-impl<D> SolidTileProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, program_name: &str)
-               -> SolidTileProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              program_name,
-                                                              "tile_solid",
-                                                              program_name);
+impl<D> TileProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> TileProgram<D> {
+        let program = device.create_program(resources, "tile");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let color_texture_uniform = device.get_uniform(&program, "ColorTexture");
-        SolidTileProgram {
+        let dest_texture_uniform = device.get_uniform(&program, "DestTexture");
+        let color_texture_0_uniform = device.get_uniform(&program, "ColorTexture0");
+        let color_texture_1_uniform = device.get_uniform(&program, "ColorTexture1");
+        let mask_texture_0_uniform = device.get_uniform(&program, "MaskTexture0");
+        let mask_texture_1_uniform = device.get_uniform(&program, "MaskTexture1");
+        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
+        let color_texture_0_size_uniform = device.get_uniform(&program, "ColorTexture0Size");
+        let filter_params_0_uniform = device.get_uniform(&program, "FilterParams0");
+        let filter_params_1_uniform = device.get_uniform(&program, "FilterParams1");
+        let filter_params_2_uniform = device.get_uniform(&program, "FilterParams2");
+        let dest_texture_size_uniform = device.get_uniform(&program, "DestTextureSize");
+        let ctrl_uniform = device.get_uniform(&program, "Ctrl");
+        TileProgram {
             program,
             transform_uniform,
             tile_size_uniform,
-            color_texture_uniform,
-        }
-    }
-}
-
-pub struct AlphaTileProgram<D> where D: Device {
-    pub program: D::Program,
-    pub transform_uniform: D::Uniform,
-    pub tile_size_uniform: D::Uniform,
-    pub framebuffer_size_uniform: D::Uniform,
-    pub stencil_texture_uniform: D::Uniform,
-    pub paint_texture_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileProgram<D> where D: Device {
-    #[inline]
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileProgram<D> {
-        AlphaTileProgram::from_fragment_shader_name(device, resources, "tile_alpha")
-    }
-
-    fn from_fragment_shader_name(device: &D,
-                                 resources: &dyn ResourceLoader,
-                                 fragment_shader_name: &str)
-                                 -> AlphaTileProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              fragment_shader_name,
-                                                              "tile_alpha",
-                                                              fragment_shader_name);
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
-        let paint_texture_uniform = device.get_uniform(&program, "PaintTexture");
-        AlphaTileProgram {
-            program,
-            transform_uniform,
-            tile_size_uniform,
-            framebuffer_size_uniform,
-            stencil_texture_uniform,
-            paint_texture_uniform,
+            dest_texture_uniform,
+            color_texture_0_uniform,
+            color_texture_1_uniform,
+            mask_texture_0_uniform,
+            mask_texture_1_uniform,
+            gamma_lut_uniform,
+            color_texture_0_size_uniform,
+            filter_params_0_uniform,
+            filter_params_1_uniform,
+            filter_params_2_uniform,
+            dest_texture_size_uniform,
+            ctrl_uniform,
         }
     }
 }
@@ -502,126 +386,6 @@ impl<D> CopyTileProgram<D> where D: Device {
             tile_size_uniform,
             framebuffer_size_uniform,
             src_uniform,
-        }
-    }
-}
-
-pub struct AlphaTileBlendModeProgram<D> where D: Device {
-    pub alpha_tile_program: AlphaTileProgram<D>,
-    pub dest_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileBlendModeProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, name: &str)
-               -> AlphaTileBlendModeProgram<D> {
-        let alpha_tile_program =
-            AlphaTileProgram::from_fragment_shader_name(device, resources, name);
-        let dest_uniform = device.get_uniform(&alpha_tile_program.program, "Dest");
-        AlphaTileBlendModeProgram { alpha_tile_program, dest_uniform }
-    }
-}
-
-pub struct AlphaTileHSLProgram<D> where D: Device {
-    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
-    pub blend_hsl_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileHSLProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileHSLProgram<D> {
-        let alpha_tile_blend_mode_program =
-            AlphaTileBlendModeProgram::new(device, resources, "tile_alpha_hsl");
-        let blend_hsl_uniform =
-            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
-                               "BlendHSL");
-        AlphaTileHSLProgram { alpha_tile_blend_mode_program, blend_hsl_uniform }
-    }
-}
-
-pub struct AlphaTileOverlayProgram<D> where D: Device {
-    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
-    pub blend_mode_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileOverlayProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileOverlayProgram<D> {
-        let alpha_tile_blend_mode_program = AlphaTileBlendModeProgram::new(device,
-                                                                           resources,
-                                                                           "tile_alpha_overlay");
-        let blend_mode_uniform =
-            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program,
-                               "BlendMode");
-        AlphaTileOverlayProgram { alpha_tile_blend_mode_program, blend_mode_uniform }
-    }
-}
-
-pub struct AlphaTileDodgeBurnProgram<D> where D: Device {
-    pub alpha_tile_blend_mode_program: AlphaTileBlendModeProgram<D>,
-    pub burn_uniform: D::Uniform,
-}
-
-impl<D> AlphaTileDodgeBurnProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileDodgeBurnProgram<D> {
-        let alpha_tile_blend_mode_program =
-            AlphaTileBlendModeProgram::new(device, resources, "tile_alpha_dodgeburn");
-        let burn_uniform =
-            device.get_uniform(&alpha_tile_blend_mode_program.alpha_tile_program.program, "Burn");
-        AlphaTileDodgeBurnProgram { alpha_tile_blend_mode_program, burn_uniform }
-    }
-}
-
-pub struct SolidTileBlurFilterProgram<D> where D: Device {
-    pub solid_tile_program: SolidTileProgram<D>,
-    pub src_offset_scale_uniform: D::Uniform,
-    pub initial_gauss_coeff_uniform: D::Uniform,
-    pub support_uniform: D::Uniform,
-}
-
-impl<D> SolidTileBlurFilterProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileBlurFilterProgram<D> {
-        let solid_tile_program = SolidTileProgram::new(device,
-                                                       resources,
-                                                       "tile_solid_filter_blur");
-        let src_offset_scale_uniform = device.get_uniform(&solid_tile_program.program, 
-                                                          "SrcOffsetScale");
-        let initial_gauss_coeff_uniform = device.get_uniform(&solid_tile_program.program,
-                                                             "InitialGaussCoeff");
-        let support_uniform = device.get_uniform(&solid_tile_program.program, "Support");
-        SolidTileBlurFilterProgram {
-            solid_tile_program,
-            src_offset_scale_uniform,
-            initial_gauss_coeff_uniform,
-            support_uniform,
-        }
-    }
-}
-
-pub struct SolidTileTextFilterProgram<D> where D: Device {
-    pub solid_tile_program: SolidTileProgram<D>,
-    pub kernel_uniform: D::Uniform,
-    pub gamma_lut_uniform: D::Uniform,
-    pub gamma_correction_enabled_uniform: D::Uniform,
-    pub fg_color_uniform: D::Uniform,
-    pub bg_color_uniform: D::Uniform,
-}
-
-impl<D> SolidTileTextFilterProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileTextFilterProgram<D> {
-        let solid_tile_program = SolidTileProgram::new(device,
-                                                       resources,
-                                                       "tile_solid_filter_text");
-        let kernel_uniform = device.get_uniform(&solid_tile_program.program, "Kernel");
-        let gamma_lut_uniform = device.get_uniform(&solid_tile_program.program, "GammaLUT");
-        let gamma_correction_enabled_uniform = device.get_uniform(&solid_tile_program.program,
-                                                                  "GammaCorrectionEnabled");
-        let fg_color_uniform = device.get_uniform(&solid_tile_program.program, "FGColor");
-        let bg_color_uniform = device.get_uniform(&solid_tile_program.program, "BGColor");
-        SolidTileTextFilterProgram {
-            solid_tile_program,
-            kernel_uniform,
-            gamma_lut_uniform,
-            gamma_correction_enabled_uniform,
-            fg_color_uniform,
-            bg_color_uniform,
         }
     }
 }

@@ -161,6 +161,10 @@ pub struct PaintInfo {
     ///
     /// The indices of this vector are render target IDs.
     pub render_target_metadata: Vec<RenderTargetMetadata>,
+    /// The page containing the opacity tile.
+    pub opacity_tile_page: TexturePageId,
+    /// The transform for the opacity tile.
+    pub opacity_tile_transform: Transform2F,
 }
 
 #[derive(Debug)]
@@ -212,6 +216,7 @@ impl Palette {
         }
 
         // Assign paint locations.
+        let opacity_tile_builder = OpacityTileBuilder::new(&mut allocator);
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
         let mut gradient_tile_builder = GradientTileBuilder::new();
         for paint in &self.paints {
@@ -344,6 +349,7 @@ impl Palette {
         // Draw to texels.
         //
         // TODO(pcwalton): Do more of this on GPU.
+        opacity_tile_builder.render(&mut page_texels);
         for (paint, metadata) in self.paints.iter().zip(paint_metadata.iter()) {
             let texture_page = metadata.location.page;
             let texels = &mut page_texels[texture_page.0 as usize];
@@ -392,7 +398,13 @@ impl Palette {
             }
         }
 
-        PaintInfo { render_commands, paint_metadata, render_target_metadata }
+        PaintInfo {
+            render_commands,
+            paint_metadata,
+            render_target_metadata,
+            opacity_tile_page: opacity_tile_builder.tile_location.page,
+            opacity_tile_transform: opacity_tile_builder.tile_transform(&allocator),
+        }
     }
 
     // TODO(pcwalton): This is slow. Do on GPU instead.
@@ -597,6 +609,38 @@ fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
 
 fn rect_to_inset_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
     rect_to_uv(rect, texture_scale).contract(texture_scale.scale(0.5))
+}
+
+// Opacity allocation
+
+struct OpacityTileBuilder {
+    tile_location: TextureLocation,
+}
+
+impl OpacityTileBuilder {
+    fn new(allocator: &mut TextureAllocator) -> OpacityTileBuilder {
+        OpacityTileBuilder {
+            tile_location: allocator.allocate(Vector2I::splat(16), AllocationMode::Atlas),
+        }
+    }
+
+    fn render(&self, page_texels: &mut [Texels]) {
+        let texels = &mut page_texels[self.tile_location.page.0 as usize];
+        for y in 0..16 {
+            for x in 0..16 {
+                let color = ColorU::new(0xff, 0xff, 0xff, y * 16 + x);
+                let coords = self.tile_location.rect.origin() + Vector2I::new(x as i32, y as i32);
+                texels.put_texel(coords, color);
+            }
+        }
+    }
+
+    fn tile_transform(&self, allocator: &TextureAllocator) -> Transform2F {
+        let texture_scale = allocator.page_scale(self.tile_location.page);
+        let matrix = Matrix2x2F::from_scale(texture_scale.scale(16.0));
+        let vector = rect_to_uv(self.tile_location.rect, texture_scale).origin();
+        Transform2F { matrix, vector }
+    }
 }
 
 // Solid color allocation

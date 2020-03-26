@@ -12,7 +12,7 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
-use pathfinder_content::effects::{BlendMode, BlurDirection, CompositeOp, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, BlurDirection, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
@@ -251,11 +251,9 @@ impl CanvasRenderingContext2D {
         let transform = self.current_state.transform;
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
-        let composite_op = self.current_state.global_composite_operation.to_composite_op();
         let opacity = (self.current_state.global_alpha * 255.0) as u8;
 
         if !self.current_state.shadow_paint.is_fully_transparent() {
-            let composite_render_target_id = self.push_render_target_if_needed(composite_op);
             let shadow_blur_render_target_ids = self.push_shadow_blur_render_targets_if_needed();
 
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
@@ -273,10 +271,8 @@ impl CanvasRenderingContext2D {
             self.scene.push_path(path);
 
             self.composite_shadow_blur_render_targets_if_needed(shadow_blur_render_target_ids);
-            self.composite_render_target_if_needed(composite_op, composite_render_target_id);
         }
 
-        let render_target_id = self.push_render_target_if_needed(composite_op);
         outline.transform(&transform);
 
         let mut path = DrawPath::new(outline, paint_id);
@@ -285,18 +281,6 @@ impl CanvasRenderingContext2D {
         path.set_blend_mode(blend_mode);
         path.set_opacity(opacity);
         self.scene.push_path(path);
-
-        self.composite_render_target_if_needed(composite_op, render_target_id);
-    }
-
-    fn push_render_target_if_needed(&mut self, composite_op: Option<CompositeOp>)
-                                    -> Option<RenderTargetId> {
-        if composite_op.is_none() {
-            return None;
-        }
-
-        let render_target_size = self.scene.view_box().size().ceil().to_i32();
-        Some(self.scene.push_render_target(RenderTarget::new(render_target_size, String::new())))
     }
 
     fn push_shadow_blur_render_targets_if_needed(&mut self) -> Option<[RenderTargetId; 2]> {
@@ -310,19 +294,6 @@ impl CanvasRenderingContext2D {
         let render_target_id_b =
             self.scene.push_render_target(RenderTarget::new(render_target_size, String::new()));
         Some([render_target_id_a, render_target_id_b])
-    }
-
-    fn composite_render_target_if_needed(&mut self,
-                                         composite_op: Option<CompositeOp>,
-                                         render_target_id: Option<RenderTargetId>) {
-        let composite_op = match composite_op {
-            None => return,
-            Some(composite_op) => composite_op,
-        };
-
-        self.scene.pop_render_target();
-        self.scene.draw_render_target(render_target_id.unwrap(),
-                                      Effects::new(Filter::Composite(composite_op)));
     }
 
     fn composite_shadow_blur_render_targets_if_needed(
@@ -702,6 +673,7 @@ pub enum CompositeOperation {
 impl CompositeOperation {
     fn to_blend_mode(self) -> BlendMode {
         match self {
+            CompositeOperation::Copy => BlendMode::Copy,
             CompositeOperation::SourceAtop => BlendMode::SrcAtop,
             CompositeOperation::DestinationOver => BlendMode::DestOver,
             CompositeOperation::DestinationOut => BlendMode::DestOut,
@@ -722,43 +694,11 @@ impl CompositeOperation {
             CompositeOperation::Saturation => BlendMode::Saturation,
             CompositeOperation::Color => BlendMode::Color,
             CompositeOperation::Luminosity => BlendMode::Luminosity,
-            CompositeOperation::SourceOver |
-            CompositeOperation::SourceIn |
-            CompositeOperation::SourceOut |
-            CompositeOperation::DestinationIn |
-            CompositeOperation::DestinationAtop |
-            CompositeOperation::Copy => BlendMode::SrcOver,
-        }
-    }
-
-    fn to_composite_op(self) -> Option<CompositeOp> {
-        match self {
-            CompositeOperation::SourceIn => Some(CompositeOp::SrcIn),
-            CompositeOperation::SourceOut => Some(CompositeOp::SrcOut),
-            CompositeOperation::DestinationIn => Some(CompositeOp::DestIn),
-            CompositeOperation::DestinationAtop => Some(CompositeOp::DestAtop),
-            CompositeOperation::Copy => Some(CompositeOp::Copy),
-            CompositeOperation::SourceOver |
-            CompositeOperation::SourceAtop |
-            CompositeOperation::DestinationOver |
-            CompositeOperation::DestinationOut |
-            CompositeOperation::Xor |
-            CompositeOperation::Lighter |
-            CompositeOperation::Multiply |
-            CompositeOperation::Screen |
-            CompositeOperation::Overlay |
-            CompositeOperation::Darken |
-            CompositeOperation::Lighten |
-            CompositeOperation::ColorDodge |
-            CompositeOperation::ColorBurn |
-            CompositeOperation::HardLight |
-            CompositeOperation::SoftLight |
-            CompositeOperation::Difference |
-            CompositeOperation::Exclusion |
-            CompositeOperation::Hue |
-            CompositeOperation::Saturation |
-            CompositeOperation::Color |
-            CompositeOperation::Luminosity => None,
+            CompositeOperation::SourceOver => BlendMode::SrcOver,
+            CompositeOperation::SourceIn => BlendMode::SrcIn,
+            CompositeOperation::SourceOut => BlendMode::SrcOut,
+            CompositeOperation::DestinationIn => BlendMode::DestIn,
+            CompositeOperation::DestinationAtop => BlendMode::DestAtop,
         }
     }
 }

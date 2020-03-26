@@ -29,7 +29,7 @@ pub const MAX_STEM_DARKENING_AMOUNT: [f32; 2] = [0.3, 0.3];
 pub const MAX_STEM_DARKENING_PIXELS_PER_EM: f32 = 72.0;
 
 /// Effects that can be applied to a layer.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Effects {
     /// The shader that should be used when compositing this layer onto its destination.
     pub filter: Filter,
@@ -38,11 +38,8 @@ pub struct Effects {
 /// The shader that should be used when compositing this layer onto its destination.
 #[derive(Clone, Copy, Debug)]
 pub enum Filter {
-    /// A Porter-Duff compositing operation.
-    ///
-    /// The compositing operations here are the ones that can't be blend modes because they can
-    /// clear parts of the destination not overlapped by the source, plus the regular source-over.
-    Composite(CompositeOp),
+    /// No special filter.
+    None,
 
     /// Performs postprocessing operations useful for monochrome text.
     Text {
@@ -68,61 +65,35 @@ pub enum Filter {
     },
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum CompositeOp {
-    /// The default.
-    SrcOver,
-    /// No regions are enabled.
-    Clear,
-    /// Only the source will be present.
-    Copy,
-    /// The source that overlaps the destination replaces the destination.
-    SrcIn,
-    /// Destination which overlaps the source replaces the source.
-    DestIn,
-    /// Source is placed where it falls outside of the destination.
-    SrcOut,
-    /// Destination which overlaps the source replaces the source. Source is placed elsewhere.
-    DestAtop,
-}
-
 /// Blend modes that can be applied to individual paths.
-///
-/// All blend modes preserve parts of the destination that are not overlapped by the source path.
-/// Other Porter-Duff compositing operations are `CompositeOp`s.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlendMode {
-    // Supported by GPU blender
+    // Porter-Duff, supported by GPU blender
     Clear,
+    Copy,
+    SrcIn,
+    SrcOut,
     SrcOver,
-    DestOver,
-    DestOut,
     SrcAtop,
+    DestIn,
+    DestOut,
+    DestOver,
+    DestAtop,
     Xor,
     Lighter,
-    Lighten,
-    Darken,
 
-    // Overlay
+    // Others, unsupported by GPU blender
+    Darken,
+    Lighten,
     Multiply,
     Screen,
     HardLight,
     Overlay,
-
-    // Dodge/burn
     ColorDodge,
     ColorBurn,
-
-    // Soft light
     SoftLight,
-
-    // Difference
     Difference,
-
-    // Exclusion
     Exclusion,
-
-    // HSL
     Hue,
     Saturation,
     Color,
@@ -138,17 +109,17 @@ pub enum BlurDirection {
     Y,
 }
 
-impl Default for CompositeOp {
-    #[inline]
-    fn default() -> CompositeOp {
-        CompositeOp::SrcOver
-    }
-}
-
 impl Default for BlendMode {
     #[inline]
     fn default() -> BlendMode {
         BlendMode::SrcOver
+    }
+}
+
+impl Default for Filter {
+    #[inline]
+    fn default() -> Filter {
+        Filter::None
     }
 }
 
@@ -166,6 +137,44 @@ impl BlendMode {
     pub fn occludes_backdrop(self) -> bool {
         match self {
             BlendMode::SrcOver | BlendMode::Clear => true,
+            BlendMode::DestOver |
+            BlendMode::DestOut |
+            BlendMode::SrcAtop |
+            BlendMode::Xor |
+            BlendMode::Lighter |
+            BlendMode::Lighten |
+            BlendMode::Darken |
+            BlendMode::Copy |
+            BlendMode::SrcIn |
+            BlendMode::DestIn |
+            BlendMode::SrcOut |
+            BlendMode::DestAtop |
+            BlendMode::Multiply |
+            BlendMode::Screen |
+            BlendMode::HardLight |
+            BlendMode::Overlay |
+            BlendMode::ColorDodge |
+            BlendMode::ColorBurn |
+            BlendMode::SoftLight |
+            BlendMode::Difference |
+            BlendMode::Exclusion |
+            BlendMode::Hue |
+            BlendMode::Saturation |
+            BlendMode::Color |
+            BlendMode::Luminosity => false,
+        }
+    }
+
+    /// True if this blend mode does not preserve destination areas outside the source.
+    pub fn is_destructive(self) -> bool {
+        match self {
+            BlendMode::Clear |
+            BlendMode::Copy |
+            BlendMode::SrcIn |
+            BlendMode::DestIn |
+            BlendMode::SrcOut |
+            BlendMode::DestAtop => true,
+            BlendMode::SrcOver |
             BlendMode::DestOver |
             BlendMode::DestOut |
             BlendMode::SrcAtop |
