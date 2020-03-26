@@ -120,6 +120,13 @@ impl Outline {
         &self.contours
     }
 
+    /// Removes all contours from this outline.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.contours.clear();
+        self.bounds = RectF::default();
+    }
+
     pub fn push_contour(&mut self, contour: Contour) {
         if contour.is_empty() {
             return;
