@@ -479,14 +479,6 @@ impl I32x2 {
     }
 
     #[inline]
-    pub fn packed_eq(self, other: I32x2) -> U32x2 {
-        U32x2([
-            if self[0] == other[0] { !0 } else { 0 },
-            if self[1] == other[1] { !0 } else { 0 },
-        ])
-    }
-
-    #[inline]
     pub fn concat_xy_xy(self, other: I32x2) -> I32x4 {
         I32x4([self[0], self[1], other[0], other[1]])
     }
@@ -506,6 +498,40 @@ impl I32x2 {
             self[1].max(other[1]),
         ])
     }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: I32x2) -> U32x2 {
+        U32x2([
+            if self[0] == other[0] { !0 } else { 0 },
+            if self[1] == other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_gt(self, other: I32x2) -> U32x2 {
+        U32x2([
+            if self[0] > other[0] { !0 } else { 0 },
+            if self[1] > other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: I32x2) -> U32x2 {
+        U32x2([
+            if self[0] <= other[0] { !0 } else { 0 },
+            if self[1] <= other[1] { !0 } else { 0 },
+        ])
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: I32x2) -> U32x2 {
+        U32x2([
+            if self[0] < other[0] { !0 } else { 0 },
+            if self[1] < other[1] { !0 } else { 0 },
+        ])
+    } 
 
     // Conversions
 
