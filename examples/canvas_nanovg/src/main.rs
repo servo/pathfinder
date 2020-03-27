@@ -29,6 +29,7 @@ use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_simd::default::F32x2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -134,9 +135,9 @@ fn draw_eyes(canvas: &mut CanvasRenderingContext2D,
     canvas.fill_path(path, FillRule::Winding);
 
     let gloss_position = eyes_left_position - eyes_radii.scale_xy(Vector2F::new(0.25, 0.5));
+    let gloss_radii = F32x2::new(0.1, 0.75) * F32x2::splat(eyes_radii.x());
     let mut gloss = Gradient::radial(LineSegment2F::new(gloss_position, gloss_position),
-                                     eyes_radii.x() * 0.1,
-                                     eyes_radii.x() * 0.75);
+                                     gloss_radii);
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 128), 0.0));
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 0), 1.0));
     canvas.set_fill_style(FillStyle::Gradient(gloss));
@@ -146,8 +147,7 @@ fn draw_eyes(canvas: &mut CanvasRenderingContext2D,
 
     let gloss_position = eyes_right_position - eyes_radii.scale_xy(Vector2F::new(0.25, 0.5));
     let mut gloss = Gradient::radial(LineSegment2F::new(gloss_position, gloss_position),
-                                     eyes_radii.x() * 0.1,
-                                     eyes_radii.x() * 0.75);
+                                     gloss_radii);
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 128), 0.0));
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 0), 1.0));
     canvas.set_fill_style(FillStyle::Gradient(gloss));
@@ -251,8 +251,7 @@ fn draw_graph(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
     for &sample_point in &sample_points {
         let gradient_center = sample_point + Vector2F::new(0.0, 2.0);
         let mut background = Gradient::radial(LineSegment2F::new(gradient_center, gradient_center),
-                                              3.0,
-                                              8.0);
+                                              F32x2::new(3.0, 8.0));
         background.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 32), 0.0));
         background.add_color_stop(ColorStop::new(ColorU::transparent_black(), 1.0));
         canvas.set_fill_style(FillStyle::Gradient(background));
@@ -372,8 +371,7 @@ fn draw_color_wheel(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f3
     // Fill the selection circle.
     let mut gradient = Gradient::radial(LineSegment2F::new(selection_circle_center,
                                                            selection_circle_center),
-                                        7.0,
-                                        9.0);
+                                        F32x2::new(7.0, 9.0));
     gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 64), 0.0));
     gradient.add_color_stop(ColorStop::new(ColorU::transparent_black(), 1.0));
     canvas.set_fill_style(FillStyle::Gradient(gradient));

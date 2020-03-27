@@ -295,6 +295,7 @@ dependencies = [
  "pathfinder_gpu 0.1.0",
  "pathfinder_renderer 0.1.0",
  "pathfinder_resources 0.1.0",
+ "pathfinder_simd 0.4.0",
  "sdl2 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sdl2-sys 0.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

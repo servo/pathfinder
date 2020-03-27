@@ -11,6 +11,9 @@
 //! Special effects that can be applied to layers.
 
 use pathfinder_color::ColorF;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_simd::default::F32x2;
 
 /// This intentionally does not precisely match what Core Graphics does (a
 /// Lanczos function), because we don't want any ringing artefacts.
@@ -29,17 +32,27 @@ pub const MAX_STEM_DARKENING_AMOUNT: [f32; 2] = [0.3, 0.3];
 pub const MAX_STEM_DARKENING_PIXELS_PER_EM: f32 = 72.0;
 
 /// Effects that can be applied to a layer.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Effects {
     /// The shader that should be used when compositing this layer onto its destination.
     pub filter: Filter,
 }
 
 /// The shader that should be used when compositing this layer onto its destination.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Filter {
     /// No special filter.
     None,
+
+    /// Converts a linear gradient to a radial one.
+    RadialGradient {
+        /// The line that the circles lie along.
+        line: LineSegment2F,
+        /// The radii of the circles at the two endpoints.
+        radii: F32x2,
+        /// The origin of the linearized gradient in the texture.
+        uv_origin: Vector2F,
+    },
 
     /// Performs postprocessing operations useful for monochrome text.
     Text {

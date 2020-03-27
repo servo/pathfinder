@@ -22,6 +22,7 @@ use pathfinder_color::{self as color, ColorF, ColorU};
 use pathfinder_content::effects::{BlendMode, BlurDirection, DefringingKernel, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
+use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
@@ -59,6 +60,7 @@ const COMBINER_CTRL_MASK_EVEN_ODD: i32 =           0x2;
 
 const COMBINER_CTRL_COLOR_ENABLE_MASK: i32 =       0x1;
 
+const COMBINER_CTRL_FILTER_RADIAL_GRADIENT: i32 =  0x1;
 const COMBINER_CTRL_FILTER_TEXT: i32 =             0x2;
 const COMBINER_CTRL_FILTER_BLUR: i32 =             0x3;
 
@@ -611,13 +613,13 @@ where
              UniformData::Mat4(self.tile_transform().to_columns())),
             (&self.tile_program.tile_size_uniform,
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
+            (&self.tile_program.framebuffer_size_uniform,
+             UniformData::Vec2(draw_viewport.size().to_f32().0)),
         ];
 
         if needs_readable_framebuffer {
             uniforms.push((&self.tile_program.dest_texture_uniform,
                            UniformData::TextureUnit(textures.len() as u32)));
-            uniforms.push((&self.tile_program.dest_texture_size_uniform,
-                           UniformData::Vec2(draw_viewport.size().to_f32().0)));
             textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
         }
 
@@ -659,6 +661,10 @@ where
 
         match effects.filter {
             Filter::None => {}
+            Filter::RadialGradient { line, radii, uv_origin } => {
+                ctrl |= COMBINER_CTRL_FILTER_RADIAL_GRADIENT << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
+                self.set_uniforms_for_radial_gradient_filter(&mut uniforms, line, radii, uv_origin)
+            }
             Filter::Text { fg_color, bg_color, defringing_kernel, gamma_correction } => {
                 ctrl |= COMBINER_CTRL_FILTER_TEXT << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
                 self.set_uniforms_for_text_filter(&mut textures,
@@ -842,6 +848,20 @@ where
 
     fn pop_render_target(&mut self) {
         self.render_target_stack.pop().expect("Render target stack underflow!");
+    }
+
+    fn set_uniforms_for_radial_gradient_filter<'a>(
+            &'a self,
+            uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
+            line: LineSegment2F,
+            radii: F32x2,
+            uv_origin: Vector2F) {
+        uniforms.extend_from_slice(&[
+            (&self.tile_program.filter_params_0_uniform,
+             UniformData::Vec4(line.from().0.concat_xy_xy(line.vector().0))),
+            (&self.tile_program.filter_params_1_uniform,
+             UniformData::Vec4(radii.concat_xy_xy(uv_origin.0))),
+        ]);
     }
 
     fn set_uniforms_for_text_filter<'a>(&'a self,

@@ -35,6 +35,8 @@
 
 precision highp float;
 
+#define EPSILON     0.00001
+
 #define FRAC_6_PI   1.9098593171027443
 #define FRAC_PI_3   1.0471975511965976
 
@@ -83,7 +85,7 @@ uniform sampler2D uGammaLUT;
 uniform vec4 uFilterParams0;
 uniform vec4 uFilterParams1;
 uniform vec4 uFilterParams2;
-uniform vec2 uDestTextureSize;
+uniform vec2 uFramebufferSize;
 uniform vec2 uColorTexture0Size;
 uniform int uCtrl;
 
@@ -193,7 +195,129 @@ vec4 filterText(vec2 colorTexCoord,
     return vec4(mix(bgColor, fgColor, alpha), 1.0);
 }
 
-// Filters
+// Other filters
+
+// This is based on Pixman (MIT license). Copy and pasting the excellent comment
+// from there:
+
+// Implementation of radial gradients following the PDF specification.
+// See section 8.7.4.5.4 Type 3 (Radial) Shadings of the PDF Reference
+// Manual (PDF 32000-1:2008 at the time of this writing).
+//
+// In the radial gradient problem we are given two circles (c₁,r₁) and
+// (c₂,r₂) that define the gradient itself.
+//
+// Mathematically the gradient can be defined as the family of circles
+//
+//     ((1-t)·c₁ + t·(c₂), (1-t)·r₁ + t·r₂)
+//
+// excluding those circles whose radius would be < 0. When a point
+// belongs to more than one circle, the one with a bigger t is the only
+// one that contributes to its color. When a point does not belong
+// to any of the circles, it is transparent black, i.e. RGBA (0, 0, 0, 0).
+// Further limitations on the range of values for t are imposed when
+// the gradient is not repeated, namely t must belong to [0,1].
+//
+// The graphical result is the same as drawing the valid (radius > 0)
+// circles with increasing t in [-∞, +∞] (or in [0,1] if the gradient
+// is not repeated) using SOURCE operator composition.
+//
+// It looks like a cone pointing towards the viewer if the ending circle
+// is smaller than the starting one, a cone pointing inside the page if
+// the starting circle is the smaller one and like a cylinder if they
+// have the same radius.
+//
+// What we actually do is, given the point whose color we are interested
+// in, compute the t values for that point, solving for t in:
+//
+//     length((1-t)·c₁ + t·(c₂) - p) = (1-t)·r₁ + t·r₂
+//
+// Let's rewrite it in a simpler way, by defining some auxiliary
+// variables:
+//
+//     cd = c₂ - c₁
+//     pd = p - c₁
+//     dr = r₂ - r₁
+//     length(t·cd - pd) = r₁ + t·dr
+//
+// which actually means
+//
+//     hypot(t·cdx - pdx, t·cdy - pdy) = r₁ + t·dr
+//
+// or
+//
+//     ⎷((t·cdx - pdx)² + (t·cdy - pdy)²) = r₁ + t·dr.
+//
+// If we impose (as stated earlier) that r₁ + t·dr ≥ 0, it becomes:
+//
+//     (t·cdx - pdx)² + (t·cdy - pdy)² = (r₁ + t·dr)²
+//
+// where we can actually expand the squares and solve for t:
+//
+//     t²cdx² - 2t·cdx·pdx + pdx² + t²cdy² - 2t·cdy·pdy + pdy² =
+//       = r₁² + 2·r₁·t·dr + t²·dr²
+//
+//     (cdx² + cdy² - dr²)t² - 2(cdx·pdx + cdy·pdy + r₁·dr)t +
+//         (pdx² + pdy² - r₁²) = 0
+//
+//     A = cdx² + cdy² - dr²
+//     B = pdx·cdx + pdy·cdy + r₁·dr
+//     C = pdx² + pdy² - r₁²
+//     At² - 2Bt + C = 0
+//
+// The solutions (unless the equation degenerates because of A = 0) are:
+//
+//     t = (B ± ⎷(B² - A·C)) / A
+//
+// The solution we are going to prefer is the bigger one, unless the
+// radius associated to it is negative (or it falls outside the valid t
+// range).
+//
+// Additional observations (useful for optimizations):
+// A does not depend on p
+//
+// A < 0 ⟺ one of the two circles completely contains the other one
+//   ⟺ for every p, the radii associated with the two t solutions have
+//       opposite sign
+//
+//                | x           y           z               w
+//  --------------+-------------------------------------------
+//  filterParams0 | lineFrom.x  lineFrom.y  lineVector.x    lineVector.y
+//  filterParams1 | radii.x     radii.y     uvOrigin.x      uvOrigin.y
+//  filterParams2 | -           -           -               -
+vec4 filterRadialGradient(vec2 colorTexCoord,
+                          sampler2D colorTexture,
+                          vec2 colorTextureSize,
+                          vec2 fragCoord,
+                          vec2 framebufferSize,
+                          vec4 filterParams0,
+                          vec4 filterParams1) {
+    vec2 lineFrom = filterParams0.xy, lineVector = filterParams0.zw;
+    vec2 radii = filterParams1.xy, uvOrigin = filterParams1.zw;
+
+#ifndef PF_ORIGIN_UPPER_LEFT
+    fragCoord.y = framebufferSize.y - fragCoord.y;
+#endif
+
+    vec2 dP = fragCoord - lineFrom, dC = lineVector;
+    float dR = radii.y - radii.x;
+
+    float a = dot(dC, dC) - dR * dR;
+    float b = dot(dP, dC) + radii.x * dR;
+    float c = dot(dP, dP) - radii.x * radii.x;
+    float discrim = b * b - a * c;
+
+    vec4 color = vec4(0.0);
+    if (abs(discrim) >= EPSILON) {
+        vec2 ts = vec2(sqrt(discrim) * vec2(1.0, -1.0) + vec2(b)) / vec2(a);
+        float tMax = max(ts.x, ts.y);
+        float t = tMax <= 1.0 ? tMax : min(ts.x, ts.y);
+        if (t >= 0.0)
+            color = texture(colorTexture, uvOrigin + vec2(t, 0.0));
+    }
+
+    return color;
+}
 
 //                | x             y             z             w
 //  --------------+----------------------------------------------------
@@ -248,11 +372,21 @@ vec4 filterColor(vec2 colorTexCoord,
                  sampler2D colorTexture,
                  sampler2D gammaLUT,
                  vec2 colorTextureSize,
+                 vec2 fragCoord,
+                 vec2 framebufferSize,
                  vec4 filterParams0,
                  vec4 filterParams1,
                  vec4 filterParams2,
                  int colorFilter) {
     switch (colorFilter) {
+    case COMBINER_CTRL_FILTER_RADIAL_GRADIENT:
+        return filterRadialGradient(colorTexCoord,
+                                    colorTexture,
+                                    colorTextureSize,
+                                    fragCoord,
+                                    framebufferSize,
+                                    filterParams0,
+                                    filterParams1);
     case COMBINER_CTRL_FILTER_BLUR:
         return filterBlur(colorTexCoord,
                           colorTexture,
@@ -431,6 +565,8 @@ void calculateColor(int ctrl) {
                              uColorTexture0,
                              uGammaLUT,
                              uColorTexture0Size,
+                             gl_FragCoord.xy,
+                             uFramebufferSize,
                              uFilterParams0,
                              uFilterParams1,
                              uFilterParams2,
@@ -444,7 +580,7 @@ void calculateColor(int ctrl) {
 
     // Apply composite.
     int compositeOp = (ctrl >> COMBINER_CTRL_COMPOSITE_SHIFT) & COMBINER_CTRL_COMPOSITE_MASK;
-    color = composite(color, uDestTexture, uDestTextureSize, gl_FragCoord.xy, compositeOp);
+    color = composite(color, uDestTexture, uFramebufferSize, gl_FragCoord.xy, compositeOp);
 
     // Premultiply alpha.
     color.rgb *= color.a;
