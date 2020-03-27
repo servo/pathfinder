@@ -569,6 +569,18 @@ impl Path2D {
         }
     }
 
+    // https://html.spec.whatwg.org/multipage/canvas.html#dom-path2d-addpath
+    pub fn add_path(&mut self, mut path: Path2D, transform: &Transform2F) {
+        self.flush_current_contour();
+        path.flush_current_contour();
+        path.outline.transform(transform);
+        let last_contour = path.outline.pop_contour();
+        for contour in path.outline.into_contours() {
+            self.outline.push_contour(contour);
+        }
+        self.current_contour = last_contour.unwrap_or_else(Contour::new);
+    }
+
     pub fn into_outline(mut self) -> Outline {
         self.flush_current_contour();
         self.outline

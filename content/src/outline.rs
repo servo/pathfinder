@@ -120,6 +120,11 @@ impl Outline {
         &self.contours
     }
 
+    #[inline]
+    pub fn into_contours(self) -> Vec<Contour> {
+        self.contours
+    }
+
     /// Removes all contours from this outline.
     #[inline]
     pub fn clear(&mut self) {
@@ -139,6 +144,18 @@ impl Outline {
         }
 
         self.contours.push(contour);
+    }
+
+    pub fn pop_contour(&mut self) -> Option<Contour> {
+        let last_contour = self.contours.pop();
+
+        let mut new_bounds = None;
+        for contour in &mut self.contours {
+            contour.update_bounds(&mut new_bounds);
+        }
+        self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
+
+        last_contour
     }
 
     pub fn transform(&mut self, transform: &Transform2F) {
