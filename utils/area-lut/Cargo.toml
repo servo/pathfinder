@@ -6,4 +6,4 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 clap = "2.30"
 euclid = "0.20"
-image = "0.22"
+image = "0.23"

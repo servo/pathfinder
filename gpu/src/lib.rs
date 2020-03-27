@@ -96,7 +96,7 @@ pub trait Device: Sized {
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
-        let image = image::load_from_memory_with_format(&data, ImageFormat::PNG)
+        let image = image::load_from_memory_with_format(&data, ImageFormat::Png)
             .unwrap()
             .to_luma();
         let size = Vector2I::new(image.width() as i32, image.height() as i32);
