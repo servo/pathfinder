@@ -11,6 +11,7 @@
 // except according to those terms.
 
 precision highp float;
+precision highp sampler2D;
 
 uniform mat4 uTransform;
 uniform int uGridlineCount;

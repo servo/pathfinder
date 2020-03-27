@@ -34,6 +34,7 @@
 #extension GL_GOOGLE_include_directive : enable
 
 precision highp float;
+precision highp sampler2D;
 
 #define EPSILON     0.00001
 

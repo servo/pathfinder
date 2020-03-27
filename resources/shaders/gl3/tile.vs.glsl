@@ -13,6 +13,7 @@
 
 
 precision highp float;
+precision highp sampler2D;
 
 uniform mat4 uTransform;
 uniform vec2 uTileSize;
