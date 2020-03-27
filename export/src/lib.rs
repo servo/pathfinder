@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use pathfinder_content::outline::ContourIterFlags;
 use pathfinder_content::segment::SegmentKind;
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::Scene;
@@ -87,7 +88,7 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         }
 
         for contour in outline.contours() {
-            for (segment_index, segment) in contour.iter().enumerate() {
+            for (segment_index, segment) in contour.iter(ContourIterFlags::empty()).enumerate() {
                 if segment_index == 0 {
                     pdf.move_to(tr(segment.baseline.from()));
                 }
@@ -103,7 +104,11 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
                         let c2 = Vector2F::splat(2./3.) * c + Vector2F::splat(1./3.) * p;
                         pdf.cubic_to(c1, c2, p);
                     }
-                    SegmentKind::Cubic => pdf.cubic_to(tr(segment.ctrl.from()), tr(segment.ctrl.to()), tr(segment.baseline.to()))
+                    SegmentKind::Cubic => {
+                        pdf.cubic_to(tr(segment.ctrl.from()),
+                                     tr(segment.ctrl.to()),
+                                     tr(segment.baseline.to()))
+                    }
                 }
             }
 
@@ -147,7 +152,7 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         }
 
         for contour in outline.contours() {
-            for (segment_index, segment) in contour.iter().enumerate() {
+            for (segment_index, segment) in contour.iter(ContourIterFlags::empty()).enumerate() {
                 if segment_index == 0 {
                     writeln!(writer, "{} moveto", P(segment.baseline.from()))?;
                 }

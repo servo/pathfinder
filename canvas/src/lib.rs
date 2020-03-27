@@ -44,6 +44,9 @@ const DEFAULT_FONT_SIZE: f32 = 10.0;
 #[cfg_attr(not(feature = "pf-text"), path = "text_no_text.rs")]
 mod text;
 
+#[cfg(test)]
+mod tests;
+
 pub struct CanvasRenderingContext2D {
     scene: Scene,
     current_state: State,

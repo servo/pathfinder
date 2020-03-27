@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::outline::{Contour, PointFlags, PushSegmentFlags};
+use crate::outline::{Contour, ContourIterFlags, PointFlags, PushSegmentFlags};
 use crate::segment::{CubicSegment, Segment};
 use arrayvec::ArrayVec;
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -200,7 +200,7 @@ where
         }
 
         let input = self.contour_mut().take();
-        for segment in input.iter() {
+        for segment in input.iter(ContourIterFlags::empty()) {
             self.clip_segment_against(segment, &edge);
         }
         if input.is_closed() {
@@ -266,7 +266,7 @@ where
 
     fn check_for_fast_clip(&mut self, edge: &Self::Edge) -> FastClipResult {
         let mut result = None;
-        for segment in self.contour_mut().iter() {
+        for segment in self.contour_mut().iter(ContourIterFlags::empty()) {
             let location = edge.trivially_test_segment(&segment);
             match (result, location) {
                 (None, EdgeRelativeLocation::Outside) => {

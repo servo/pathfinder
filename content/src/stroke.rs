@@ -10,7 +10,7 @@
 
 //! Utilities for converting path strokes to fills.
 
-use crate::outline::{ArcDirection, Contour, Outline, PushSegmentFlags};
+use crate::outline::{ArcDirection, Contour, ContourIterFlags, Outline, PushSegmentFlags};
 use crate::segment::Segment;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
@@ -161,7 +161,7 @@ impl<'a> ContourStrokeToFill<'a> {
     }
 
     fn offset_forward(&mut self) {
-        for (segment_index, segment) in self.input.iter().enumerate() {
+        for (segment_index, segment) in self.input.iter(ContourIterFlags::empty()).enumerate() {
             // FIXME(pcwalton): We negate the radius here so that round end caps can be drawn
             // clockwise. Of course, we should just implement anticlockwise arcs to begin with...
             let join = if segment_index == 0 { LineJoin::Bevel } else { self.join };
@@ -172,7 +172,7 @@ impl<'a> ContourStrokeToFill<'a> {
     fn offset_backward(&mut self) {
         let mut segments: Vec<_> = self
             .input
-            .iter()
+            .iter(ContourIterFlags::empty())
             .map(|segment| segment.reversed())
             .collect();
         segments.reverse();
