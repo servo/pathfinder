@@ -226,6 +226,11 @@ impl Outline {
             self.push_contour(ContourRectClipper::new(clip_rect, contour).clip());
         }
     }
+
+    #[inline]
+    pub fn close_all_contours(&mut self) {
+        self.contours.iter_mut().for_each(|contour| contour.close());
+    }
 }
 
 impl Debug for Outline {

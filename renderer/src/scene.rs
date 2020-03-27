@@ -138,6 +138,7 @@ impl Scene {
                     outline = Outline::new();
                 } else {
                     outline = (*original_outline).clone();
+                    outline.close_all_contours();
                     outline.clip_against_polygon(clip_polygon);
                     outline.apply_perspective(perspective);
 
@@ -147,6 +148,7 @@ impl Scene {
             _ => {
                 // TODO(pcwalton): Short circuit.
                 outline = (*original_outline).clone();
+                outline.close_all_contours();
                 if options.transform.is_2d() || options.subpixel_aa_enabled {
                     let mut transform = match options.transform {
                         PreparedRenderTransform::Transform2D(transform) => transform,
