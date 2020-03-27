@@ -29,6 +29,7 @@ use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, S
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
+use std::fmt::{Debug, Error as FmtError, Formatter};
 use std::mem;
 use std::sync::Arc;
 use text::FontCollection;
@@ -697,4 +698,10 @@ pub enum ImageSmoothingQuality {
     Low,
     Medium,
     High,
+}
+
+impl Debug for Path2D {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+        self.clone().into_outline().fmt(formatter)
+    }
 }
