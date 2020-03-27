@@ -234,6 +234,16 @@ impl Contour {
         }
     }
 
+    #[inline]
+    pub fn with_capacity(length: usize) -> Contour {
+        Contour {
+            points: Vec::with_capacity(length),
+            flags: Vec::with_capacity(length),
+            bounds: RectF::default(),
+            closed: false,
+        }
+    }
+
     // Replaces this contour with a new one, with arrays preallocated to match `self`.
     #[inline]
     pub(crate) fn take(&mut self) -> Contour {
