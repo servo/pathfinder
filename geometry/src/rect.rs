@@ -12,6 +12,7 @@
 
 use crate::vector::{Vector2F, Vector2I};
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::ops::Add;
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct RectF(pub F32x4);
@@ -194,6 +195,14 @@ impl RectF {
     #[inline]
     pub fn to_i32(&self) -> RectI {
         RectI(self.0.to_i32x4())
+    }
+}
+
+impl Add<Vector2F> for RectF {
+    type Output = RectF;
+    #[inline]
+    fn add(self, other: Vector2F) -> RectF {
+        RectF::new(self.origin() + other, self.size())
     }
 }
 
