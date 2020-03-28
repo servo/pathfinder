@@ -176,6 +176,13 @@ impl Add<Vector2F> for Vector2F {
     }
 }
 
+impl AddAssign<Vector2F> for Vector2F {
+    #[inline]
+    fn add_assign(&mut self, other: Vector2F) {
+        *self = *self + other
+    }
+}
+
 impl Sub<Vector2F> for Vector2F {
     type Output = Vector2F;
     #[inline]
