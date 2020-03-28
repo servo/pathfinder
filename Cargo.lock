@@ -80,7 +80,7 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "euclid",
- "image 0.22.5",
+ "image",
 ]
 
 [[package]]
@@ -302,6 +302,7 @@ dependencies = [
  "pathfinder_gpu",
  "pathfinder_renderer",
  "pathfinder_resources",
+ "pathfinder_simd",
  "sdl2",
  "sdl2-sys",
 ]
@@ -357,7 +358,7 @@ dependencies = [
  "quote 1.0.3",
  "serde",
  "serde_json",
- "syn 1.0.17",
+ "syn",
  "tempfile",
  "toml",
 ]
@@ -681,16 +682,6 @@ dependencies = [
 
 [[package]]
 name = "deflate"
-version = "0.7.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "707b6a7b384888a70c8d2e8650b3e60170dfc6a67bb4aa67b6dfca57af4bedb4"
-dependencies = [
- "adler32",
- "byteorder",
-]
-
-[[package]]
-name = "deflate"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "050ef6de42a33903b30a7497b76b40d3d58691d4d3eec355348c122444a388f0"
@@ -745,9 +736,9 @@ dependencies = [
 
 [[package]]
 name = "dispatch"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04e93ca78226c51902d7aa8c12c988338aadd9e85ed9c6be8aaac39192ff3605"
+checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "dlib"
@@ -816,9 +807,9 @@ dependencies = [
 
 [[package]]
 name = "euclid"
-version = "0.20.7"
+version = "0.20.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f852d320142e1cceb15dccef32ed72a9970b83109d8a4e24b1ab04d579f485d"
+checksum = "57d9ae79e19d69ffb5b47b0a744c4215c115dfed4039314c9ca1b8ddc6c333be"
 dependencies = [
  "num-traits",
 ]
@@ -955,7 +946,7 @@ name = "generate-gamma-lut"
 version = "0.1.0"
 dependencies = [
  "clap",
- "image 0.22.5",
+ "image",
  "log",
 ]
 
@@ -1026,9 +1017,9 @@ dependencies = [
 
 [[package]]
 name = "glutin"
-version = "0.22.1"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639246c8838b02a83b9339bd87da3714e73e52ecfaa758e15d761eb77b2290b5"
+checksum = "cf22d4e90c55d9be9f2ad52410e7a2c0d7e9c99d93a13df73a672e7ef4e8c7f7"
 dependencies = [
  "android_glue",
  "cgl",
@@ -1183,46 +1174,20 @@ dependencies = [
 
 [[package]]
 name = "image"
-version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35371e467cd7b0b3d1d6013d619203658467df12d61b0ca43cd67b743b1965eb"
-dependencies = [
- "byteorder",
- "lzw",
- "num-iter",
- "num-rational",
- "num-traits",
- "png 0.14.1",
-]
-
-[[package]]
-name = "image"
-version = "0.22.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08ed2ada878397b045454ac7cfb011d73132c59f31a955d230bd1f1c2e68eb4a"
-dependencies = [
- "byteorder",
- "gif",
- "jpeg-decoder",
- "num-iter",
- "num-rational",
- "num-traits",
- "png 0.15.3",
- "scoped_threadpool",
- "tiff",
-]
-
-[[package]]
-name = "image"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9062b90712d25bc6bb165d110aa59c6b47c849246e341e7b86a98daff9d49f60"
 dependencies = [
  "bytemuck",
  "byteorder",
+ "gif",
+ "jpeg-decoder",
  "num-iter",
  "num-rational",
  "num-traits",
+ "png",
+ "scoped_threadpool",
+ "tiff",
 ]
 
 [[package]]
@@ -1281,9 +1246,9 @@ dependencies = [
 
 [[package]]
 name = "jni"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1981310da491a4f0f815238097d0d43d8072732b5ae5f8bd0d8eadf5bf245402"
+checksum = "4ba3cd65bd48a02c50381dc90678744e1cc9842d0c957bf5a4660618df10a0c2"
 dependencies = [
  "cesu8",
  "combine",
@@ -1643,17 +1608,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-derive"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eafd0b45c5537c3ba526f79d3e75120036502bebacbb3f3220914067ce39dbf2"
-dependencies = [
- "proc-macro2 0.4.30",
- "quote 0.6.13",
- "syn 0.15.44",
-]
-
-[[package]]
 name = "num-integer"
 version = "0.1.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1827,7 +1781,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec 0.5.1",
  "bitflags",
- "image 0.23.2",
+ "image",
  "pathfinder_color",
  "pathfinder_geometry",
  "pathfinder_log",
@@ -1842,7 +1796,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "gl",
- "image 0.22.5",
+ "image",
  "log",
  "metal",
  "pathfinder_color",
@@ -1865,7 +1819,7 @@ dependencies = [
 name = "pathfinder_export"
 version = "0.1.0"
 dependencies = [
- "deflate 0.8.3",
+ "deflate",
  "pathfinder_color",
  "pathfinder_content",
  "pathfinder_geometry",
@@ -1898,7 +1852,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "half",
- "image 0.22.5",
+ "image",
  "pathfinder_color",
  "pathfinder_geometry",
  "pathfinder_resources",
@@ -2060,7 +2014,7 @@ dependencies = [
 name = "pathfinder_webgl"
 version = "0.1.0"
 dependencies = [
- "image 0.21.3",
+ "image",
  "pathfinder_geometry",
  "pathfinder_gpu",
  "pathfinder_log",
@@ -2091,25 +2045,13 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "png"
-version = "0.14.1"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63daf481fdd0defa2d1d2be15c674fbfa1b0fd71882c303a91f9a79b3252c359"
-dependencies = [
- "bitflags",
- "deflate 0.7.20",
- "inflate",
- "num-iter",
-]
-
-[[package]]
-name = "png"
-version = "0.15.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef859a23054bbfee7811284275ae522f0434a3c8e7f4b74bd4a35ae7e1c4a283"
+checksum = "46060468187c21c00ffa2a920690b29997d7fd543f5a4d400461e4a7d4fccde8"
 dependencies = [
  "bitflags",
  "crc32fast",
- "deflate 0.7.20",
+ "deflate",
  "inflate",
 ]
 
@@ -2414,7 +2356,7 @@ checksum = "f8584eea9b9ff42825b46faf46a8c24d2cff13ec152fa2a50df788b87c07ee28"
 dependencies = [
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.17",
+ "syn",
 ]
 
 [[package]]
@@ -2471,14 +2413,14 @@ checksum = "ac5d00fc561ba2724df6758a17de23df5914f20e41cb00f94d5b7ae42fffaff8"
 dependencies = [
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.17",
+ "syn",
 ]
 
 [[package]]
 name = "serde_json"
-version = "1.0.48"
+version = "1.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9371ade75d4c2d6cb154141b9752cf3781ec9c05e0e5cf35060e1e70ee7b9c25"
+checksum = "02044a6a92866fd61624b3db4d2c9dccc2feabbc6be490b87611bf285edbac55"
 dependencies = [
  "itoa",
  "ryu",
@@ -2680,17 +2622,6 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "0.15.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
-dependencies = [
- "proc-macro2 0.4.30",
- "quote 0.6.13",
- "unicode-xid 0.1.0",
-]
-
-[[package]]
-name = "syn"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0df0eb663f387145cab623dea85b09c2c5b4b0aef44e945d928e682fce71bb03"
@@ -2743,14 +2674,13 @@ dependencies = [
 
 [[package]]
 name = "tiff"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7b7c2cfc4742bd8a32f2e614339dd8ce30dbcf676bb262bd63a2327bc5df57d"
+checksum = "002351e428db1eb1d8656d4ca61947c3519ac3191e1c804d4600cd32093b77ad"
 dependencies = [
  "byteorder",
  "lzw",
- "num-derive",
- "num-traits",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -2906,7 +2836,7 @@ dependencies = [
  "log",
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.17",
+ "syn",
  "wasm-bindgen-shared",
 ]
 
@@ -2928,7 +2858,7 @@ checksum = "d68a5b36eef1be7868f668632863292e37739656a80fc4b9acec7b0bd35a4931"
 dependencies = [
  "proc-macro2 1.0.9",
  "quote 1.0.3",
- "syn 1.0.17",
+ "syn",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -3054,9 +2984,9 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "winit"
-version = "0.20.0"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ba128780050481f453bec2a115b916dbc6ae79c303dee9bad8b9080bdccd4f5"
+checksum = "65a5c1a5ef76ac31cc97ad29489acdbed2178f3fc12ca00ee6cb11d60adb5a3a"
 dependencies = [
  "android_glue",
  "bitflags",

@@ -36,6 +36,9 @@
 #extension GL_GOOGLE_include_directive : enable
 
 precision highp float;
+precision highp sampler2D;
+
+
 
 
 
@@ -85,7 +88,7 @@ uniform sampler2D uGammaLUT;
 uniform vec4 uFilterParams0;
 uniform vec4 uFilterParams1;
 uniform vec4 uFilterParams2;
-uniform vec2 uDestTextureSize;
+uniform vec2 uFramebufferSize;
 uniform vec2 uColorTexture0Size;
 uniform int uCtrl;
 
@@ -202,6 +205,128 @@ vec4 filterText(vec2 colorTexCoord,
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+vec4 filterRadialGradient(vec2 colorTexCoord,
+                          sampler2D colorTexture,
+                          vec2 colorTextureSize,
+                          vec2 fragCoord,
+                          vec2 framebufferSize,
+                          vec4 filterParams0,
+                          vec4 filterParams1){
+    vec2 lineFrom = filterParams0 . xy, lineVector = filterParams0 . zw;
+    vec2 radii = filterParams1 . xy, uvOrigin = filterParams1 . zw;
+
+
+    fragCoord . y = framebufferSize . y - fragCoord . y;
+
+
+    vec2 dP = fragCoord - lineFrom, dC = lineVector;
+    float dR = radii . y - radii . x;
+
+    float a = dot(dC, dC)- dR * dR;
+    float b = dot(dP, dC)+ radii . x * dR;
+    float c = dot(dP, dP)- radii . x * radii . x;
+    float discrim = b * b - a * c;
+
+    vec4 color = vec4(0.0);
+    if(abs(discrim)>= 0.00001){
+        vec2 ts = vec2(sqrt(discrim)* vec2(1.0, - 1.0)+ vec2(b))/ vec2(a);
+        float tMax = max(ts . x, ts . y);
+        float t = tMax <= 1.0 ? tMax : min(ts . x, ts . y);
+        if(t >= 0.0)
+            color = texture(colorTexture, uvOrigin + vec2(t, 0.0));
+    }
+
+    return color;
+}
+
+
+
+
+
+
 vec4 filterBlur(vec2 colorTexCoord,
                 sampler2D colorTexture,
                 vec2 colorTextureSize,
@@ -250,11 +375,21 @@ vec4 filterColor(vec2 colorTexCoord,
                  sampler2D colorTexture,
                  sampler2D gammaLUT,
                  vec2 colorTextureSize,
+                 vec2 fragCoord,
+                 vec2 framebufferSize,
                  vec4 filterParams0,
                  vec4 filterParams1,
                  vec4 filterParams2,
                  int colorFilter){
     switch(colorFilter){
+    case 0x1 :
+        return filterRadialGradient(colorTexCoord,
+                                    colorTexture,
+                                    colorTextureSize,
+                                    fragCoord,
+                                    framebufferSize,
+                                    filterParams0,
+                                    filterParams1);
     case 0x3 :
         return filterBlur(colorTexCoord,
                           colorTexture,
@@ -433,6 +568,8 @@ void calculateColor(int ctrl){
                              uColorTexture0,
                              uGammaLUT,
                              uColorTexture0Size,
+                             gl_FragCoord . xy,
+                             uFramebufferSize,
                              uFilterParams0,
                              uFilterParams1,
                              uFilterParams2,
@@ -446,7 +583,7 @@ void calculateColor(int ctrl){
 
 
     int compositeOp =(ctrl >> 8)& 0xf;
-    color = composite(color, uDestTexture, uDestTextureSize, gl_FragCoord . xy, compositeOp);
+    color = composite(color, uDestTexture, uFramebufferSize, gl_FragCoord . xy, compositeOp);
 
 
     color . rgb *= color . a;

@@ -98,7 +98,7 @@ impl Debug for ColorU {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, PartialEq, Default)]
 pub struct ColorF(pub F32x4);
 
 impl ColorF {

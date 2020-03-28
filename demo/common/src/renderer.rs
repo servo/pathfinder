@@ -288,7 +288,7 @@ impl<W> DemoApp<W> where W: Window {
             &pixels,
             drawable_size.x() as u32,
             drawable_size.y() as u32,
-            ColorType::RGBA(8),
+            ColorType::Rgba8,
         )
         .unwrap();
     }

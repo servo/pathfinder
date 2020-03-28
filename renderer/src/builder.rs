@@ -21,7 +21,7 @@ use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, DrawTilingPathInfo, PackedTile, TILE_HEIGHT, TILE_WIDTH};
 use crate::tiles::{Tiler, TilingPathInfo};
 use crate::z_buffer::{DepthMetadata, ZBuffer};
-use pathfinder_content::effects::{BlendMode, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
@@ -55,6 +55,7 @@ pub(crate) struct ObjectBuilder {
 struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
+    effects: Effects,
     color_texture_page_0: TexturePageId,
     color_texture_page_1: TexturePageId,
     sampling_flags_0: TextureSamplingFlags,
@@ -193,8 +194,9 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
 
         let paint_id = path_object.paint();
         let paint_metadata = &paint_metadata[paint_id.0 as usize];
-        let built_clip_path =
-            path_object.clip_path().map(|clip_path_id| &built_clip_paths[clip_path_id.0 as usize]);
+        let built_clip_path = path_object.clip_path().map(|clip_path_id| {
+            &built_clip_paths[clip_path_id.0 as usize]
+        });
 
         let mut tiler = Tiler::new(self,
                                    &outline,
@@ -215,6 +217,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
         BuiltDrawPath {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
+            effects: paint_metadata.effects(),
             color_texture_page_0: paint_metadata.location.page,
             sampling_flags_0: paint_metadata.sampling_flags,
             color_texture_page_1: opacity_tile_page,
@@ -324,6 +327,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                                              None,
                                              None,
                                              built_draw_path.blend_mode,
+                                             built_draw_path.effects,
                                              None,
                                              None);
 
@@ -334,6 +338,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                                              color_texture_0,
                                              color_texture_1,
                                              built_draw_path.blend_mode,
+                                             built_draw_path.effects,
                                              Some(built_draw_path.mask_0_fill_rule),
                                              None);
 
@@ -345,6 +350,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                                                  color_texture_0,
                                                  color_texture_1,
                                                  built_draw_path.blend_mode,
+                                                 built_draw_path.effects,
                                                  Some(built_draw_path.mask_0_fill_rule),
                                                  Some(mask_1_fill_rule));
                         }
@@ -358,6 +364,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                                                      color_texture_0,
                                                      color_texture_1,
                                                      built_draw_path.blend_mode,
+                                                     built_draw_path.effects,
                                                      None,
                                                      built_draw_path.mask_1_fill_rule);
                             }
@@ -427,6 +434,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                        color_texture_0: Option<TileBatchTexture>,
                        color_texture_1: Option<TileBatchTexture>,
                        blend_mode: BlendMode,
+                       effects: Effects,
                        mask_0_fill_rule: Option<FillRule>,
                        mask_1_fill_rule: Option<FillRule>) {
         if alpha_tiles.is_empty() {
@@ -445,12 +453,13 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                 color_texture_0: ref batch_color_texture_0,
                 color_texture_1: ref batch_color_texture_1,
                 blend_mode: batch_blend_mode,
-                effects: Effects { filter: Filter::None },
+                effects: batch_effects,
                 mask_0_fill_rule: batch_mask_0_fill_rule,
                 mask_1_fill_rule: batch_mask_1_fill_rule,
             })) if *batch_color_texture_0 == color_texture_0 &&
                 *batch_color_texture_1 == color_texture_1 &&
                 batch_blend_mode == blend_mode &&
+                batch_effects == effects &&
                 batch_mask_0_fill_rule == mask_0_fill_rule &&
                 batch_mask_1_fill_rule == mask_1_fill_rule &&
                 !batch_blend_mode.needs_readable_framebuffer() => {}
@@ -460,7 +469,7 @@ impl<'a, L: RenderCommandListener> SceneBuilder<'a, L> {
                     color_texture_0,
                     color_texture_1,
                     blend_mode,
-                    effects: Effects::default(),
+                    effects,
                     mask_0_fill_rule,
                     mask_1_fill_rule,
                 };

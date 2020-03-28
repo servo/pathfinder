@@ -14,9 +14,11 @@ use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
-use pathfinder_content::gradient::{Gradient, GradientGeometry};
+use pathfinder_content::effects::{Effects, Filter};
+use pathfinder_content::gradient::Gradient;
 use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
+use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::util;
@@ -123,26 +125,11 @@ impl Paint {
         match *self {
             Paint::Color(_) => {}
             Paint::Gradient(ref mut gradient) => {
-                match *gradient.geometry_mut() {
-                    GradientGeometry::Linear(ref mut line) => {
-                        *line = *transform * *line;
-                    }
-                    GradientGeometry::Radial {
-                        ref mut line,
-                        ref mut start_radius,
-                        ref mut end_radius,
-                    } => {
-                        *line = *transform * *line;
-
-                        // FIXME(pcwalton): This is wrong; I think the transform can make the
-                        // radial gradient into an ellipse.
-                        *start_radius *= util::lerp(transform.matrix.m11(),
-                                                    transform.matrix.m22(),
-                                                    0.5);
-                        *end_radius *= util::lerp(transform.matrix.m11(),
-                                                  transform.matrix.m22(),
-                                                  0.5);
-                    }
+                gradient.set_line(*transform * gradient.line());
+                if let Some(radii) = gradient.radii() {
+                    gradient.set_radii(Some(radii * F32x2::splat(util::lerp(transform.matrix.m11(),
+                                                                            transform.matrix.m22(),
+                                                                            0.5))));
                 }
             }
             Paint::Pattern(ref mut pattern) => pattern.transform = *transform * pattern.transform,
@@ -177,6 +164,16 @@ pub struct PaintMetadata {
     pub sampling_flags: TextureSamplingFlags,
     /// True if this paint is fully opaque.
     pub is_opaque: bool,
+    /// The radial gradient for this paint, if applicable.
+    pub radial_gradient: Option<RadialGradientMetadata>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RadialGradientMetadata {
+    /// The line segment that connects the two circles.
+    pub line: LineSegment2F,
+    /// The radii of the two circles.
+    pub radii: F32x2,
 }
 
 #[derive(Debug)]
@@ -204,7 +201,7 @@ impl Palette {
         id
     }
 
-    pub fn build_paint_info(&self, view_box_size: Vector2I) -> PaintInfo {
+    pub fn build_paint_info(&self) -> PaintInfo {
         let mut allocator = TextureAllocator::new();
         let (mut paint_metadata, mut render_target_metadata) = (vec![], vec![]);
 
@@ -220,26 +217,20 @@ impl Palette {
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
         let mut gradient_tile_builder = GradientTileBuilder::new();
         for paint in &self.paints {
-            let (texture_location, mut sampling_flags);
+            let (texture_location, mut sampling_flags, radial_gradient);
             match paint {
                 Paint::Color(_) => {
                     texture_location = solid_color_tile_builder.allocate(&mut allocator);
                     sampling_flags = TextureSamplingFlags::empty();
+                    radial_gradient = None;
                 }
-                Paint::Gradient(Gradient { geometry: GradientGeometry::Linear(_), .. }) => {
+                Paint::Gradient(ref gradient) => {
                     // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
                     texture_location = gradient_tile_builder.allocate(&mut allocator);
                     sampling_flags = TextureSamplingFlags::empty();
-                }
-                Paint::Gradient(Gradient { geometry: GradientGeometry::Radial { .. }, .. }) => {
-                    // TODO(pcwalton): Optimize this:
-                    // 1. Use repeating/clamp on the sides.
-                    // 2. Choose an optimal size for the gradient that minimizes memory usage while
-                    //    retaining quality.
-                    texture_location =
-                        allocator.allocate(Vector2I::splat(GRADIENT_TILE_LENGTH as i32),
-                                           AllocationMode::Atlas);
-                    sampling_flags = TextureSamplingFlags::empty();
+                    radial_gradient = gradient.radii().map(|radii| {
+                        RadialGradientMetadata { line: gradient.line(), radii }
+                    });
                 }
                 Paint::Pattern(ref pattern) => {
                     match pattern.source {
@@ -271,6 +262,8 @@ impl Palette {
                         sampling_flags.insert(TextureSamplingFlags::NEAREST_MIN |
                                               TextureSamplingFlags::NEAREST_MAG);
                     }
+
+                    radial_gradient = None;
                 }
             };
 
@@ -279,6 +272,7 @@ impl Palette {
                 texture_transform: Transform2F::default(),
                 sampling_flags,
                 is_opaque: paint.is_opaque(),
+                radial_gradient,
             });
         }
 
@@ -290,10 +284,7 @@ impl Palette {
                     let vector = rect_to_inset_uv(metadata.location.rect, texture_scale).origin();
                     Transform2F { matrix: Matrix2x2F(F32x4::default()), vector }
                 }
-                Paint::Gradient(Gradient {
-                    geometry: GradientGeometry::Linear(gradient_line),
-                    ..
-                }) => {
+                Paint::Gradient(Gradient { line: gradient_line, radii: None, .. }) => {
                     let v0 = metadata.location.rect.to_f32().center().y() * texture_scale.y();
                     let length_inv = 1.0 / gradient_line.square_length();
                     let (p0, d) = (gradient_line.from(), gradient_line.vector());
@@ -302,12 +293,15 @@ impl Palette {
                         vector: Vector2F::new(-p0.dot(d) * length_inv, v0),
                     }
                 }
-                Paint::Gradient(Gradient { geometry: GradientGeometry::Radial { .. }, .. }) => {
+                Paint::Gradient(Gradient { radii: Some(_), .. }) => {
                     let texture_origin_uv =
-                        rect_to_uv(metadata.location.rect, texture_scale).origin();
-                    let gradient_tile_scale = texture_scale.scale(GRADIENT_TILE_LENGTH as f32);
-                    Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(gradient_tile_scale / view_box_size.to_f32())
+                        rect_to_inset_uv(metadata.location.rect, texture_scale).origin();
+                    let gradient_tile_scale =
+                        texture_scale.scale((GRADIENT_TILE_LENGTH - 1) as f32);
+                    Transform2F {
+                        matrix: Matrix2x2F::from_scale(gradient_tile_scale),
+                        vector: texture_origin_uv,
+                    }
                 }
                 Paint::Pattern(Pattern { source: PatternSource::Image(_), transform, .. }) => {
                     let texture_origin_uv =
@@ -359,10 +353,7 @@ impl Palette {
                     texels.put_texel(metadata.location.rect.origin(), *color);
                 }
                 Paint::Gradient(ref gradient) => {
-                    self.render_gradient(gradient,
-                                         metadata.location.rect,
-                                         &metadata.texture_transform,
-                                         texels);
+                    self.render_gradient(gradient, metadata.location.rect, texels);
                 }
                 Paint::Pattern(ref pattern) => {
                     match pattern.source {
@@ -408,144 +399,15 @@ impl Palette {
     }
 
     // TODO(pcwalton): This is slow. Do on GPU instead.
-    fn render_gradient(&self,
-                       gradient: &Gradient,
-                       tex_rect: RectI,
-                       tex_transform: &Transform2F,
-                       texels: &mut Texels) {
-        match *gradient.geometry() {
-            GradientGeometry::Linear(_) => {
-                // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
-                // TODO(pcwalton): Optimize this:
-                // 1. Calculate ∇t up front and use differencing in the inner loop.
-                // 2. Go four pixels at a time with SIMD.
-                for x in 0..(GRADIENT_TILE_LENGTH as i32) {
-                    let point = tex_rect.origin() + Vector2I::new(x, 0);
-                    let t = (x as f32 + 0.5) / GRADIENT_TILE_LENGTH as f32;
-                    texels.put_texel(point, gradient.sample(t));
-                }
-            }
-
-            GradientGeometry::Radial { line, start_radius: r0, end_radius: r1 } => {
-                // FIXME(pcwalton): Paint transparent if line has zero size and radii are equal,
-                // per spec.
-                let line = *tex_transform * line;
-
-                // This is based on Pixman (MIT license). Copy and pasting the excellent comment
-                // from there:
-
-                // Implementation of radial gradients following the PDF specification.
-                // See section 8.7.4.5.4 Type 3 (Radial) Shadings of the PDF Reference
-                // Manual (PDF 32000-1:2008 at the time of this writing).
-                //
-                // In the radial gradient problem we are given two circles (c₁,r₁) and
-                // (c₂,r₂) that define the gradient itself.
-                //
-                // Mathematically the gradient can be defined as the family of circles
-                //
-                //     ((1-t)·c₁ + t·(c₂), (1-t)·r₁ + t·r₂)
-                //
-                // excluding those circles whose radius would be < 0. When a point
-                // belongs to more than one circle, the one with a bigger t is the only
-                // one that contributes to its color. When a point does not belong
-                // to any of the circles, it is transparent black, i.e. RGBA (0, 0, 0, 0).
-                // Further limitations on the range of values for t are imposed when
-                // the gradient is not repeated, namely t must belong to [0,1].
-                //
-                // The graphical result is the same as drawing the valid (radius > 0)
-                // circles with increasing t in [-inf, +inf] (or in [0,1] if the gradient
-                // is not repeated) using SOURCE operator composition.
-                //
-                // It looks like a cone pointing towards the viewer if the ending circle
-                // is smaller than the starting one, a cone pointing inside the page if
-                // the starting circle is the smaller one and like a cylinder if they
-                // have the same radius.
-                //
-                // What we actually do is, given the point whose color we are interested
-                // in, compute the t values for that point, solving for t in:
-                //
-                //     length((1-t)·c₁ + t·(c₂) - p) = (1-t)·r₁ + t·r₂
-                //
-                // Let's rewrite it in a simpler way, by defining some auxiliary
-                // variables:
-                //
-                //     cd = c₂ - c₁
-                //     pd = p - c₁
-                //     dr = r₂ - r₁
-                //     length(t·cd - pd) = r₁ + t·dr
-                //
-                // which actually means
-                //
-                //     hypot(t·cdx - pdx, t·cdy - pdy) = r₁ + t·dr
-                //
-                // or
-                //
-                //     ⎷((t·cdx - pdx)² + (t·cdy - pdy)²) = r₁ + t·dr.
-                //
-                // If we impose (as stated earlier) that r₁ + t·dr >= 0, it becomes:
-                //
-                //     (t·cdx - pdx)² + (t·cdy - pdy)² = (r₁ + t·dr)²
-                //
-                // where we can actually expand the squares and solve for t:
-                //
-                //     t²cdx² - 2t·cdx·pdx + pdx² + t²cdy² - 2t·cdy·pdy + pdy² =
-                //       = r₁² + 2·r₁·t·dr + t²·dr²
-                //
-                //     (cdx² + cdy² - dr²)t² - 2(cdx·pdx + cdy·pdy + r₁·dr)t +
-                //         (pdx² + pdy² - r₁²) = 0
-                //
-                //     A = cdx² + cdy² - dr²
-                //     B = pdx·cdx + pdy·cdy + r₁·dr
-                //     C = pdx² + pdy² - r₁²
-                //     At² - 2Bt + C = 0
-                //
-                // The solutions (unless the equation degenerates because of A = 0) are:
-                //
-                //     t = (B ± ⎷(B² - A·C)) / A
-                //
-                // The solution we are going to prefer is the bigger one, unless the
-                // radius associated to it is negative (or it falls outside the valid t
-                // range).
-                //
-                // Additional observations (useful for optimizations):
-                // A does not depend on p
-                //
-                // A < 0 <=> one of the two circles completely contains the other one
-                //   <=> for every p, the radiuses associated with the two t solutions
-                //       have opposite sign
-
-                let cd = line.vector();
-                let dr = r1 - r0;
-                let a = cd.square_length() - dr * dr;
-                let a_inv = 1.0 / a;
-
-                for y in 0..(GRADIENT_TILE_LENGTH as i32) {
-                    for x in 0..(GRADIENT_TILE_LENGTH as i32) {
-                        let point = tex_rect.origin() + Vector2I::new(x, y);
-                        let point_f = point.to_f32();
-                        let pd = point_f - line.from();
-
-                        let b = pd.dot(cd) + r0 * dr;
-                        let c = pd.square_length() - r0 * r0;
-                        let discrim = b * b - a * c;
-
-                        let mut color = ColorU::transparent_black();
-                        if !util::approx_eq(discrim, 0.0) {
-                            let discrim_sqrt = f32::sqrt(discrim);
-                            let discrim_sqrts = F32x2::new(discrim_sqrt, -discrim_sqrt);
-                            let ts = (discrim_sqrts + F32x2::splat(b)) * F32x2::splat(a_inv);
-                            let t_min = f32::min(ts.x(), ts.y());
-                            let t_max = f32::max(ts.x(), ts.y());
-                            let t = if t_max <= 1.0 { t_max } else { t_min };
-                            if t >= 0.0 {
-                                color = gradient.sample(t);
-                            }
-                        };
-
-                        texels.put_texel(point, color);
-                    }
-                }
-            }
+    fn render_gradient(&self, gradient: &Gradient, tex_rect: RectI, texels: &mut Texels) {
+        // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
+        // TODO(pcwalton): Optimize this:
+        // 1. Calculate ∇t up front and use differencing in the inner loop.
+        // 2. Go four pixels at a time with SIMD.
+        for x in 0..(GRADIENT_TILE_LENGTH as i32) {
+            let point = tex_rect.origin() + Vector2I::new(x, 0);
+            let t = (x as f32 + 0.5) / GRADIENT_TILE_LENGTH as f32;
+            texels.put_texel(point, gradient.sample(t));
         }
     }
 
@@ -567,6 +429,21 @@ impl PaintMetadata {
         let position = tile_position.scale_xy(tile_size).to_f32();
         let tex_coords = self.texture_transform * position;
         tex_coords
+    }
+
+    pub(crate) fn effects(&self) -> Effects {
+        Effects {
+            filter: match self.radial_gradient {
+                None => Filter::None,
+                Some(gradient) => {
+                    Filter::RadialGradient {
+                        line: gradient.line,
+                        radii: gradient.radii,
+                        uv_origin: self.texture_transform.vector,
+                    }
+                }
+            },
+        }
     }
 }
 

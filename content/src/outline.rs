@@ -121,6 +121,12 @@ impl Outline {
     }
 
     #[inline]
+    pub fn into_contours(self) -> Vec<Contour> {
+        self.contours
+    }
+
+    /// Removes all contours from this outline.
+    #[inline]
     pub fn clear(&mut self) {
         self.contours.clear();
         self.bounds = RectF::default();
@@ -143,6 +149,18 @@ impl Outline {
         }
 
         self.contours.push(contour);
+    }
+
+    pub fn pop_contour(&mut self) -> Option<Contour> {
+        let last_contour = self.contours.pop();
+
+        let mut new_bounds = None;
+        for contour in &mut self.contours {
+            contour.update_bounds(&mut new_bounds);
+        }
+        self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
+
+        last_contour
     }
 
     pub fn transform(&mut self, transform: &Transform2F) {
@@ -213,6 +231,11 @@ impl Outline {
             self.push_contour(ContourRectClipper::new(clip_rect, contour).clip());
         }
     }
+
+    #[inline]
+    pub fn close_all_contours(&mut self) {
+        self.contours.iter_mut().for_each(|contour| contour.close());
+    }
 }
 
 impl Debug for Outline {
@@ -264,10 +287,11 @@ impl Contour {
     }
 
     #[inline]
-    pub fn iter(&self) -> ContourIter {
+    pub fn iter(&self, flags: ContourIterFlags) -> ContourIter {
         ContourIter {
             contour: self,
             index: 1,
+            flags,
         }
     }
 
@@ -734,7 +758,8 @@ impl Contour {
 
 impl Debug for Contour {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        for (segment_index, segment) in self.iter().enumerate() {
+        for (segment_index, segment) in self.iter(ContourIterFlags::IGNORE_CLOSE_SEGMENT)
+                                            .enumerate() {
             if segment_index == 0 {
                 write!(
                     formatter,
@@ -812,6 +837,7 @@ impl PointIndex {
 pub struct ContourIter<'a> {
     contour: &'a Contour,
     index: u32,
+    flags: ContourIterFlags,
 }
 
 impl<'a> Iterator for ContourIter<'a> {
@@ -820,8 +846,11 @@ impl<'a> Iterator for ContourIter<'a> {
     #[inline]
     fn next(&mut self) -> Option<Segment> {
         let contour = self.contour;
-        if (self.index == contour.len() && !self.contour.closed) || self.index == contour.len() + 1
-        {
+
+        let include_close_segment = self.contour.closed &&
+            !self.flags.contains(ContourIterFlags::IGNORE_CLOSE_SEGMENT);
+        if (self.index == contour.len() && !include_close_segment) ||
+                self.index == contour.len() + 1 {
             return None;
         }
 
@@ -862,6 +891,12 @@ impl<'a> Iterator for ContourIter<'a> {
 pub enum ArcDirection {
     CW,
     CCW,
+}
+
+bitflags! {
+    pub struct ContourIterFlags: u8 {
+        const IGNORE_CLOSE_SEGMENT = 1;
+    }
 }
 
 #[inline]

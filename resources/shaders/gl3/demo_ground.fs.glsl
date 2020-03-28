@@ -13,6 +13,7 @@
 
 
 precision highp float;
+precision highp sampler2D;
 
 uniform vec4 uGroundColor;
 uniform vec4 uGridlineColor;

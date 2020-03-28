@@ -8,9 +8,9 @@ authors = ["Sebastian Köln <s3bk@protonmail.com>"]
 wasm-bindgen = "*"
 
 [dependencies.image]
-version = "0.21"
+version = "0.23"
 default-features = false
-features = ["png_codec"]
+features = ["png"]
 
 [dependencies.pathfinder_log]
 path = "../log"

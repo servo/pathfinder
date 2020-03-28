@@ -34,3 +34,6 @@ path = "../../renderer"
 
 [dependencies.pathfinder_resources]
 path = "../../resources"
+
+[dependencies.pathfinder_simd]
+path = "../../simd"

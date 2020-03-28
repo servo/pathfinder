@@ -10,7 +10,7 @@
 
 //! Line dashing support.
 
-use crate::outline::{Contour, Outline, PushSegmentFlags};
+use crate::outline::{Contour, ContourIterFlags, Outline, PushSegmentFlags};
 use std::mem;
 
 const EPSILON: f32 = 0.0001;
@@ -54,7 +54,8 @@ impl<'a, 'b, 'c> ContourDash<'a, 'b, 'c> {
     }
 
     fn dash(&mut self) {
-        let (mut iterator, mut queued_segment) = (self.input.iter(), None);
+        let mut iterator = self.input.iter(ContourIterFlags::empty());
+        let mut queued_segment = None;
         loop {
             if queued_segment.is_none() {
                 match iterator.next() {

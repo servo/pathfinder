@@ -29,6 +29,7 @@ use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, S
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
+use std::fmt::{Debug, Error as FmtError, Formatter};
 use std::mem;
 use std::sync::Arc;
 use text::FontCollection;
@@ -42,6 +43,9 @@ const DEFAULT_FONT_SIZE: f32 = 10.0;
 
 #[cfg_attr(not(feature = "pf-text"), path = "text_no_text.rs")]
 mod text;
+
+#[cfg(test)]
+mod tests;
 
 pub struct CanvasRenderingContext2D {
     scene: Scene,
@@ -569,29 +573,18 @@ impl Path2D {
         }
     }
 
-    /// Add other path to this path.
-    ///
-    /// note: any non-closed subpaths will be closed
-    pub fn add_path(&mut self, mut other: Path2D) {
+    // https://html.spec.whatwg.org/multipage/canvas.html#dom-path2d-addpath
+    pub fn add_path(&mut self, mut path: Path2D, transform: &Transform2F) {
         self.flush_current_contour();
-        other.flush_current_contour();
-        
-        // FIXME(s3bk) should consume segments instead of cloning
-        for contour in other.outline.contours() {
-            self.outline.push_contour(contour.clone());
+        path.flush_current_contour();
+        path.outline.transform(transform);
+        let last_contour = path.outline.pop_contour();
+        for contour in path.outline.into_contours() {
+            self.outline.push_contour(contour);
         }
+        self.current_contour = last_contour.unwrap_or_else(Contour::new);
     }
-    
-    /// Transform the path with the given transformation.
-    /// returns the transformed path.
-    ///
-    /// note: any non-closed subpaths will be closed
-    pub fn transform(mut self, transform: &Transform2F) -> Path2D {
-        self.flush_current_contour();
-        self.outline.transform(transform);
-        self
-    }
-    
+
     pub fn into_outline(mut self) -> Outline {
         self.flush_current_contour();
         self.outline
@@ -708,4 +701,10 @@ pub enum ImageSmoothingQuality {
     Low,
     Medium,
     High,
+}
+
+impl Debug for Path2D {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+        self.clone().into_outline().fmt(formatter)
+    }
 }

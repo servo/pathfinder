@@ -13,6 +13,7 @@
 
 
 precision highp float;
+precision highp sampler2D;
 
 in ivec2 aPosition;
 

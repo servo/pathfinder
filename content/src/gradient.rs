@@ -13,6 +13,7 @@ use crate::util;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::util as geometry_util;
+use pathfinder_simd::default::F32x2;
 use std::cmp::{Ordering, PartialOrd};
 use std::convert;
 use std::hash::{Hash, Hasher};
@@ -20,18 +21,15 @@ use std::mem;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Gradient {
-    pub geometry: GradientGeometry,
+    /// The line this gradient runs along.
+    /// 
+    /// If this is a radial gradient, this is the line that connects the two circles. It may have
+    /// zero-length in the case of simple radial gradients.
+    pub line: LineSegment2F,
+    /// For radial gradients, the radii of the start and endpoints respectively. If this is a
+    /// linear gradient, this is `None`.
+    pub radii: Option<F32x2>,
     stops: SortedVector<ColorStop>,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum GradientGeometry {
-    Linear(LineSegment2F),
-    Radial {
-        line: LineSegment2F,
-        start_radius: f32,
-        end_radius: f32,
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -44,19 +42,15 @@ impl Eq for Gradient {}
 
 impl Hash for Gradient {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
-        match self.geometry {
-            GradientGeometry::Linear(line) => {
-                (0).hash(state);
-                util::hash_line_segment(line, state);
-            }
-            GradientGeometry::Radial { line, start_radius, end_radius } => {
+        util::hash_line_segment(self.line, state);
+        match self.radii {
+            None => (0).hash(state),
+            Some(radii) => {
                 (1).hash(state);
-                util::hash_line_segment(line, state);
-                util::hash_f32(start_radius, state);
-                util::hash_f32(end_radius, state);
+                util::hash_f32(radii.x(), state);
+                util::hash_f32(radii.y(), state);
             }
         }
-
         self.stops.hash(state);
     }
 }
@@ -75,18 +69,13 @@ impl Hash for ColorStop {
 
 impl Gradient {
     #[inline]
-    pub fn new(geometry: GradientGeometry) -> Gradient {
-        Gradient { geometry, stops: SortedVector::new() }
-    }
-
-    #[inline]
     pub fn linear(line: LineSegment2F) -> Gradient {
-        Gradient::new(GradientGeometry::Linear(line))
+        Gradient { line, radii: None, stops: SortedVector::new() }
     }
 
     #[inline]
-    pub fn radial(line: LineSegment2F, start_radius: f32, end_radius: f32) -> Gradient {
-        Gradient::new(GradientGeometry::Radial { line, start_radius, end_radius })
+    pub fn radial(line: LineSegment2F, radii: F32x2) -> Gradient {
+        Gradient { line, radii: Some(radii), stops: SortedVector::new() }
     }
 
     #[inline]
@@ -95,13 +84,23 @@ impl Gradient {
     }
 
     #[inline]
-    pub fn geometry(&self) -> &GradientGeometry {
-        &self.geometry
+    pub fn line(&self) -> LineSegment2F {
+        self.line
     }
 
     #[inline]
-    pub fn geometry_mut(&mut self) -> &mut GradientGeometry {
-        &mut self.geometry
+    pub fn set_line(&mut self, line: LineSegment2F) {
+        self.line = line
+    }
+
+    #[inline]
+    pub fn radii(&self) -> Option<F32x2> {
+        self.radii
+    }
+
+    #[inline]
+    pub fn set_radii(&mut self, radii: Option<F32x2>) {
+        self.radii = radii
     }
 
     #[inline]

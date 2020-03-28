@@ -499,6 +499,8 @@ impl I32x2 {
         ])
     }
 
+    // Packed comparisons
+
     #[inline]
     pub fn packed_eq(self, other: I32x2) -> U32x2 {
         U32x2([
@@ -529,7 +531,8 @@ impl I32x2 {
             if self[0] < other[0] { !0 } else { 0 },
             if self[1] < other[1] { !0 } else { 0 },
         ])
-    }
+    } 
+
     // Conversions
 
     /// Converts these packed integers to floats.

@@ -29,6 +29,7 @@ use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_simd::default::F32x2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -72,6 +73,51 @@ fn render_demo(canvas: &mut CanvasRenderingContext2D,
                time);
     draw_caps(canvas, RectF::new(Vector2F::new(10.0, 300.0), Vector2F::new(30.0, 40.0)));
     draw_clip(canvas, Vector2F::new(50.0, window_size.y() - 80.0), time);
+
+    canvas.save();
+
+    // Draw widgets.
+    draw_window(canvas,
+                "Widgets 'n' Stuff",
+                RectF::new(Vector2F::splat(50.0), Vector2F::new(300.0, 400.0)));
+    let mut position = Vector2F::new(60.0, 95.0);
+    draw_search_box(canvas, "Search", RectF::new(position, Vector2F::new(280.0, 25.0)));
+    position += Vector2F::new(0.0, 40.0);
+    draw_dropdown(canvas, "Effects", RectF::new(position, Vector2F::new(280.0, 28.0)));
+    let popup_position = position + Vector2F::new(0.0, 14.0);
+    position += Vector2F::new(0.0, 45.0);
+
+    // Draw login form.
+    position += Vector2F::new(0.0, 25.0);
+    draw_text_edit_box(canvas, "E-mail address", RectF::new(position, Vector2F::new(280.0, 28.0)));
+    position += Vector2F::new(0.0, 35.0);
+    draw_text_edit_box(canvas, "Password", RectF::new(position, Vector2F::new(280.0, 28.0)));
+    position += Vector2F::new(0.0, 38.0);
+    draw_check_box(canvas, "Remember me", RectF::new(position, Vector2F::new(140.0, 28.0)));
+    draw_button(canvas,
+                "Sign In",
+                RectF::new(position + Vector2F::new(138.0, 0.0), Vector2F::new(140.0, 28.0)),
+                ColorU::new(0, 96, 128, 255));
+    position += Vector2F::new(0.0, 45.0);
+
+    // Draw slider form.
+    position += Vector2F::new(0.0, 25.0);
+    draw_numeric_edit_box(canvas, "123.00", "px", RectF::new(position + Vector2F::new(180.0, 0.0),
+                                                             Vector2F::new(100.0, 28.0)));
+    draw_slider(canvas, 0.4, RectF::new(position, Vector2F::new(170.0, 28.0)));
+    position += Vector2F::new(0.0, 55.0);
+
+    // Draw dialog box buttons.
+    draw_button(canvas,
+                "Delete",
+                RectF::new(position, Vector2F::new(160.0, 28.0)),
+                ColorU::new(128, 16, 8, 255));
+    draw_button(canvas,
+                "Cancel",
+                RectF::new(position + Vector2F::new(170.0, 0.0), Vector2F::new(110.0, 28.0)),
+                ColorU::transparent_black());
+
+    canvas.restore();
 }
 
 fn draw_eyes(canvas: &mut CanvasRenderingContext2D,
@@ -134,9 +180,9 @@ fn draw_eyes(canvas: &mut CanvasRenderingContext2D,
     canvas.fill_path(path, FillRule::Winding);
 
     let gloss_position = eyes_left_position - eyes_radii.scale_xy(Vector2F::new(0.25, 0.5));
+    let gloss_radii = F32x2::new(0.1, 0.75) * F32x2::splat(eyes_radii.x());
     let mut gloss = Gradient::radial(LineSegment2F::new(gloss_position, gloss_position),
-                                     eyes_radii.x() * 0.1,
-                                     eyes_radii.x() * 0.75);
+                                     gloss_radii);
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 128), 0.0));
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 0), 1.0));
     canvas.set_fill_style(FillStyle::Gradient(gloss));
@@ -146,8 +192,7 @@ fn draw_eyes(canvas: &mut CanvasRenderingContext2D,
 
     let gloss_position = eyes_right_position - eyes_radii.scale_xy(Vector2F::new(0.25, 0.5));
     let mut gloss = Gradient::radial(LineSegment2F::new(gloss_position, gloss_position),
-                                     eyes_radii.x() * 0.1,
-                                     eyes_radii.x() * 0.75);
+                                     gloss_radii);
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 128), 0.0));
     gloss.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 0), 1.0));
     canvas.set_fill_style(FillStyle::Gradient(gloss));
@@ -251,8 +296,7 @@ fn draw_graph(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
     for &sample_point in &sample_points {
         let gradient_center = sample_point + Vector2F::new(0.0, 2.0);
         let mut background = Gradient::radial(LineSegment2F::new(gradient_center, gradient_center),
-                                              3.0,
-                                              8.0);
+                                              F32x2::new(3.0, 8.0));
         background.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 32), 0.0));
         background.add_color_stop(ColorStop::new(ColorU::transparent_black(), 1.0));
         canvas.set_fill_style(FillStyle::Gradient(background));
@@ -372,8 +416,7 @@ fn draw_color_wheel(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f3
     // Fill the selection circle.
     let mut gradient = Gradient::radial(LineSegment2F::new(selection_circle_center,
                                                            selection_circle_center),
-                                        7.0,
-                                        9.0);
+                                        F32x2::new(7.0, 9.0));
     gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 64), 0.0));
     gradient.add_color_stop(ColorStop::new(ColorU::transparent_black(), 1.0));
     canvas.set_fill_style(FillStyle::Gradient(gradient));
@@ -488,6 +531,187 @@ fn draw_clip(canvas: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32)
     canvas.restore();
 }
 
+fn draw_window(canvas: &mut CanvasRenderingContext2D, title: &str, rect: RectF) {
+    const CORNER_RADIUS: f32 = 3.0;
+
+    canvas.save();
+
+    // Draw window with shadow.
+    canvas.set_fill_style(FillStyle::Color(ColorU::new(28, 30, 34, 192)));
+    canvas.set_shadow_offset(Vector2F::new(0.0, 2.0));
+    canvas.set_shadow_blur(10.0);
+    canvas.set_shadow_color(ColorU::new(0, 0, 0, 128));
+    canvas.fill_path(create_rounded_rect_path(rect, CORNER_RADIUS), FillRule::Winding);
+    canvas.set_shadow_color(ColorU::transparent_black());
+
+    // Header.
+    let mut header_gradient = Gradient::linear(LineSegment2F::new(Vector2F::default(),
+                                                                  Vector2F::new(0.0, 15.0)) +
+                                               rect.origin());
+    header_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 128), 0.0));
+    header_gradient.add_color_stop(ColorStop::new(ColorU::transparent_black(), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(header_gradient));
+    canvas.fill_path(create_rounded_rect_path(RectF::new(rect.origin() + Vector2F::splat(1.0),
+                                                         Vector2F::new(rect.width() - 2.0, 30.0)),
+                                              CORNER_RADIUS - 1.0),
+                     FillRule::Winding);
+    let mut path = Path2D::new();
+    path.move_to(rect.origin() + Vector2F::new(0.5, 30.5));
+    path.line_to(rect.origin() + Vector2F::new(rect.width() - 0.5, 30.5));
+    canvas.set_stroke_style(FillStyle::Color(ColorU::new(0, 0, 0, 32)));
+    canvas.stroke_path(path);
+
+    canvas.restore();
+}
+
+fn draw_search_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+    let corner_radius = rect.height() * 0.5 - 1.0;
+
+    // TODO(pcwalton): Box gradients.
+
+    canvas.set_fill_style(FillStyle::Color(ColorU::new(0, 0, 0, 54)));
+    canvas.fill_path(create_rounded_rect_path(rect, corner_radius), FillRule::Winding);
+}
+
+fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+    const CORNER_RADIUS: f32 = 4.0;
+
+    let mut background_gradient = Gradient::linear(LineSegment2F::new(rect.origin(),
+                                                                      rect.lower_left()));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 16), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 16), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    canvas.fill_path(create_rounded_rect_path(rect.contract(Vector2F::splat(1.0)),
+                                              CORNER_RADIUS - 1.0),
+                     FillRule::Winding);
+
+    canvas.set_stroke_style(FillStyle::Color(ColorU::new(0, 0, 0, 48)));
+    canvas.stroke_path(create_rounded_rect_path(rect.contract(Vector2F::splat(0.5)),
+                                                CORNER_RADIUS - 0.5));
+}
+
+fn draw_edit_box(canvas: &mut CanvasRenderingContext2D, rect: RectF) {
+    const CORNER_RADIUS: f32 = 4.0;
+
+    // TODO(pcwalton): Box gradient.
+
+    let mut background_gradient =
+        Gradient::linear(LineSegment2F::new(rect.origin() + Vector2F::new(0.0, 1.0),
+                                            rect.origin() + Vector2F::new(0.0, 4.0)));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(32, 32, 32, 32), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 32), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    canvas.fill_path(create_rounded_rect_path(rect.contract(Vector2F::splat(1.0)),
+                                              CORNER_RADIUS - 1.0),
+                     FillRule::Winding);
+
+    canvas.set_stroke_style(FillStyle::Color(ColorU::new(0, 0, 0, 48)));
+    canvas.stroke_path(create_rounded_rect_path(rect.contract(Vector2F::splat(0.5)),
+                                                CORNER_RADIUS - 0.5));
+}
+
+fn draw_text_edit_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+    draw_edit_box(canvas, rect)
+}
+
+fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
+                         value: &str,
+                         unit: &str,
+                         rect: RectF) {
+    draw_edit_box(canvas, rect)
+}
+
+fn draw_check_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+    const CORNER_RADIUS: f32 = 3.0;
+
+    // TODO(pcwalton): Box gradients.
+
+    let check_box_rect =
+        RectF::new(Vector2F::new(rect.origin_x(), rect.center().y().floor() - 9.0),
+                   Vector2F::splat(20.0)).contract(Vector2F::splat(1.0));
+    let mut background_gradient = Gradient::linear(LineSegment2F::new(rect.origin(),
+                                                                      rect.lower_left()));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 32), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 92), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    canvas.fill_path(create_rounded_rect_path(check_box_rect, CORNER_RADIUS), FillRule::Winding);
+}
+
+fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, color: ColorU) {
+    const CORNER_RADIUS: f32 = 4.0;
+
+    let path = create_rounded_rect_path(rect.contract(Vector2F::splat(1.0)), CORNER_RADIUS - 1.0);
+    if color != ColorU::transparent_black() {
+        canvas.set_fill_style(FillStyle::Color(color));
+        canvas.fill_path(path.clone(), FillRule::Winding);
+    }
+    let alpha = if color == ColorU::transparent_black() { 16 } else { 32 };
+    let mut background_gradient = Gradient::linear(LineSegment2F::new(rect.origin(),
+                                                                      rect.lower_left()));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, alpha), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, alpha), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    canvas.fill_path(path, FillRule::Winding);
+
+    canvas.set_stroke_style(FillStyle::Color(ColorU::new(0, 0, 0, 48)));
+    canvas.stroke_path(create_rounded_rect_path(rect.contract(Vector2F::splat(0.5)),
+                                                CORNER_RADIUS - 0.5));
+}
+
+fn draw_slider(canvas: &mut CanvasRenderingContext2D, value: f32, rect: RectF) {
+    let (center_y, knob_radius) = (rect.center().y().floor(), (rect.height() * 0.25).floor());
+
+    canvas.save();
+
+    // Draw track.
+    // TODO(pcwalton): Box gradient.
+    let track_rect = RectF::new(Vector2F::new(rect.origin_x(), center_y - 2.0),
+                                Vector2F::new(rect.width(), 4.0));
+    let mut background_gradient =
+        Gradient::linear(LineSegment2F::new(track_rect.origin(), track_rect.lower_left()) +
+                         Vector2F::new(0.0, 1.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 32), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 128), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    canvas.fill_path(create_rounded_rect_path(track_rect, 2.0), FillRule::Winding);
+
+    // Draw knob shadow.
+    let knob_position = Vector2F::new(rect.origin_x() + (value * rect.width()).floor(), center_y);
+    let mut background_gradient =
+        Gradient::radial(LineSegment2F::new(knob_position,
+                                            knob_position) + Vector2F::new(0.0, 1.0),
+                         F32x2::splat(knob_radius) * F32x2::new(-3.0, 3.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 64), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::transparent_black(), 1.0));
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    let mut path = Path2D::new();
+    path.rect(RectF::new(knob_position,
+                         Vector2F::default()).dilate(Vector2F::splat(knob_radius + 5.0)));
+    path.ellipse(knob_position, Vector2F::splat(knob_radius), 0.0, 0.0, PI_2);
+    canvas.fill_path(path, FillRule::EvenOdd);
+
+    // Fill knob.
+    let mut background_gradient =
+        Gradient::linear(LineSegment2F::new(knob_position - Vector2F::new(0.0, knob_radius),
+                                            knob_position + Vector2F::new(0.0, knob_radius)));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(255, 255, 255, 16), 0.0));
+    background_gradient.add_color_stop(ColorStop::new(ColorU::new(0, 0, 0, 16), 1.0));
+    let mut path = Path2D::new();
+    path.ellipse(knob_position, Vector2F::splat(knob_radius - 1.0), 0.0, 0.0, PI_2);
+    canvas.set_fill_style(FillStyle::Color(ColorU::new(40, 43, 48, 255)));
+    canvas.fill_path(path.clone(), FillRule::Winding);
+    canvas.set_fill_style(FillStyle::Gradient(background_gradient));
+    canvas.fill_path(path, FillRule::Winding);
+
+    // Outline knob.
+    let mut path = Path2D::new();
+    path.ellipse(knob_position, Vector2F::splat(knob_radius - 0.5), 0.0, 0.0, PI_2);
+    canvas.set_stroke_style(FillStyle::Color(ColorU::new(0, 0, 0, 92)));
+    canvas.stroke_path(path);
+
+    canvas.restore();
+}
+
 fn create_graph_path(sample_points: &[Vector2F], sample_spread: f32, offset: Vector2F) -> Path2D {
     let mut path = Path2D::new();
     path.move_to(sample_points[0] + Vector2F::new(0.0, 2.0));
@@ -496,6 +720,17 @@ fn create_graph_path(sample_points: &[Vector2F], sample_spread: f32, offset: Vec
                              pair[1] + offset - Vector2F::new(sample_spread * 0.5, 0.0),
                              pair[1] + offset);
     }
+    path
+}
+
+fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
+    let mut path = Path2D::new();
+    path.move_to(rect.origin() + Vector2F::new(radius, 0.0));
+    path.arc_to(rect.upper_right(), rect.upper_right() + Vector2F::new(0.0,  radius), radius);
+    path.arc_to(rect.lower_right(), rect.lower_right() + Vector2F::new(-radius, 0.0), radius);
+    path.arc_to(rect.lower_left(),  rect.lower_left()  + Vector2F::new(0.0, -radius), radius);
+    path.arc_to(rect.origin(),      rect.origin()      + Vector2F::new(radius,  0.0), radius);
+    path.close_path();
     path
 }
 
