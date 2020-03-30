@@ -9,12 +9,14 @@
 // except according to those terms.
 
 use arrayvec::ArrayVec;
+use image;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D};
 use pathfinder_canvas::{FillStyle, LineJoin, Path2D};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::{ColorStop, Gradient};
 use pathfinder_content::outline::ArcDirection;
+use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource};
 use pathfinder_content::stroke::LineCap;
 use pathfinder_geometry::angle;
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -28,6 +30,7 @@ use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
+use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x2;
 use sdl2::event::Event;
@@ -48,7 +51,8 @@ the men who came to the aid of the party.";
 fn render_demo(canvas: &mut CanvasRenderingContext2D,
                mouse_position: Vector2F,
                window_size: Vector2F,
-               time: f32) {
+               time: f32,
+               data: &DemoData) {
     draw_eyes(canvas,
               RectF::new(Vector2F::new(window_size.x() - 250.0, 50.0),
                          Vector2F::new(150.0, 100.0)),
@@ -122,7 +126,8 @@ fn render_demo(canvas: &mut CanvasRenderingContext2D,
                     RectF::new(Vector2F::new(365.0, popup_position.y() - 30.0),
                                Vector2F::new(160.0, 300.0)),
                     time,
-                    12);
+                    12,
+                    &data.image);
 
     canvas.restore();
 }
@@ -725,10 +730,12 @@ fn draw_slider(canvas: &mut CanvasRenderingContext2D, value: f32, rect: RectF) {
 fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
                    rect: RectF,
                    time: f32,
-                   image_count: usize) {
+                   image_count: usize,
+                   image: &Image) {
     const CORNER_RADIUS: f32 = 3.0;
     const THUMB_HEIGHT: f32 = 60.0;
     const ARROW_Y_POSITION: f32 = 30.5;
+    const IMAGES_ACROSS: usize = 4;
 
     let stack_height = image_count as f32 * 0.5 * (THUMB_HEIGHT + 10.0) + 10.0;
     let scroll_height = rect.height() / stack_height * (rect.height() - 8.0);
@@ -774,20 +781,29 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
                           image_index as i32 / 2).to_f32().scale(THUMB_HEIGHT + 10.0);
         let image_rect = RectF::new(image_origin, Vector2F::splat(THUMB_HEIGHT)); 
 
-        let image_path = create_rounded_rect_path(image_rect, 5.0);
-        canvas.set_fill_style(FillStyle::Color(ColorU::new(32, 32, 32, 255)));
-        canvas.fill_path(image_path, FillRule::Winding);
-
         let image_y = image_index as f32 * image_y_scale;
         let alpha = util::clamp((load_y - image_y) / image_y_scale, 0.0, 1.0);
         if alpha < 1.0 {
             draw_spinner(canvas, image_rect.center(), THUMB_HEIGHT * 0.25, time);
         }
 
+        let image_path = create_rounded_rect_path(image_rect, 5.0);
+        let pattern_transform = Transform2F::from_translation(
+            image_rect.origin() -
+            Vector2I::new((image_index % IMAGES_ACROSS) as i32,
+                          (image_index / IMAGES_ACROSS) as i32).to_f32().scale(THUMB_HEIGHT)) *
+            Transform2F::from_scale(Vector2F::splat(0.5));
+        let pattern = Pattern::new(PatternSource::Image((*image).clone()),
+                                   pattern_transform,
+                                   PatternFlags::empty());
+        canvas.set_fill_style(FillStyle::Pattern(pattern));
+        canvas.fill_path(image_path, FillRule::Winding);
+
         let mut shadow_path = create_rounded_rect_path(image_rect, 6.0);
         shadow_path.rect(image_rect.dilate(Vector2F::splat(5.0)));
         // TODO(pcwalton): Union clip paths.
-        /*fill_path_with_box_gradient(
+        /*
+        fill_path_with_box_gradient(
             canvas,
             shadow_path,
             FillRule::EvenOdd,
@@ -795,7 +811,8 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
             5.0,
             3.0,
             ColorU::new(0, 0, 0, 128),
-            ColorU::transparent_black());*/
+            ColorU::transparent_black());
+        */
 
         canvas.set_stroke_style(FillStyle::Color(ColorU::new(255, 255, 255, 192)));
         canvas.stroke_path(create_rounded_rect_path(image_rect.dilate(Vector2F::splat(0.5)), 3.5));
@@ -996,6 +1013,19 @@ fn create_rounded_rect_path(rect: RectF, radius: f32) -> Path2D {
     path
 }
 
+struct DemoData {
+    image: Image,
+}
+
+impl DemoData {
+    fn load(resources: &dyn ResourceLoader) -> DemoData {
+        let data = resources.slurp("textures/example-nanovg.png").unwrap();
+        let image = image::load_from_memory(&data).unwrap().to_rgba();
+        let image = Image::from_image_buffer(image);
+        DemoData { image }
+    }
+}
+
 fn main() {
     // Set up SDL2.
     let sdl_context = sdl2::init().unwrap();
@@ -1019,9 +1049,13 @@ fn main() {
     gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
     window.gl_make_current(&gl_context).unwrap();
 
+    // Load demo data.
+    let resources = FilesystemResourceLoader::locate();
+    let demo_data = DemoData::load(&resources);
+
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
-                                     &FilesystemResourceLoader::locate(),
+                                     &resources,
                                      DestFramebuffer::full_window(window_size),
                                      RendererOptions {
                                          background_color: Some(ColorF::new(0.3, 0.3, 0.32, 1.0)),
@@ -1040,7 +1074,7 @@ fn main() {
 
         // Render the demo.
         let time = (Instant::now() - start_time).as_secs_f32();
-        render_demo(&mut canvas, mouse_position, window_size.to_f32(), time);
+        render_demo(&mut canvas, mouse_position, window_size.to_f32(), time, &demo_data);
 
         // Render the canvas to screen.
         let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);

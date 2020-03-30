@@ -241,12 +241,7 @@ impl Palette {
                         PatternSource::Image(ref image) => {
                             // TODO(pcwalton): We should be able to use tile cleverness to repeat
                             // inside the atlas in some cases.
-                            let allocation_mode = if pattern.flags == PatternFlags::empty() {
-                                AllocationMode::Atlas
-                            } else {
-                                AllocationMode::OwnPage
-                            };
-
+                            let allocation_mode = AllocationMode::OwnPage;
                             texture_location = allocator.allocate(image.size(), allocation_mode);
                         }
                     }
