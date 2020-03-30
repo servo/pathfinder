@@ -448,14 +448,16 @@ impl State {
     }
 
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
-        if self.transform.is_identity() {
-            return Cow::Borrowed(paint);
-        }
-        if let Paint::Pattern(ref pattern) = *paint {
-            if !self.image_smoothing_enabled ==
-                    pattern.flags.contains(PatternFlags::NO_SMOOTHING) {
-                return Cow::Borrowed(paint)
+        let mut must_copy = !self.transform.is_identity();
+        if !must_copy {
+            if let Paint::Pattern(ref pattern) = *paint {
+                must_copy = !self.image_smoothing_enabled !=
+                    pattern.flags.contains(PatternFlags::NO_SMOOTHING);
             }
+        }
+
+        if !must_copy {
+            return Cow::Borrowed(paint);
         }
 
         let mut paint = (*paint).clone();
