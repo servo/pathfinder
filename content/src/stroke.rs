@@ -375,6 +375,10 @@ impl Contour {
         let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
         let prev_tangent = LineSegment2F::new(p0, p1);
 
+        if prev_tangent.square_length() < EPSILON || next_tangent.square_length() < EPSILON {
+            return;
+        }
+
         match join {
             LineJoin::Bevel => {}
             LineJoin::Miter(miter_limit) => {
