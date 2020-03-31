@@ -12,6 +12,7 @@ use crate::sorted_vector::SortedVector;
 use crate::util;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::util as geometry_util;
 use pathfinder_simd::default::F32x2;
 use std::cmp::{Ordering, PartialOrd};
@@ -74,13 +75,24 @@ impl Gradient {
     }
 
     #[inline]
-    pub fn radial(line: LineSegment2F, radii: F32x2) -> Gradient {
-        Gradient { line, radii: Some(radii), stops: SortedVector::new() }
+    pub fn linear_from_points(from: Vector2F, to: Vector2F) -> Gradient {
+        Gradient::linear(LineSegment2F::new(from, to))
     }
 
     #[inline]
-    pub fn add_color_stop(&mut self, stop: ColorStop) {
+    pub fn radial<L>(line: L, radii: F32x2) -> Gradient where L: RadialGradientLine {
+        Gradient { line: line.to_line(), radii: Some(radii), stops: SortedVector::new() }
+    }
+
+    #[inline]
+    pub fn add(&mut self, stop: ColorStop) {
         self.stops.push(stop);
+    }
+
+    /// A convenience method to add a color stop.
+    #[inline]
+    pub fn add_color_stop(&mut self, color: ColorU, offset: f32) {
+        self.add(ColorStop::new(color, offset))
     }
 
     #[inline]
@@ -139,5 +151,23 @@ impl ColorStop {
     #[inline]
     pub fn new(color: ColorU, offset: f32) -> ColorStop {
         ColorStop { color, offset }
+    }
+}
+
+pub trait RadialGradientLine {
+    fn to_line(self) -> LineSegment2F;
+}
+
+impl RadialGradientLine for LineSegment2F {
+    #[inline]
+    fn to_line(self) -> LineSegment2F {
+        self
+    }
+}
+
+impl RadialGradientLine for Vector2F {
+    #[inline]
+    fn to_line(self) -> LineSegment2F {
+        LineSegment2F::new(self, self)
     }
 }
