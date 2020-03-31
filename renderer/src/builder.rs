@@ -364,7 +364,7 @@ impl<'a> SceneBuilder<'a> {
                                                      built_draw_path.blend_mode,
                                                      built_draw_path.effects,
                                                      None,
-                                                     built_draw_path.mask_1_fill_rule);
+                                                     None);
                             }
                             SolidTiles::Occluders(_) => {}
                         }
