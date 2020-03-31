@@ -155,13 +155,13 @@ impl CanvasRenderingContext2D {
     // Fill and stroke styles
 
     #[inline]
-    pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
-        self.current_state.fill_paint = new_fill_style.into_paint();
+    pub fn set_fill_style<FS>(&mut self, new_fill_style: FS) where FS: Into<FillStyle> {
+        self.current_state.fill_paint = new_fill_style.into().into_paint();
     }
 
     #[inline]
-    pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
-        self.current_state.stroke_paint = new_stroke_style.into_paint();
+    pub fn set_stroke_style<FS>(&mut self, new_stroke_style: FS) where FS: Into<FillStyle> {
+        self.current_state.stroke_paint = new_stroke_style.into().into_paint();
     }
 
     // Shadows
@@ -708,5 +708,26 @@ pub enum ImageSmoothingQuality {
 impl Debug for Path2D {
     fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
         self.clone().into_outline().fmt(formatter)
+    }
+}
+
+impl From<ColorU> for FillStyle {
+    #[inline]
+    fn from(color: ColorU) -> FillStyle {
+        FillStyle::Color(color)
+    }
+}
+
+impl From<Gradient> for FillStyle {
+    #[inline]
+    fn from(gradient: Gradient) -> FillStyle {
+        FillStyle::Gradient(gradient)
+    }
+}
+
+impl From<Pattern> for FillStyle {
+    #[inline]
+    fn from(pattern: Pattern) -> FillStyle {
+        FillStyle::Pattern(pattern)
     }
 }
