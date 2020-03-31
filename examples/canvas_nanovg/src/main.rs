@@ -433,7 +433,7 @@ fn draw_lines(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
 
     for (cap_index, &cap) in [LineCap::Butt, LineCap::Round, LineCap::Square].iter().enumerate() {
         for (join_index, &join) in [
-            LineJoin::Miter, LineJoin::Miter /* FIXME(pcwalton): Round crashes */, LineJoin::Bevel
+            LineJoin::Miter, LineJoin::Round, LineJoin::Bevel
         ].iter().enumerate() {
             let origin = rect.origin() +
                 vec2f(spacing, -spacing).scale(0.5) +
