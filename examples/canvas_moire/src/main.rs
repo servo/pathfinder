@@ -10,7 +10,7 @@
 
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, Path2D};
 use pathfinder_color::{ColorF, ColorU};
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
@@ -47,7 +47,7 @@ fn main() {
     gl_attributes.set_context_version(3, 3);
 
     // Open a window.
-    let window_size = Vector2I::new(1067, 800);
+    let window_size = vec2i(1067, 800);
     let window = video.window("Moire example", window_size.x() as u32, window_size.y() as u32)
                       .opengl()
                       .allow_highdpi()
@@ -57,7 +57,7 @@ fn main() {
 
     // Get the real window size (for HiDPI).
     let (drawable_width, drawable_height) = window.drawable_size();
-    let drawable_size = Vector2I::new(drawable_width as i32, drawable_height as i32);
+    let drawable_size = vec2i(drawable_width as i32, drawable_height as i32);
 
     // Create the GL context, and make it current.
     let gl_context = window.gl_create_context().unwrap();
@@ -120,9 +120,8 @@ impl MoireRenderer {
 
         // Calculate outer and inner circle centers (circle and Leminscate of Gerono respectively).
         let window_center = self.window_size.to_f32().scale(0.5);
-        let outer_center = window_center + Vector2F::new(sin_time, cos_time).scale(OUTER_RADIUS);
-        let inner_center = window_center +
-            Vector2F::new(1.0, sin_time).scale(cos_time * INNER_RADIUS);
+        let outer_center = window_center + vec2f(sin_time, cos_time).scale(OUTER_RADIUS);
+        let inner_center = window_center + vec2f(1.0, sin_time).scale(cos_time * INNER_RADIUS);
 
         // Clear to background color.
         self.renderer.set_options(RendererOptions { background_color: Some(background_color) });

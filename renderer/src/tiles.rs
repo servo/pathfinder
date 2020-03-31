@@ -19,7 +19,7 @@ use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use std::cmp::Ordering;
 use std::mem;
 
@@ -223,7 +223,7 @@ impl<'a> Tiler<'a> {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
-                let current_tile_coords = Vector2I::new(current_tile_x, tile_y);
+                let current_tile_coords = vec2i(current_tile_x, tile_y);
                 self.object_builder.add_active_fill(
                     self.scene_builder,
                     current_x,
@@ -241,7 +241,7 @@ impl<'a> Tiler<'a> {
                     "... emitting backdrop {} @ tile {}",
                     current_winding, current_tile_x
                 );
-                let current_tile_coords = Vector2I::new(current_tile_x, tile_y);
+                let current_tile_coords = vec2i(current_tile_x, tile_y);
                 if let Some(tile_index) = self.object_builder
                                               .tile_coords_to_local_index(current_tile_coords) {
                     // FIXME(pcwalton): Handle winding overflow.
@@ -260,7 +260,7 @@ impl<'a> Tiler<'a> {
             if segment_subtile_x > current_subtile_x {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
-                let current_tile_coords = Vector2I::new(current_tile_x, tile_y);
+                let current_tile_coords = vec2i(current_tile_x, tile_y);
                 self.object_builder.add_active_fill(
                     self.scene_builder,
                     current_x,
@@ -499,12 +499,7 @@ impl<'a> PackedTile<'a> {
 }
 
 pub fn round_rect_out_to_tile_bounds(rect: RectF) -> RectI {
-    rect.scale_xy(Vector2F::new(
-        1.0 / TILE_WIDTH as f32,
-        1.0 / TILE_HEIGHT as f32,
-    ))
-    .round_out()
-    .to_i32()
+    rect.scale_xy(vec2f(1.0 / TILE_WIDTH as f32, 1.0 / TILE_HEIGHT as f32)).round_out().to_i32()
 }
 
 fn process_active_segment(

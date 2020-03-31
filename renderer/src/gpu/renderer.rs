@@ -25,7 +25,7 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
@@ -213,8 +213,7 @@ where
             &quad_vertex_indices_buffer,
         );
 
-        let fill_framebuffer_size =
-            Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+        let fill_framebuffer_size = vec2i(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         let fill_framebuffer_texture =
             device.create_texture(TextureFormat::R16F, fill_framebuffer_size);
         let fill_framebuffer = device.create_framebuffer(fill_framebuffer_texture);
@@ -907,8 +906,8 @@ where
         let gauss_coeff_z = gauss_coeff_y * gauss_coeff_y;
 
         let src_offset = match direction {
-            BlurDirection::X => Vector2F::new(1.0, 0.0),
-            BlurDirection::Y => Vector2F::new(0.0, 1.0),
+            BlurDirection::X => vec2f(1.0, 0.0),
+            BlurDirection::Y => vec2f(0.0, 1.0),
         };
 
         let support = f32::ceil(1.5 * sigma) * 2.0;
@@ -1016,8 +1015,7 @@ where
     }
 
     fn mask_viewport(&self) -> RectI {
-        RectI::new(Vector2I::default(),
-                   Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
+        RectI::new(Vector2I::zero(), vec2i(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT))
     }
 
     fn render_target_location(&self, render_target_id: RenderTargetId) -> TextureLocation {

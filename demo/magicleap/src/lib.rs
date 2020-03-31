@@ -29,10 +29,11 @@ use pathfinder_demo::BackgroundColor;
 use pathfinder_demo::Mode;
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::SVGPath;
-use pathfinder_geometry::vector::Vector2F;
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::vec2i;
 use pathfinder_color::ColorF;
 use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
@@ -191,10 +192,10 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         let mut height = 0;
         egl::query_surface(options.display, options.surface, egl::EGL_WIDTH, &mut width);
         egl::query_surface(options.display, options.surface, egl::EGL_HEIGHT, &mut height);
-        let size = Vector2I::new(width, height);
+        let size = vec2i(width, height);
 
-        let viewport_origin = Vector2I::new(options.viewport[0] as i32, options.viewport[1] as i32);
-        let viewport_size = Vector2I::new(options.viewport[2] as i32, options.viewport[3] as i32);
+        let viewport_origin = vec2i(options.viewport[0] as i32, options.viewport[1] as i32);
+        let viewport_size = vec2i(options.viewport[2] as i32, options.viewport[3] as i32);
         let viewport = RectI::new(viewport_origin, viewport_size);
 
         let bg_color = ColorF(F32x4::new(options.bg_color[0], options.bg_color[1], options.bg_color[2], options.bg_color[3]));
@@ -222,7 +223,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
 
         let render_options = RenderOptions {
             transform: RenderTransform::Transform2D(transform),
-            dilation: Vector2F::default(),
+            dilation: Vector2F::zero(),
             subpixel_aa_enabled: false,
         };
 

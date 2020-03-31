@@ -14,7 +14,7 @@ use crate::render_target::RenderTargetId;
 use crate::util;
 use pathfinder_color::{self as color, ColorU};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
@@ -79,7 +79,7 @@ impl Image {
     pub fn from_image_buffer(image_buffer: RgbaImage) -> Image {
         let (width, height) = image_buffer.dimensions();
         let pixels = color::u8_vec_to_color_vec(image_buffer.into_raw());
-        Image::new(Vector2I::new(width as i32, height as i32), pixels)
+        Image::new(vec2i(width as i32, height as i32), pixels)
     }
 
     #[inline]

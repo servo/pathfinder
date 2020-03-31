@@ -16,7 +16,7 @@ use jni::{JNIEnv, JavaVM};
 use pathfinder_demo::window::{Event, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_gl::GLVersion;
 use pathfinder_resources::ResourceLoader;
@@ -48,7 +48,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     width: i32,
     height: i32,
 ) {
-    let logical_size = Vector2I::new(width, height);
+    let logical_size = vec2i(width, height);
     let window_size = WindowSize {
         logical_size,
         backing_scale_factor: 1.0,
@@ -119,7 +119,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
         .lock()
         .unwrap()
         .push(Event::WindowResized(WindowSize {
-            logical_size: Vector2I::new(width, height),
+            logical_size: vec2i(width, height),
             backing_scale_factor: 1.0,
         }))
 }
@@ -131,10 +131,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     x: i32,
     y: i32,
 ) {
-    EVENT_QUEUE
-        .lock()
-        .unwrap()
-        .push(Event::MouseDown(Vector2I::new(x, y)))
+    EVENT_QUEUE.lock().unwrap().push(Event::MouseDown(vec2i(x, y)))
 }
 
 #[no_mangle]
@@ -144,10 +141,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     x: i32,
     y: i32,
 ) {
-    EVENT_QUEUE
-        .lock()
-        .unwrap()
-        .push(Event::MouseDragged(Vector2I::new(x, y)))
+    EVENT_QUEUE.lock().unwrap().push(Event::MouseDragged(vec2i(x, y)))
 }
 
 #[no_mangle]
@@ -158,10 +152,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     center_x: i32,
     center_y: i32,
 ) {
-    EVENT_QUEUE
-        .lock()
-        .unwrap()
-        .push(Event::Zoom(factor, Vector2I::new(center_x, center_y)))
+    EVENT_QUEUE.lock().unwrap().push(Event::Zoom(factor, vec2i(center_x, center_y)))
 }
 
 #[no_mangle]
@@ -204,8 +195,8 @@ impl Window for WindowImpl {
             width = width / 2;
             offset_x = (index as i32) * width;
         }
-        let size = Vector2I::new(width, height);
-        let offset = Vector2I::new(offset_x, 0);
+        let size = vec2i(width, height);
+        let offset = vec2i(offset_x, 0);
         RectI::new(offset, size)
     }
 

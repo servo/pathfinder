@@ -12,7 +12,7 @@ use pathfinder_content::outline::ContourIterFlags;
 use pathfinder_content::segment::SegmentKind;
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::Scene;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use std::fmt;
 use std::io::{self, Write};
 
@@ -73,7 +73,7 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     let height = view_box.size().y();
     let tr = |v: Vector2F| -> Vector2F {
         let r = v - view_box.origin();
-        Vector2F::new(r.x(), height - r.y())
+        vec2f(r.x(), height - r.y())
     };
 
     for (paint, outline, _) in scene.paths() {

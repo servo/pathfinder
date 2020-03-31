@@ -19,7 +19,7 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::unit_vector::UnitVector;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -408,8 +408,8 @@ impl Contour {
         if end_angle - start_angle >= PI * 2.0 {
             self.push_ellipse(transform);
         } else {
-            let start = Vector2F::new(f32::cos(start_angle), f32::sin(start_angle));
-            let end = Vector2F::new(f32::cos(end_angle), f32::sin(end_angle));
+            let start = vec2f(start_angle.cos(), start_angle.sin());
+            let end   = vec2f(end_angle.cos(),   end_angle.sin());
             self.push_arc_from_unit_chord(transform, LineSegment2F::new(start, end), direction);
         }
     }
@@ -421,7 +421,7 @@ impl Contour {
         let mut direction_transform = Transform2F::default();
         if direction == ArcDirection::CCW {
             chord = chord.reversed();
-            direction_transform = Transform2F::from_scale(Vector2F::new(1.0, -1.0));
+            direction_transform = Transform2F::from_scale(vec2f(1.0, -1.0));
         }
 
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
@@ -433,7 +433,7 @@ impl Contour {
 
             let mut segment;
             if !last {
-                sweep_vector = UnitVector(Vector2F::new(0.0, 1.0));
+                sweep_vector = UnitVector(vec2f(0.0, 1.0));
                 segment = Segment::quarter_circle_arc();
             } else {
                 segment = Segment::arc_from_cos(sweep_vector.0.x());
@@ -465,13 +465,13 @@ impl Contour {
         let mut rotation;
         self.push_segment(&segment.transform(transform),
                           PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT);
-        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
+        rotation = Transform2F::from_rotation_vector(UnitVector(vec2f( 0.0,  1.0)));
         self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
+        rotation = Transform2F::from_rotation_vector(UnitVector(vec2f(-1.0,  0.0)));
         self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2F::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
+        rotation = Transform2F::from_rotation_vector(UnitVector(vec2f( 0.0, -1.0)));
         self.push_segment(&segment.transform(&(*transform * rotation)),
                           PushSegmentFlags::UPDATE_BOUNDS);
     }

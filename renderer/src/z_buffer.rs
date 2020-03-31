@@ -17,7 +17,7 @@ use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
 use vec_map::VecMap;
 
 pub(crate) struct ZBuffer {
@@ -116,14 +116,11 @@ impl Tile {
                                                 -> Tile {
         Tile {
             upper_left: TileVertex::new_solid_from_paint_metadata(tile_position, paint_metadata),
-            upper_right: TileVertex::new_solid_from_paint_metadata(tile_position +
-                                                                   Vector2I::new(1, 0),
+            upper_right: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(1, 0),
                                                                    paint_metadata),
-            lower_left: TileVertex::new_solid_from_paint_metadata(tile_position +
-                                                                  Vector2I::new(0, 1),
+            lower_left: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(0, 1),
                                                                   paint_metadata),
-            lower_right: TileVertex::new_solid_from_paint_metadata(tile_position +
-                                                                   Vector2I::new(1, 1),
+            lower_right: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(1, 1),
                                                                    paint_metadata),
         }
     }
@@ -132,11 +129,11 @@ impl Tile {
                                               -> Tile {
         Tile {
             upper_left: TileVertex::new_solid_from_uv(tile_position, texture_rect.origin()),
-            upper_right: TileVertex::new_solid_from_uv(tile_position + Vector2I::new(1, 0),
+            upper_right: TileVertex::new_solid_from_uv(tile_position + vec2i(1, 0),
                                                        texture_rect.upper_right()),
-            lower_left: TileVertex::new_solid_from_uv(tile_position + Vector2I::new(0, 1),
+            lower_left: TileVertex::new_solid_from_uv(tile_position + vec2i(0, 1),
                                                       texture_rect.lower_left()),
-            lower_right: TileVertex::new_solid_from_uv(tile_position + Vector2I::new(1, 1),
+            lower_right: TileVertex::new_solid_from_uv(tile_position + vec2i(1, 1),
                                                        texture_rect.lower_right()),
         }
     }

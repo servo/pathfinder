@@ -14,7 +14,7 @@ use crate::line_segment::LineSegment2F;
 use crate::rect::RectF;
 use crate::transform3d::Transform4F;
 use crate::unit_vector::UnitVector;
-use crate::vector::Vector2F;
+use crate::vector::{Vector2F, vec2f};
 use pathfinder_simd::default::F32x4;
 use std::ops::{Mul, MulAssign, Sub};
 
@@ -25,7 +25,7 @@ pub struct Matrix2x2F(pub F32x4);
 impl Default for Matrix2x2F {
     #[inline]
     fn default() -> Matrix2x2F {
-        Self::from_scale(Vector2F::splat(1.0))
+        Self::from_scale(vec2f(1.0, 1.0))
     }
 }
 
@@ -131,7 +131,7 @@ pub struct Transform2F {
 impl Default for Transform2F {
     #[inline]
     fn default() -> Transform2F {
-        Self::from_scale(Vector2F::splat(1.0))
+        Self::from_scale(vec2f(1.0, 1.0))
     }
 }
 
@@ -140,7 +140,7 @@ impl Transform2F {
     pub fn from_scale(scale: Vector2F) -> Transform2F {
         Transform2F {
             matrix: Matrix2x2F::from_scale(scale),
-            vector: Vector2F::default(),
+            vector: Vector2F::zero(),
         }
     }
 
@@ -153,7 +153,7 @@ impl Transform2F {
     pub fn from_rotation(theta: f32) -> Transform2F {
         Transform2F {
             matrix: Matrix2x2F::from_rotation(theta),
-            vector: Vector2F::default(),
+            vector: Vector2F::zero(),
         }
     }
 
@@ -161,7 +161,7 @@ impl Transform2F {
     pub fn from_rotation_vector(vector: UnitVector) -> Transform2F {
         Transform2F {
             matrix: Matrix2x2F::from_rotation_vector(vector),
-            vector: Vector2F::default(),
+            vector: Vector2F::zero(),
         }
     }
 

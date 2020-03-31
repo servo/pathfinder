@@ -11,7 +11,7 @@
 use font_kit::handle::Handle;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, TextAlign};
 use pathfinder_color::ColorF;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
@@ -37,7 +37,7 @@ fn main() {
     gl_attributes.set_context_version(3, 3);
 
     // Open a window.
-    let window_size = Vector2I::new(640, 480);
+    let window_size = vec2i(640, 480);
     let window = video.window("Text example", window_size.x() as u32, window_size.y() as u32)
                       .opengl()
                       .build()
@@ -66,9 +66,9 @@ fn main() {
     // Draw the text.
     canvas.set_font_by_postscript_name("Overpass-Regular");
     canvas.set_font_size(32.0);
-    canvas.fill_text("Hello Pathfinder!", Vector2F::new(32.0, 48.0));
+    canvas.fill_text("Hello Pathfinder!", vec2f(32.0, 48.0));
     canvas.set_text_align(TextAlign::Right);
-    canvas.stroke_text("Goodbye Pathfinder!", Vector2F::new(608.0, 464.0));
+    canvas.stroke_text("Goodbye Pathfinder!", vec2f(608.0, 464.0));
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);

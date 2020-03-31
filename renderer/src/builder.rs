@@ -28,7 +28,7 @@ use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmen
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::util;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -269,11 +269,11 @@ impl<'a> SceneBuilder<'a> {
                     let tile_rect = tiles::round_rect_out_to_tile_bounds(effective_view_box);
                     let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
                     let mut tiles = vec![];
-                    let uv_scale = Vector2F::splat(1.0) / tile_rect.lower_right().to_f32();
+                    let uv_scale = vec2f(1.0, 1.0) / tile_rect.lower_right().to_f32();
                     let metadata = &render_target_metadata[render_target.0 as usize];
                     for tile_y in tile_rect.min_y()..tile_rect.max_y() {
                         for tile_x in tile_rect.min_x()..tile_rect.max_x() {
-                            let tile_coords = Vector2I::new(tile_x, tile_y);
+                            let tile_coords = vec2i(tile_x, tile_y);
                             if !layer_z_buffer.test(tile_coords, current_depth) {
                                 continue;
                             }
@@ -716,8 +716,8 @@ impl ObjectBuilder {
         tile_coords: Vector2I,
     ) {
         let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
-        let left = Vector2F::new(left, tile_origin_y);
-        let right = Vector2F::new(right, tile_origin_y);
+        let left = vec2f(left, tile_origin_y);
+        let right = vec2f(right, tile_origin_y);
 
         let segment = if winding < 0 {
             LineSegment2F::new(left, right)
@@ -792,7 +792,7 @@ impl ObjectBuilder {
             }
 
             let fill_segment = LineSegment2F::new(fill_from, fill_to);
-            let fill_tile_coords = Vector2I::new(subsegment_tile_x, tile_y);
+            let fill_tile_coords = vec2i(subsegment_tile_x, tile_y);
             self.add_fill(scene_builder, fill_segment, fill_tile_coords);
         }
     }
@@ -825,28 +825,28 @@ impl<'a> PackedTile<'a> {
                                               fill_tile_backdrop,
                                               clip_tile_index,
                                               clip_tile_backdrop,
-                                              Vector2I::default(),
+                                              Vector2I::zero(),
                                               draw_tiling_path_info),
             upper_right: TileVertex::new_alpha(self.tile_coords,
                                                fill_tile_index,
                                                fill_tile_backdrop,
                                                clip_tile_index,
                                                clip_tile_backdrop,
-                                               Vector2I::new(1, 0),
+                                               vec2i(1, 0),
                                                draw_tiling_path_info),
             lower_left: TileVertex::new_alpha(self.tile_coords,
                                               fill_tile_index,
                                               fill_tile_backdrop,
                                               clip_tile_index,
                                               clip_tile_backdrop,
-                                              Vector2I::new(0, 1),
+                                              vec2i(0, 1),
                                               draw_tiling_path_info),
             lower_right: TileVertex::new_alpha(self.tile_coords,
                                                fill_tile_index,
                                                fill_tile_backdrop,
                                                clip_tile_index,
                                                clip_tile_backdrop,
-                                               Vector2I::splat(1),
+                                               vec2i(1, 1),
                                                draw_tiling_path_info),
         });
     }
@@ -886,20 +886,20 @@ impl TileVertex {
 
     #[inline]
     pub fn tile_position(&self) -> Vector2I {
-        Vector2I::new(self.tile_x as i32, self.tile_y as i32)
+        vec2i(self.tile_x as i32, self.tile_y as i32)
     }
 }
 
 fn calculate_mask_uv(tile_index: u16, tile_offset: Vector2I) -> Vector2F {
     let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
     let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
-    let scale = Vector2F::new(1.0 / MASK_TILES_ACROSS as f32, 1.0 / MASK_TILES_DOWN as f32);
-    (Vector2I::new(mask_u, mask_v) + tile_offset).to_f32().scale_xy(scale)
+    let scale = vec2f(1.0 / MASK_TILES_ACROSS as f32, 1.0 / MASK_TILES_DOWN as f32);
+    (vec2i(mask_u, mask_v) + tile_offset).to_f32().scale_xy(scale)
 }
 
 fn calculate_opacity_uv(draw_tiling_path_info: &DrawTilingPathInfo) -> Vector2F {
     let DrawTilingPathInfo { opacity_tile_transform, opacity, .. } = *draw_tiling_path_info;
-    let texel_coord = (Vector2I::new((opacity % 16) as i32, (opacity / 16) as i32).to_f32() +
-                       Vector2F::splat(0.5)).scale(1.0 / 16.0);
+    let texel_coord = (vec2i((opacity % 16) as i32, (opacity / 16) as i32).to_f32() +
+                       vec2f(0.5, 0.5)).scale(1.0 / 16.0);
     opacity_tile_transform * texel_coord
 }

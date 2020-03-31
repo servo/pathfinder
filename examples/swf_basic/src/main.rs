@@ -8,8 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
@@ -25,7 +26,6 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_swf::{draw_paths_into_scene, process_swf_tags};
 use std::env;
 use std::fs::read;
-use pathfinder_geometry::transform2d::Transform2F;
 
 fn main() {
     let resource_loader = FilesystemResourceLoader::locate();
@@ -64,7 +64,8 @@ fn main() {
         swf_bytes = Vec::from(&default_tiger[..]);
     }
 
-    let (_, movie): (_, swf_types::Movie) = swf_parser::streaming::movie::parse_movie(&swf_bytes[..]).unwrap();
+    let (_, movie): (_, swf_types::Movie) =
+        swf_parser::streaming::movie::parse_movie(&swf_bytes[..]).unwrap();
 
     // Set up SDL2.
     let sdl_context = sdl2::init().unwrap();
@@ -81,17 +82,14 @@ fn main() {
     let (library, stage) = process_swf_tags(&movie);
 
     // Open a window.
-    let window_size = Vector2I::new(stage.width(), stage.height());
+    let window_size = vec2i(stage.width(), stage.height());
     let window = video.window("Minimal example", window_size.x() as u32, window_size.y() as u32)
         .opengl()
         .allow_highdpi()
         .build()
         .unwrap();
 
-    let pixel_size = Vector2I::new(
-        window.drawable_size().0 as i32,
-        window.drawable_size().1 as i32
-    );
+    let pixel_size = vec2i(window.drawable_size().0 as i32, window.drawable_size().1 as i32);
     let device_pixel_ratio = pixel_size.x() as f32 / window_size.x() as f32;
 
     // Create the GL context, and make it current.
@@ -109,19 +107,15 @@ fn main() {
     // Clear to swf stage background color.
     let mut scene = Scene::new();
     scene.set_view_box(RectF::new(
-        Vector2F::default(),
-        Vector2F::new(
-            stage.width() as f32 * device_pixel_ratio,
-            stage.height() as f32 * device_pixel_ratio)
+        Vector2F::zero(),
+        vec2f(stage.width() as f32, stage.height() as f32).scale(device_pixel_ratio)
     ));
     draw_paths_into_scene(&library, &mut scene);
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(scene, RayonExecutor);
     let mut build_options = BuildOptions::default();
-    let scale_transform = Transform2F::from_scale(
-        Vector2F::new(device_pixel_ratio, device_pixel_ratio)
-    );
+    let scale_transform = Transform2F::from_scale(Vector2F::splat(device_pixel_ratio));
     build_options.transform = RenderTransform::Transform2D(scale_transform);
     scene.build_and_render(&mut renderer, build_options);
 

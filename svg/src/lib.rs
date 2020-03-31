@@ -23,7 +23,7 @@ use pathfinder_content::transform::Transform2FPathIter;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -312,10 +312,8 @@ impl PaintExt for Paint {
 }
 
 fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> RectF {
-    RectF::new(
-        Vector2F::new(rect.x() as f32, rect.y() as f32),
-        Vector2F::new(rect.width() as f32, rect.height() as f32),
-    )
+    RectF::new(vec2f(rect.x() as f32, rect.y() as f32),
+               vec2f(rect.width() as f32, rect.height() as f32))
 }
 
 fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2F {
@@ -346,8 +344,8 @@ where
     fn new(iter: I) -> UsvgPathToSegments<I> {
         UsvgPathToSegments {
             iter,
-            first_subpath_point: Vector2F::default(),
-            last_subpath_point: Vector2F::default(),
+            first_subpath_point: Vector2F::zero(),
+            last_subpath_point: Vector2F::zero(),
             just_moved: false,
         }
     }
@@ -362,14 +360,14 @@ where
     fn next(&mut self) -> Option<Segment> {
         match self.iter.next()? {
             UsvgPathSegment::MoveTo { x, y } => {
-                let to = Vector2F::new(x as f32, y as f32);
+                let to = vec2f(x as f32, y as f32);
                 self.first_subpath_point = to;
                 self.last_subpath_point = to;
                 self.just_moved = true;
                 self.next()
             }
             UsvgPathSegment::LineTo { x, y } => {
-                let to = Vector2F::new(x as f32, y as f32);
+                let to = vec2f(x as f32, y as f32);
                 let mut segment = Segment::line(LineSegment2F::new(self.last_subpath_point, to));
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
@@ -386,13 +384,11 @@ where
                 x,
                 y,
             } => {
-                let ctrl0 = Vector2F::new(x1 as f32, y1 as f32);
-                let ctrl1 = Vector2F::new(x2 as f32, y2 as f32);
-                let to = Vector2F::new(x as f32, y as f32);
-                let mut segment = Segment::cubic(
-                    LineSegment2F::new(self.last_subpath_point, to),
-                    LineSegment2F::new(ctrl0, ctrl1),
-                );
+                let ctrl0 = vec2f(x1 as f32, y1 as f32);
+                let ctrl1 = vec2f(x2 as f32, y2 as f32);
+                let to = vec2f(x as f32, y as f32);
+                let mut segment = Segment::cubic(LineSegment2F::new(self.last_subpath_point, to),
+                                                 LineSegment2F::new(ctrl0, ctrl1));
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }

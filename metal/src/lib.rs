@@ -42,7 +42,7 @@ use metal::{StructTypeRef, TextureDescriptor, Texture, TextureRef, VertexAttribu
 use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::{Class, Object};
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
 use pathfinder_gpu::{Device, Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc};
 use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, TextureSamplingFlags};
@@ -123,8 +123,8 @@ impl MetalDevice {
         }).collect();
 
         let main_color_texture = drawable.texture();
-        let framebuffer_size = Vector2I::new(main_color_texture.width() as i32,
-                                             main_color_texture.height() as i32);
+        let framebuffer_size = vec2i(main_color_texture.width() as i32,
+                                     main_color_texture.height() as i32);
         let main_depth_stencil_texture = device.create_depth_stencil_texture(framebuffer_size);
 
         let shared_event = device.new_shared_event();
@@ -486,7 +486,7 @@ impl Device for MetalDevice {
     }
 
     fn texture_size(&self, texture: &MetalTexture) -> Vector2I {
-        Vector2I::new(texture.texture.width() as i32, texture.texture.height() as i32)
+        vec2i(texture.texture.width() as i32, texture.texture.height() as i32)
     }
 
     fn set_texture_sampling_mode(&self, texture: &MetalTexture, flags: TextureSamplingFlags) {

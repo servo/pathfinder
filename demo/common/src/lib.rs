@@ -28,7 +28,7 @@ use pathfinder_export::{Export, FileFormat};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Transform4F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
@@ -256,9 +256,9 @@ impl<W> DemoApp<W> where W: Window {
             dilation: if self.ui_model.stem_darkening_effect_enabled {
                 let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
                 let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                Vector2F::new(x, y).scale(font_size)
+                vec2f(x, y).scale(font_size)
             } else {
-                Vector2F::default()
+                Vector2F::zero()
             },
             subpixel_aa_enabled: self.ui_model.subpixel_aa_effect_enabled,
         };
@@ -279,10 +279,9 @@ impl<W> DemoApp<W> where W: Window {
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
                     let viewport = self.window.viewport(self.ui_model.mode.view(0));
-                    self.scene_proxy.set_view_box(RectF::new(Vector2F::default(),
-                                                               viewport.size().to_f32()));
-                    self.renderer
-                        .set_main_framebuffer_size(self.window_size.device_size());
+                    self.scene_proxy.set_view_box(RectF::new(Vector2F::zero(),
+                                                             viewport.size().to_f32()));
+                    self.renderer.set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
                 }
                 Event::MouseDown(new_position) => {
@@ -776,8 +775,8 @@ fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, effects: Option<Effects>
         None => None,
         Some(effects) => {
             let scale = match effects.filter {
-                Filter::Text { defringing_kernel: Some(_), .. } => Vector2I::new(3, 1),
-                _ => Vector2I::splat(1),
+                Filter::Text { defringing_kernel: Some(_), .. } => vec2i(3, 1),
+                _ => vec2i(1, 1),
             };
             let name = "Text".to_owned();
             let render_target = RenderTarget::new(viewport_size.scale_xy(scale), name);
@@ -873,7 +872,7 @@ impl SceneMetadata {
     // Can we simplify this?
     fn new_clipping_view_box(scene: &mut Scene, viewport_size: Vector2I) -> SceneMetadata {
         let view_box = scene.view_box();
-        scene.set_view_box(RectF::new(Vector2F::default(), viewport_size.to_f32()));
+        scene.set_view_box(RectF::new(Vector2F::zero(), viewport_size.to_f32()));
         SceneMetadata { view_box }
     }
 }

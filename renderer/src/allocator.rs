@@ -12,7 +12,7 @@
 
 use crate::gpu_data::{TextureLocation, TexturePageId};
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 
 const ATLAS_TEXTURE_LENGTH: u32 = 1024;
 
@@ -98,7 +98,7 @@ impl TextureAllocator {
     }
 
     pub fn page_scale(&self, page_index: TexturePageId) -> Vector2F {
-        Vector2F::splat(1.0) / self.page_size(page_index).to_f32()
+        vec2f(1.0, 1.0) / self.page_size(page_index).to_f32()
     }
 
     #[inline]
@@ -179,22 +179,20 @@ impl TreeNode {
                 if let Some(origin) = kids[0].allocate(this_origin, kid_size, requested_size) {
                     return Some(origin);
                 }
-                if let Some(origin) =
-                        kids[1].allocate(this_origin + Vector2I::new(kid_size as i32, 0),
-                                         kid_size,
-                                         requested_size) {
+                if let Some(origin) = kids[1].allocate(this_origin + vec2i(kid_size as i32, 0),
+                                                       kid_size,
+                                                       requested_size) {
                     return Some(origin);
                 }
-                if let Some(origin) =
-                        kids[2].allocate(this_origin + Vector2I::new(0, kid_size as i32),
-                                         kid_size,
-                                         requested_size) {
+                if let Some(origin) = kids[2].allocate(this_origin + vec2i(0, kid_size as i32),
+                                                       kid_size,
+                                                       requested_size) {
                     return Some(origin);
                 }
-                if let Some(origin) =
-                        kids[3].allocate(this_origin + Vector2I::splat(kid_size as i32),
-                                         kid_size,
-                                         requested_size) {
+                if let Some(origin) = kids[3].allocate(
+                        this_origin + Vector2I::splat(kid_size as i32),
+                        kid_size,
+                        requested_size) {
                     return Some(origin);
                 }
 
@@ -229,12 +227,12 @@ impl TreeNode {
                 child_index = 0;
             } else {
                 child_index = 1;
-                child_origin = child_origin + Vector2I::new(child_size as i32, 0);
+                child_origin += vec2i(child_size as i32, 0);
             }
         } else {
             if requested_origin.x() < this_center.x() {
                 child_index = 2;
-                child_origin = child_origin + Vector2I::new(0, child_size as i32);
+                child_origin += vec2i(0, child_size as i32);
             } else {
                 child_index = 3;
                 child_origin = this_center;
@@ -291,7 +289,7 @@ mod test {
             let mut allocator = TextureAtlasAllocator::with_length(length);
             let mut locations = vec![];
             for &(width, height) in &sizes {
-                let size = Vector2I::new(width as i32, height as i32);
+                let size = vec2i(width as i32, height as i32);
                 if let Some(location) = allocator.allocate(size) {
                     locations.push(location);
                 }

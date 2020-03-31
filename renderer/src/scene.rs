@@ -19,9 +19,9 @@ use pathfinder_content::effects::{BlendMode, Effects};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::render_target::RenderTargetId;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::{Vector2I, vec2f};
 
 #[derive(Clone)]
 pub struct Scene {
@@ -156,7 +156,7 @@ impl Scene {
                         PreparedRenderTransform::Perspective { .. } => unreachable!(),
                     };
                     if options.subpixel_aa_enabled {
-                        transform *= Transform2F::from_scale(Vector2F::new(3.0, 1.0))
+                        transform *= Transform2F::from_scale(vec2f(3.0, 1.0))
                     }
                     outline.transform(&transform);
                 }
@@ -177,7 +177,7 @@ impl Scene {
     #[inline]
     pub(crate) fn effective_view_box(&self, render_options: &PreparedBuildOptions) -> RectF {
         if render_options.subpixel_aa_enabled {
-            self.view_box.scale_xy(Vector2F::new(3.0, 1.0))
+            self.view_box.scale_xy(vec2f(3.0, 1.0))
         } else {
             self.view_box
         }

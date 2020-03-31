@@ -21,9 +21,9 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
 use skribo::FontCollection;
@@ -75,7 +75,7 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn new(font_context: CanvasFontContext, size: Vector2F) -> CanvasRenderingContext2D {
         let mut scene = Scene::new();
-        scene.set_view_box(RectF::new(Vector2F::default(), size));
+        scene.set_view_box(RectF::new(Vector2F::zero(), size));
         CanvasRenderingContext2D::from_scene(font_context, scene)
     }
 
@@ -454,7 +454,7 @@ impl State {
             stroke_paint: Paint::black(),
             shadow_paint: Paint::transparent_black(),
             shadow_blur: 0.0,
-            shadow_offset: Vector2F::default(),
+            shadow_offset: Vector2F::zero(),
             text_align: TextAlign::Left,
             text_baseline: TextBaseline::Alphabetic,
             image_smoothing_enabled: true,
@@ -561,8 +561,8 @@ impl Path2D {
 
         let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
 
-        let chord = LineSegment2F::new(vu0.yx().scale_xy(Vector2F::new(-1.0, 1.0)),
-                                      vu1.yx().scale_xy(Vector2F::new(1.0, -1.0)));
+        let chord = LineSegment2F::new(vu0.yx().scale_xy(vec2f(-1.0,  1.0)),
+                                       vu1.yx().scale_xy(vec2f( 1.0, -1.0)));
 
         // FIXME(pcwalton): Is clockwise direction correct?
         self.current_contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);

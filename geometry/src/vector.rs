@@ -30,6 +30,11 @@ impl Vector2F {
     }
 
     #[inline]
+    pub fn zero() -> Vector2F {
+        Vector2F::default()
+    }
+
+    #[inline]
     pub fn to_3d(self) -> Vector3F {
         Vector3F(self.0.to_f32x4().concat_xy_zw(F32x4::new(0.0, 0.0, 0.0, 0.0)))
     }
@@ -147,7 +152,7 @@ impl Vector2F {
 
     #[inline]
     pub fn is_zero(self) -> bool {
-        self == Vector2F::default()
+        self == Vector2F::zero()
     }
 
     #[inline]
@@ -159,6 +164,12 @@ impl Vector2F {
     pub fn to_i32(self) -> Vector2I {
         Vector2I(self.0.to_i32x2())
     }
+}
+
+/// A convenience alias for `Vector2F::new()`.
+#[inline]
+pub fn vec2f(x: f32, y: f32) -> Vector2F {
+    Vector2F::new(x, y)
 }
 
 impl PartialEq for Vector2F {
@@ -231,6 +242,11 @@ impl Vector2I {
     }
 
     #[inline]
+    pub fn zero() -> Vector2I {
+        Vector2I::default()
+    }
+
+    #[inline]
     pub fn x(self) -> i32 {
         self.0[0]
     }
@@ -274,6 +290,12 @@ impl Vector2I {
     pub fn to_f32(self) -> Vector2F {
         Vector2F(self.0.to_f32x2())
     }
+}
+
+/// A convenience alias for `Vector2I::new()`.
+#[inline]
+pub fn vec2i(x: i32, y: i32) -> Vector2I {
+    Vector2I::new(x, y)
 }
 
 impl Add<Vector2I> for Vector2I {

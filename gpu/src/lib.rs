@@ -18,7 +18,7 @@ use image::ImageFormat;
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::os::raw::c_void;
@@ -99,7 +99,7 @@ pub trait Device: Sized {
         let image = image::load_from_memory_with_format(&data, ImageFormat::Png)
             .unwrap()
             .to_luma();
-        let size = Vector2I::new(image.width() as i32, image.height() as i32);
+        let size = vec2i(image.width() as i32, image.height() as i32);
         self.create_texture_from_data(TextureFormat::R8, size, TextureDataRef::U8(&image))
     }
 

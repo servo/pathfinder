@@ -16,7 +16,7 @@
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
 use crate::gpu::renderer::{RenderStats, RenderTime};
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_gpu::Device;
 use pathfinder_resources::ResourceLoader;
@@ -85,16 +85,14 @@ where
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI::new(
-            Vector2I::new(
-                framebuffer_size.x() - PADDING - STATS_WINDOW_WIDTH,
-                bottom - PERFORMANCE_WINDOW_HEIGHT - PADDING - STATS_WINDOW_HEIGHT,
-            ),
-            Vector2I::new(STATS_WINDOW_WIDTH, STATS_WINDOW_HEIGHT),
+            vec2i(framebuffer_size.x() - PADDING - STATS_WINDOW_WIDTH,
+                  bottom - PERFORMANCE_WINDOW_HEIGHT - PADDING - STATS_WINDOW_HEIGHT),
+            vec2i(STATS_WINDOW_WIDTH, STATS_WINDOW_HEIGHT),
         );
 
         self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
 
-        let origin = window_rect.origin() + Vector2I::new(PADDING, PADDING + FONT_ASCENT);
+        let origin = window_rect.origin() + vec2i(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
             &format!("Paths: {}", mean_cpu_sample.stats.path_count),
@@ -104,19 +102,19 @@ where
         self.ui_presenter.draw_text(
             device,
             &format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
-            origin + Vector2I::new(0, LINE_HEIGHT * 1),
+            origin + vec2i(0, LINE_HEIGHT * 1),
             false,
         );
         self.ui_presenter.draw_text(
             device,
             &format!("Alpha Tiles: {}", mean_cpu_sample.stats.alpha_tile_count),
-            origin + Vector2I::new(0, LINE_HEIGHT * 2),
+            origin + vec2i(0, LINE_HEIGHT * 2),
             false,
         );
         self.ui_presenter.draw_text(
             device,
             &format!("Fills: {}", mean_cpu_sample.stats.fill_count),
-            origin + Vector2I::new(0, LINE_HEIGHT * 3),
+            origin + vec2i(0, LINE_HEIGHT * 3),
             false,
         );
     }
@@ -125,16 +123,14 @@ where
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI::new(
-            Vector2I::new(
-                framebuffer_size.x() - PADDING - PERFORMANCE_WINDOW_WIDTH,
-                bottom - PERFORMANCE_WINDOW_HEIGHT,
-            ),
-            Vector2I::new(PERFORMANCE_WINDOW_WIDTH, PERFORMANCE_WINDOW_HEIGHT),
+            vec2i(framebuffer_size.x() - PADDING - PERFORMANCE_WINDOW_WIDTH,
+                  bottom - PERFORMANCE_WINDOW_HEIGHT),
+            vec2i(PERFORMANCE_WINDOW_WIDTH, PERFORMANCE_WINDOW_HEIGHT),
         );
 
         self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
 
-        let origin = window_rect.origin() + Vector2I::new(PADDING, PADDING + FONT_ASCENT);
+        let origin = window_rect.origin() + vec2i(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
             &format!(
@@ -152,7 +148,7 @@ where
                 "Stage 0 GPU: {:.3} ms",
                 duration_to_ms(mean_gpu_sample.time.stage_0)
             ),
-            origin + Vector2I::new(0, LINE_HEIGHT * 1),
+            origin + vec2i(0, LINE_HEIGHT * 1),
             false,
         );
         self.ui_presenter.draw_text(
@@ -161,7 +157,7 @@ where
                 "Stage 1 GPU: {:.3} ms",
                 duration_to_ms(mean_gpu_sample.time.stage_1)
             ),
-            origin + Vector2I::new(0, LINE_HEIGHT * 2),
+            origin + vec2i(0, LINE_HEIGHT * 2),
             false,
         );
 
@@ -171,7 +167,7 @@ where
         self.ui_presenter.draw_text(
             device,
             &format!("Wallclock: {:.3} ms", wallclock_time),
-            origin + Vector2I::new(0, LINE_HEIGHT * 3),
+            origin + vec2i(0, LINE_HEIGHT * 3),
             false,
         );
     }

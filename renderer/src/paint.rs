@@ -22,7 +22,7 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::util;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::fmt::{self, Debug, Formatter};
@@ -314,7 +314,7 @@ impl Palette {
                     let texture_origin_uv = rect_to_uv(metadata.location.rect,
                                                        texture_scale).lower_left();
                     Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(texture_scale.scale_xy(Vector2F::new(1.0, -1.0))) *
+                        Transform2F::from_scale(texture_scale.scale_xy(vec2f(1.0, -1.0))) *
                         transform.inverse()
                 }
             }
@@ -400,7 +400,7 @@ impl Palette {
         // 1. Calculate ∇t up front and use differencing in the inner loop.
         // 2. Go four pixels at a time with SIMD.
         for x in 0..(GRADIENT_TILE_LENGTH as i32) {
-            let point = tex_rect.origin() + Vector2I::new(x, 0);
+            let point = tex_rect.origin() + vec2i(x, 0);
             let t = (x as f32 + 0.5) / GRADIENT_TILE_LENGTH as f32;
             texels.put_texel(point, gradient.sample(t));
         }
@@ -409,7 +409,7 @@ impl Palette {
     fn render_image(&self, image: &Image, tex_rect: RectI, texels: &mut Texels) {
         let image_size = image.size();
         for y in 0..image_size.y() {
-            let dest_origin = tex_rect.origin() + Vector2I::new(0, y);
+            let dest_origin = tex_rect.origin() + vec2i(0, y);
             let src_start_index = y as usize * image_size.x() as usize;
             let src_end_index = src_start_index + image_size.x() as usize;
             texels.blit_scanline(dest_origin, &image.pixels()[src_start_index..src_end_index]);
@@ -420,7 +420,7 @@ impl Palette {
 impl PaintMetadata {
     // TODO(pcwalton): Apply clamp/repeat to tile rect.
     pub(crate) fn calculate_tex_coords(&self, tile_position: Vector2I) -> Vector2F {
-        let tile_size = Vector2I::new(TILE_WIDTH as i32, TILE_HEIGHT as i32);
+        let tile_size = vec2i(TILE_WIDTH as i32, TILE_HEIGHT as i32);
         let position = tile_position.scale_xy(tile_size).to_f32();
         let tex_coords = self.texture_transform * position;
         tex_coords
@@ -501,7 +501,7 @@ impl OpacityTileBuilder {
         for y in 0..16 {
             for x in 0..16 {
                 let color = ColorU::new(0xff, 0xff, 0xff, y * 16 + x);
-                let coords = self.tile_location.rect.origin() + Vector2I::new(x as i32, y as i32);
+                let coords = self.tile_location.rect.origin() + vec2i(x as i32, y as i32);
                 texels.put_texel(coords, color);
             }
         }
@@ -542,8 +542,8 @@ impl SolidColorTileBuilder {
         let (location, tile_full);
         {
             let mut data = self.0.as_mut().unwrap();
-            let subtile_origin = Vector2I::new((data.next_index % SOLID_COLOR_TILE_LENGTH) as i32,
-                                               (data.next_index / SOLID_COLOR_TILE_LENGTH) as i32);
+            let subtile_origin = vec2i((data.next_index % SOLID_COLOR_TILE_LENGTH) as i32,
+                                       (data.next_index / SOLID_COLOR_TILE_LENGTH) as i32);
             location = TextureLocation {
                 page: data.tile_location.page,
                 rect: RectI::new(data.tile_location.rect.origin() + subtile_origin,
@@ -589,8 +589,8 @@ impl GradientTileBuilder {
             let mut data = self.0.as_mut().unwrap();
             location = TextureLocation {
                 page: data.page,
-                rect: RectI::new(Vector2I::new(0, data.next_index as i32),
-                                 Vector2I::new(GRADIENT_TILE_LENGTH as i32, 1)),
+                rect: RectI::new(vec2i(0, data.next_index as i32),
+                                 vec2i(GRADIENT_TILE_LENGTH as i32, 1)),
             };
             data.next_index += 1;
             tile_full = data.next_index == GRADIENT_TILE_LENGTH;

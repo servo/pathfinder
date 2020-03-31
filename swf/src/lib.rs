@@ -13,7 +13,7 @@ use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Outline, Contour};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_renderer::scene::{DrawPath, Scene};
 
 use swf_types::tags::SetBackgroundColor;
@@ -161,19 +161,16 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
                 for shape in style_layer.shapes() {
                     let mut contour = Contour::new();
                     let Point2 { x, y } = shape.outline.first().unwrap().from.as_f32();
-                    contour.push_endpoint(Vector2F::new(x, y));
+                    contour.push_endpoint(vec2f(x, y));
                     for segment in &shape.outline {
                         let Point2 { x, y } = segment.to.as_f32();
                         match segment.ctrl {
                             Some(ctrl) => {
                                 let Point2 { x: ctrl_x, y: ctrl_y } = ctrl.as_f32();
-                                contour.push_quadratic(
-                                    Vector2F::new(ctrl_x, ctrl_y),
-                                    Vector2F::new(x, y)
-                                );
+                                contour.push_quadratic(vec2f(ctrl_x, ctrl_y), vec2f(x, y));
                             }
                             None => {
-                                contour.push_endpoint(Vector2F::new(x, y));
+                                contour.push_endpoint(vec2f(x, y));
                             },
                         }
                     }

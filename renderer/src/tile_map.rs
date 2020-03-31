@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 
 #[derive(Debug)]
 pub struct DenseTileMap<T> {
@@ -65,6 +65,6 @@ impl<T> DenseTileMap<T> {
     #[inline]
     pub fn index_to_coords(&self, index: usize) -> Vector2I {
         let (width, index) = (self.rect.size().x(), index as i32);
-        self.rect.origin() + Vector2I::new(index % width, index / width)
+        self.rect.origin() + vec2i(index % width, index / width)
     }
 }

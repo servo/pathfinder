@@ -48,13 +48,14 @@ use pathfinder_demo::window::OcularTransform;
 use pathfinder_demo::window::View;
 use pathfinder_demo::window::Window;
 use pathfinder_demo::window::WindowSize;
-use pathfinder_geometry::vector::Vector2I;
-use pathfinder_geometry::vector::Vector2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::vec2i;
 use pathfinder_gl::GLVersion;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
@@ -117,7 +118,7 @@ impl Window for MagicLeapWindow {
     }
 
     fn viewport(&self, _view: View) -> RectI {
-        RectI::new(Vector2I::default(), self.size)
+        RectI::new(Vector2I::zero(), self.size)
     }
 
     fn make_current(&mut self, view: View) {
@@ -184,7 +185,7 @@ impl MagicLeapWindow {
         MagicLeapWindow {
             framebuffer_id,
             graphics_client,
-            size: Vector2I::new(max_width, max_height),
+            size: vec2i(max_width, max_height),
             frame_handle: ML_HANDLE_INVALID,
             virtual_camera_array,
             initial_camera_transform: None,

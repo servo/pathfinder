@@ -19,7 +19,7 @@ extern crate serde_derive;
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
 use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
@@ -98,7 +98,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         UIPresenter {
             event_queue: UIEventQueue::new(),
-            mouse_position: Vector2F::default(),
+            mouse_position: Vector2F::zero(),
 
             framebuffer_size,
 
@@ -205,10 +205,9 @@ impl<D> UIPresenter<D> where D: Device {
 
             let info = &self.font.characters[&character];
             let position_rect =
-                RectI::new(Vector2I::new(next.x() - info.origin_x, next.y() - info.origin_y),
-                             Vector2I::new(info.width as i32, info.height as i32));
-            let tex_coord_rect = RectI::new(Vector2I::new(info.x, info.y),
-                                              Vector2I::new(info.width, info.height));
+                RectI::new(vec2i(next.x() - info.origin_x, next.y() - info.origin_y),
+                           vec2i(info.width as i32, info.height as i32));
+            let tex_coord_rect = RectI::new(vec2i(info.x, info.y), vec2i(info.width, info.height));
             let first_vertex_index = vertex_data.len();
             vertex_data.extend_from_slice(&[
                 DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
@@ -429,11 +428,11 @@ impl<D> UIPresenter<D> where D: Device {
     }
 
     pub fn draw_button(&mut self, device: &D, origin: Vector2I, texture: &D::Texture) -> bool {
-        let button_rect = RectI::new(origin, Vector2I::new(BUTTON_WIDTH, BUTTON_HEIGHT));
+        let button_rect = RectI::new(origin, vec2i(BUTTON_WIDTH, BUTTON_HEIGHT));
         self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
         self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
         self.draw_texture(device,
-                          origin + Vector2I::new(PADDING, PADDING),
+                          origin + vec2i(PADDING, PADDING),
                           texture,
                           BUTTON_ICON_COLOR);
         self.event_queue.handle_mouse_down_in_rect(button_rect).is_some()
@@ -452,15 +451,15 @@ impl<D> UIPresenter<D> where D: Device {
             value = new_value;
         }
 
-        origin = origin + Vector2I::new(0, BUTTON_TEXT_OFFSET);
+        origin = origin + vec2i(0, BUTTON_TEXT_OFFSET);
         for (segment_index, segment_label) in segment_labels.iter().enumerate() {
             let label_width = self.measure_text(segment_label);
             let offset = SEGMENT_SIZE / 2 - label_width / 2;
             self.draw_text(device,
                            segment_label,
-                           origin + Vector2I::new(offset, 0),
+                           origin + vec2i(offset, 0),
                            segment_index as u8 == value);
-            origin += Vector2I::new(SEGMENT_SIZE + 1, 0);
+            origin += vec2i(SEGMENT_SIZE + 1, 0);
         }
 
         value
@@ -485,7 +484,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         for (segment_index, segment_texture) in segment_textures.iter().enumerate() {
             let texture_width = device.texture_size(segment_texture).x();
-            let offset = Vector2I::new(SEGMENT_SIZE / 2 - texture_width / 2, PADDING);
+            let offset = vec2i(SEGMENT_SIZE / 2 - texture_width / 2, PADDING);
             let color = if Some(segment_index as u8) == value {
                 WINDOW_COLOR
             } else {
@@ -493,7 +492,7 @@ impl<D> UIPresenter<D> where D: Device {
             };
 
             self.draw_texture(device, origin + offset, segment_texture, color);
-            origin += Vector2I::new(SEGMENT_SIZE + 1, 0);
+            origin += vec2i(SEGMENT_SIZE + 1, 0);
         }
 
         clicked_segment
@@ -506,7 +505,7 @@ impl<D> UIPresenter<D> where D: Device {
                               segment_count: u8)
                               -> Option<u8> {
         let widget_width = self.measure_segmented_control(segment_count);
-        let widget_rect = RectI::new(origin, Vector2I::new(widget_width, BUTTON_HEIGHT));
+        let widget_rect = RectI::new(origin, vec2i(widget_width, BUTTON_HEIGHT));
 
         let mut clicked_segment = None;
         if let Some(position) = self.event_queue.handle_mouse_down_in_rect(widget_rect) {
@@ -521,15 +520,14 @@ impl<D> UIPresenter<D> where D: Device {
         self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
 
         if let Some(value) = value {
-            let highlight_size = Vector2I::new(SEGMENT_SIZE, BUTTON_HEIGHT);
+            let highlight_size = vec2i(SEGMENT_SIZE, BUTTON_HEIGHT);
             let x_offset = value as i32 * SEGMENT_SIZE + (value as i32 - 1);
             self.draw_solid_rounded_rect(device,
-                                         RectI::new(origin + Vector2I::new(x_offset, 0),
-                                                    highlight_size),
+                                         RectI::new(origin + vec2i(x_offset, 0), highlight_size),
                                          TEXT_COLOR);
         }
 
-        let mut segment_origin = origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
+        let mut segment_origin = origin + vec2i(SEGMENT_SIZE + 1, 0);
         for next_segment_index in 1..segment_count {
             let prev_segment_index = next_segment_index - 1;
             match value {
@@ -537,11 +535,11 @@ impl<D> UIPresenter<D> where D: Device {
                 _ => {
                     self.draw_line(device,
                                    segment_origin,
-                                   segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
+                                   segment_origin + vec2i(0, BUTTON_HEIGHT),
                                    TEXT_COLOR);
                 }
             }
-            segment_origin = segment_origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
+            segment_origin += vec2i(SEGMENT_SIZE + 1, 0);
         }
 
         clicked_segment
@@ -553,14 +551,11 @@ impl<D> UIPresenter<D> where D: Device {
         }
 
         let text_size = self.measure_text(string);
-        let window_size = Vector2I::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
-        let origin = rect.origin() - Vector2I::new(0, window_size.y() + PADDING);
+        let window_size = vec2i(text_size + PADDING * 2, TOOLTIP_HEIGHT);
+        let origin = rect.origin() - vec2i(0, window_size.y() + PADDING);
 
         self.draw_solid_rounded_rect(device, RectI::new(origin, window_size), WINDOW_COLOR);
-        self.draw_text(device,
-                       string,
-                       origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
-                       false);
+        self.draw_text(device, string, origin + vec2i(PADDING, PADDING + FONT_ASCENT), false);
     }
 }
 
@@ -722,8 +717,8 @@ impl CornerRects {
         let size = device.texture_size(texture);
         CornerRects {
             upper_left:  RectI::new(rect.origin(),                                     size),
-            upper_right: RectI::new(rect.upper_right() - Vector2I::new(size.x(), 0), size),
-            lower_left:  RectI::new(rect.lower_left()  - Vector2I::new(0, size.y()), size),
+            upper_right: RectI::new(rect.upper_right() - vec2i(size.x(), 0), size),
+            lower_left:  RectI::new(rect.lower_left()  - vec2i(0, size.y()), size),
             lower_right: RectI::new(rect.lower_right() - size,                         size),
         }
     }

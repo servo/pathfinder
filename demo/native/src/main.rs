@@ -13,8 +13,8 @@
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::vec2i;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use sdl2::event::{Event as SDLEvent, WindowEvent};
@@ -125,7 +125,7 @@ impl Window for WindowImpl {
             width = width / 2;
             x_offset = width * (index as i32);
         }
-        RectI::new(Vector2I::new(x_offset, 0), Vector2I::new(width, height))
+        RectI::new(vec2i(x_offset, 0), vec2i(width, height))
     }
 
     #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
@@ -279,7 +279,7 @@ impl WindowImpl {
         let (logical_width, logical_height) = self.window().size();
         let (drawable_width, _) = self.window().drawable_size();
         WindowSize {
-            logical_size: Vector2I::new(logical_width as i32, logical_height as i32),
+            logical_size: vec2i(logical_width as i32, logical_height as i32),
             backing_scale_factor: drawable_width as f32 / logical_width as f32,
         }
     }
@@ -311,11 +311,11 @@ impl WindowImpl {
                 message_type: type_,
                 message_data: code as u32,
             }),
-            SDLEvent::MouseButtonDown { x, y, .. } => Some(Event::MouseDown(Vector2I::new(x, y))),
+            SDLEvent::MouseButtonDown { x, y, .. } => Some(Event::MouseDown(vec2i(x, y))),
             SDLEvent::MouseMotion {
                 x, y, mousestate, ..
             } => {
-                let position = Vector2I::new(x, y);
+                let position = vec2i(x, y);
                 if mousestate.left() {
                     Some(Event::MouseDragged(position))
                 } else {
@@ -337,7 +337,7 @@ impl WindowImpl {
             } => self.convert_sdl_keycode(sdl_keycode).map(Event::KeyUp),
             SDLEvent::MultiGesture { d_dist, .. } => {
                 let mouse_state = self.event_pump.mouse_state();
-                let center = Vector2I::new(mouse_state.x(), mouse_state.y());
+                let center = vec2i(mouse_state.x(), mouse_state.y());
                 Some(Event::Zoom(d_dist, center))
             }
             _ => None,

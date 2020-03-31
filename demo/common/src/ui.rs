@@ -13,7 +13,7 @@ use crate::window::Window;
 use crate::{BackgroundColor, Options};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
-use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_gpu::Device;
 use pathfinder_renderer::gpu::debug::DebugUIPresenter;
 use pathfinder_resources::ResourceLoader;
@@ -165,9 +165,9 @@ where
         // Draw button strip.
 
         let bottom = debug_ui_presenter.ui_presenter.framebuffer_size().y() - PADDING;
-        let mut position = Vector2I::new(PADDING, bottom - BUTTON_HEIGHT);
+        let mut position = vec2i(PADDING, bottom - BUTTON_HEIGHT);
 
-        let button_size = Vector2I::new(BUTTON_WIDTH, BUTTON_HEIGHT);
+        let button_size = vec2i(BUTTON_WIDTH, BUTTON_HEIGHT);
 
         // Draw effects button.
         if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.effects_texture) {
@@ -180,7 +180,7 @@ where
                 RectI::new(position, button_size),
             );
         }
-        position += Vector2I::new(button_size.x() + PADDING, 0);
+        position += vec2i(button_size.x() + PADDING, 0);
 
         // Draw open button.
         if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.open_texture) {
@@ -191,7 +191,7 @@ where
         debug_ui_presenter.ui_presenter.draw_tooltip(device,
                                                      "Open SVG",
                                                      RectI::new(position, button_size));
-        position += Vector2I::new(BUTTON_WIDTH + PADDING, 0);
+        position += vec2i(BUTTON_WIDTH + PADDING, 0);
 
         // Draw screenshot button.
         if debug_ui_presenter.ui_presenter.draw_button(device,
@@ -209,7 +209,7 @@ where
 
         // Draw screenshot panel, if necessary.
         self.draw_screenshot_panel(device, window, debug_ui_presenter, position.x(), action);
-        position += Vector2I::new(button_size.x() + PADDING, 0);
+        position += vec2i(button_size.x() + PADDING, 0);
 
         // Draw mode switch.
         let new_mode = debug_ui_presenter.ui_presenter.draw_text_switch(
@@ -227,13 +227,13 @@ where
         }
 
         let mode_switch_width = debug_ui_presenter.ui_presenter.measure_segmented_control(3);
-        let mode_switch_size = Vector2I::new(mode_switch_width, BUTTON_HEIGHT);
+        let mode_switch_size = vec2i(mode_switch_width, BUTTON_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_tooltip(
             device,
             "2D/3D/VR Mode",
             RectI::new(position, mode_switch_size),
         );
-        position += Vector2I::new(mode_switch_width + PADDING, 0);
+        position += vec2i(mode_switch_width + PADDING, 0);
 
         // Draw background switch.
         if debug_ui_presenter.ui_presenter.draw_button(device,
@@ -251,7 +251,7 @@ where
 
         // Draw background panel, if necessary.
         self.draw_background_panel(device, debug_ui_presenter, position.x(), action, model);
-        position += Vector2I::new(button_size.x() + PADDING, 0);
+        position += vec2i(button_size.x() + PADDING, 0);
 
         // Draw effects panel, if necessary.
         self.draw_effects_panel(device, debug_ui_presenter, model, action);
@@ -270,7 +270,7 @@ where
                                                          RectI::new(position, button_size));
         }
         self.draw_rotate_panel(device, debug_ui_presenter, position.x(), action, model);
-        position += Vector2I::new(BUTTON_WIDTH + PADDING, 0);
+        position += vec2i(BUTTON_WIDTH + PADDING, 0);
 
         // Draw zoom control.
         self.draw_zoom_control(device, debug_ui_presenter, position, action);
@@ -286,7 +286,7 @@ where
         let zoom_segmented_control_width =
             debug_ui_presenter.ui_presenter.measure_segmented_control(3);
         let zoom_segmented_control_rect =
-            RectI::new(position, Vector2I::new(zoom_segmented_control_width, BUTTON_HEIGHT));
+            RectI::new(position, vec2i(zoom_segmented_control_width, BUTTON_HEIGHT));
         debug_ui_presenter.ui_presenter.draw_tooltip(device, "Zoom", zoom_segmented_control_rect);
 
         let zoom_textures = &[
@@ -315,8 +315,8 @@ where
         }
 
         let message_size = debug_ui_presenter.ui_presenter.measure_text(&model.message);
-        let window_origin = Vector2I::new(PADDING, PADDING);
-        let window_size = Vector2I::new(PADDING * 2 + message_size, TOOLTIP_HEIGHT);
+        let window_origin = vec2i(PADDING, PADDING);
+        let window_size = vec2i(PADDING * 2 + message_size, TOOLTIP_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
             RectI::new(window_origin, window_size),
@@ -325,7 +325,7 @@ where
         debug_ui_presenter.ui_presenter.draw_text(
             device,
             &model.message,
-            window_origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
+            window_origin + vec2i(PADDING, PADDING + FONT_ASCENT),
             false,
         );
     }
@@ -343,10 +343,8 @@ where
         let effects_panel_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_PANEL_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            RectI::new(
-                Vector2I::new(PADDING, effects_panel_y),
-                Vector2I::new(EFFECTS_PANEL_WIDTH, EFFECTS_PANEL_HEIGHT),
-            ),
+            RectI::new(vec2i(PADDING, effects_panel_y),
+                       vec2i(EFFECTS_PANEL_WIDTH, EFFECTS_PANEL_HEIGHT)),
             WINDOW_COLOR,
         );
 
@@ -390,13 +388,10 @@ where
 
         let bottom = debug_ui_presenter.ui_presenter.framebuffer_size().y() - PADDING;
         let panel_y = bottom - (BUTTON_HEIGHT + PADDING + SCREENSHOT_PANEL_HEIGHT);
-        let panel_position = Vector2I::new(panel_x, panel_y);
+        let panel_position = vec2i(panel_x, panel_y);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            RectI::new(
-                panel_position,
-                Vector2I::new(SCREENSHOT_PANEL_WIDTH, SCREENSHOT_PANEL_HEIGHT),
-            ),
+            RectI::new(panel_position, vec2i(SCREENSHOT_PANEL_WIDTH, SCREENSHOT_PANEL_HEIGHT)),
             WINDOW_COLOR,
         );
 
@@ -432,13 +427,10 @@ where
 
         let bottom = debug_ui_presenter.ui_presenter.framebuffer_size().y() - PADDING;
         let panel_y = bottom - (BUTTON_HEIGHT + PADDING + BACKGROUND_PANEL_HEIGHT);
-        let panel_position = Vector2I::new(panel_x, panel_y);
+        let panel_position = vec2i(panel_x, panel_y);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            RectI::new(
-                panel_position,
-                Vector2I::new(BACKGROUND_PANEL_WIDTH, BACKGROUND_PANEL_HEIGHT),
-            ),
+            RectI::new(panel_position, vec2i(BACKGROUND_PANEL_WIDTH, BACKGROUND_PANEL_HEIGHT)),
             WINDOW_COLOR,
         );
 
@@ -482,8 +474,8 @@ where
 
         let bottom = debug_ui_presenter.ui_presenter.framebuffer_size().y() - PADDING;
         let rotate_panel_y = bottom - (BUTTON_HEIGHT + PADDING + ROTATE_PANEL_HEIGHT);
-        let rotate_panel_origin = Vector2I::new(rotate_panel_x, rotate_panel_y);
-        let rotate_panel_size = Vector2I::new(ROTATE_PANEL_WIDTH, ROTATE_PANEL_HEIGHT);
+        let rotate_panel_origin = vec2i(rotate_panel_x, rotate_panel_y);
+        let rotate_panel_size = vec2i(ROTATE_PANEL_WIDTH, ROTATE_PANEL_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
             RectI::new(rotate_panel_origin, rotate_panel_size),
@@ -491,10 +483,8 @@ where
         );
 
         let (widget_x, widget_y) = (rotate_panel_x + PADDING, rotate_panel_y + PADDING);
-        let widget_rect = RectI::new(
-            Vector2I::new(widget_x, widget_y),
-            Vector2I::new(SLIDER_WIDTH, SLIDER_KNOB_HEIGHT),
-        );
+        let widget_rect = RectI::new(vec2i(widget_x, widget_y),
+                                     vec2i(SLIDER_WIDTH, SLIDER_KNOB_HEIGHT));
         if let Some(position) = debug_ui_presenter
             .ui_presenter
             .event_queue
@@ -506,17 +496,13 @@ where
 
         let slider_track_y =
             rotate_panel_y + PADDING + SLIDER_KNOB_HEIGHT / 2 - SLIDER_TRACK_HEIGHT / 2;
-        let slider_track_rect = RectI::new(
-            Vector2I::new(widget_x, slider_track_y),
-            Vector2I::new(SLIDER_WIDTH, SLIDER_TRACK_HEIGHT),
-        );
+        let slider_track_rect = RectI::new(vec2i(widget_x, slider_track_y),
+                                           vec2i(SLIDER_WIDTH, SLIDER_TRACK_HEIGHT));
         debug_ui_presenter.ui_presenter.draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
 
         let slider_knob_x = widget_x + model.rotation - SLIDER_KNOB_WIDTH / 2;
-        let slider_knob_rect = RectI::new(
-            Vector2I::new(slider_knob_x, widget_y),
-            Vector2I::new(SLIDER_KNOB_WIDTH, SLIDER_KNOB_HEIGHT),
-        );
+        let slider_knob_rect = RectI::new(vec2i(slider_knob_x, widget_y),
+                                          vec2i(SLIDER_KNOB_WIDTH, SLIDER_KNOB_HEIGHT));
         debug_ui_presenter.ui_presenter.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
@@ -532,8 +518,8 @@ where
         let index = screenshot_type as i32;
         let text = format!("Save as {}...", screenshot_type.as_str());
 
-        let widget_size = Vector2I::new(BACKGROUND_PANEL_WIDTH, BUTTON_HEIGHT);
-        let widget_origin = panel_position + Vector2I::new(0, widget_size.y() * index);
+        let widget_size = vec2i(BACKGROUND_PANEL_WIDTH, BUTTON_HEIGHT);
+        let widget_origin = panel_position + vec2i(0, widget_size.y() * index);
         let widget_rect = RectI::new(widget_origin, widget_size);
 
         if self.draw_menu_item(device,
@@ -561,8 +547,8 @@ where
     ) {
         let (text, index) = (color.as_str(), color as i32);
 
-        let widget_size = Vector2I::new(BACKGROUND_PANEL_WIDTH, BUTTON_HEIGHT);
-        let widget_origin = panel_position + Vector2I::new(0, widget_size.y() * index);
+        let widget_size = vec2i(BACKGROUND_PANEL_WIDTH, BUTTON_HEIGHT);
+        let widget_origin = panel_position + vec2i(0, widget_size.y() * index);
         let widget_rect = RectI::new(widget_origin, widget_size);
 
         let selected = color == model.background_color;
@@ -590,7 +576,7 @@ where
         }
 
         let (text_x, text_y) = (PADDING * 2, BUTTON_TEXT_OFFSET);
-        let text_position = widget_rect.origin() + Vector2I::new(text_x, text_y);
+        let text_position = widget_rect.origin() + vec2i(text_x, text_y);
         debug_ui_presenter.ui_presenter.draw_text(device, text, text_position, selected);
 
         debug_ui_presenter.ui_presenter
@@ -610,14 +596,12 @@ where
         value: &mut bool) {
         let text_x = PADDING * 2;
         let text_y = window_y + PADDING + BUTTON_TEXT_OFFSET + (BUTTON_HEIGHT + PADDING) * index;
-        debug_ui_presenter
-            .ui_presenter
-            .draw_text(device, text, Vector2I::new(text_x, text_y), false);
+        debug_ui_presenter.ui_presenter.draw_text(device, text, vec2i(text_x, text_y), false);
 
         let switch_width = debug_ui_presenter.ui_presenter.measure_segmented_control(2);
         let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (switch_width + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
-        let switch_position = Vector2I::new(switch_x, switch_y);
+        let switch_position = vec2i(switch_x, switch_y);
 
         let new_value =
             debug_ui_presenter
