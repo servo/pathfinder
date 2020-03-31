@@ -281,6 +281,15 @@ impl Contour {
         )
     }
 
+    /// restore self to the state of Contour::new(), but keep the points buffer allocated
+    #[inline]
+    pub fn clear(&mut self) {
+        self.points.clear();
+        self.flags.clear();
+        self.bounds = RectF::default();
+        self.closed = false;
+    }
+
     #[inline]
     pub fn iter(&self, flags: ContourIterFlags) -> ContourIter {
         ContourIter {
