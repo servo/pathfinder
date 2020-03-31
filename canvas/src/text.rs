@@ -8,21 +8,21 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::vector::Vector2F;
-use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_renderer::paint::PaintId;
-use std::sync::Arc;
-use std::iter;
+use crate::{CanvasRenderingContext2D, TextAlign};
 use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
 use font_kit::hinting::HintingOptions;
+use font_kit::loaders::default::Font;
 use font_kit::properties::Properties;
 use font_kit::source::{Source, SystemSource};
 use font_kit::sources::mem::MemSource;
-pub use skribo::{FontCollection, FontFamily, Layout, TextStyle};
+use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::vector::Vector2F;
+use pathfinder_renderer::paint::PaintId;
 use pathfinder_text::{SceneExt, TextRenderMode};
-pub use font_kit::loaders::default::Font;
-pub use crate::{CanvasRenderingContext2D, TextAlign};
+use skribo::{FontCollection, FontFamily, Layout, TextStyle};
+use std::iter;
+use std::sync::Arc;
 
 impl CanvasRenderingContext2D {
     pub fn fill_text(&mut self, string: &str, position: Vector2F) {
@@ -133,6 +133,7 @@ pub struct TextMetrics {
     pub width: f32,
 }
 
+#[cfg(feature = "pf-text")]
 #[derive(Clone)]
 pub struct CanvasFontContext {
     #[allow(dead_code)]

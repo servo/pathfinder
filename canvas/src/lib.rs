@@ -26,23 +26,39 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
+use skribo::FontCollection;
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
 use std::fmt::{Debug, Error as FmtError, Formatter};
 use std::mem;
 use std::sync::Arc;
-use text::FontCollection;
+
+pub use text::CanvasFontContext;
 
 #[cfg(feature = "pf-text")]
 pub use text::TextMetrics;
-pub use text::CanvasFontContext;
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 const DEFAULT_FONT_SIZE: f32 = 10.0;
 
-#[cfg_attr(not(feature = "pf-text"), path = "text_no_text.rs")]
+#[cfg(feature = "pf-text")]
 mod text;
+
+// For users who don't want text capability, include a tiny convenience stub.
+#[cfg(not(feature = "pf-text"))]
+mod text {
+    #[derive(Clone)]
+    pub struct CanvasFontContext;
+
+    impl CanvasFontContext {
+        pub fn from_system_source() -> Self {
+            CanvasFontContext
+        }
+    }
+
+    pub struct FontCollection;
+}
 
 #[cfg(test)]
 mod tests;
