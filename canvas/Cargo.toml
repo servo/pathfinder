@@ -27,8 +27,8 @@ path = "../text"
 optional = true
 
 [dependencies.skribo]
-git = "https://github.com/linebender/skribo.git"
-rev = "f306037c36f596bba45cb9fd698ea53b6ca65e2e"
+git = "https://github.com/pcwalton/skribo.git"
+rev = "7386321f763cecbce9c4ece3401c81de62305036"
 optional = true
 
 [features]
