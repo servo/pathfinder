@@ -84,6 +84,10 @@ impl Segment {
         // approximates a small arc", 2004.
         //
         // https://www.tinaja.com/glib/bezcirc2.pdf
+        if cos_sweep_angle >= 1.0 - EPSILON {
+            return Segment::line(LineSegment2F::new(vec2f(1.0, 0.0), vec2f(1.0, 0.0)));
+        }
+
         let term = F32x4::new(cos_sweep_angle, -cos_sweep_angle,
                               cos_sweep_angle, -cos_sweep_angle);
         let signs = F32x4::new(1.0, -1.0, 1.0, 1.0);
