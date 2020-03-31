@@ -425,11 +425,16 @@ impl Contour {
         }
 
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
-        let mut first_segment = true;
+        for segment_index in 0..4 {
+            debug!("push_arc_from_unit_chord(): loop segment index {}", segment_index);
 
-        loop {
             let mut sweep_vector = end_vector.rev_rotate_by(vector);
             let last = sweep_vector.0.x() >= -EPSILON && sweep_vector.0.y() >= -EPSILON;
+            debug!("... end_vector={:?} vector={:?} sweep_vector={:?} last={:?}",
+                   end_vector,
+                   vector,
+                   sweep_vector,
+                   last);
 
             let mut segment;
             if !last {
@@ -444,9 +449,8 @@ impl Contour {
             segment = segment.transform(&(*transform * rotation * direction_transform));
 
             let mut push_segment_flags = PushSegmentFlags::UPDATE_BOUNDS;
-            if first_segment {
+            if segment_index == 0 {
                 push_segment_flags.insert(PushSegmentFlags::INCLUDE_FROM_POINT);
-                first_segment = false;
             }
             self.push_segment(&segment, push_segment_flags);
 
