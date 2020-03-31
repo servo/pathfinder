@@ -10,7 +10,8 @@
 
 use arrayvec::ArrayVec;
 use image;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D, TextAlign};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
+use pathfinder_canvas::{TextAlign, TextBaseline};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
@@ -571,6 +572,7 @@ fn draw_window(canvas: &mut CanvasRenderingContext2D, title: &str, rect: RectF) 
     // TODO(pcwalton): Bold text.
     canvas.set_font_size(15.0);
     canvas.set_text_align(TextAlign::Center);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.set_fill_style(ColorU::new(220, 220, 220, 160));
     canvas.set_shadow_blur(2.0);
     canvas.set_shadow_offset(Vector2F::new(0.0, 1.0));
@@ -594,6 +596,8 @@ fn draw_search_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: Rect
 
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 64));
+    canvas.set_text_align(TextAlign::Left);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text,
                      rect.origin() + Vector2F::splat(rect.height()) * Vector2F::new(1.05, 0.5));
 }
@@ -615,6 +619,8 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
 
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 160));
+    canvas.set_text_align(TextAlign::Left);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text,
                      rect.origin() + Vector2F::splat(rect.height()) * Vector2F::new(0.3, 0.5));
 }
@@ -622,6 +628,8 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
 fn draw_label(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     canvas.set_font_size(15.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 128));
+    canvas.set_text_align(TextAlign::Left);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text, rect.origin() + Vector2F::new(0.0, rect.height() * 0.5));
 }
 
@@ -649,6 +657,7 @@ fn draw_text_edit_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: R
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Left);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text,
                      rect.origin() + Vector2F::splat(rect.height()) * Vector2F::new(0.3, 0.5));
 }
@@ -664,6 +673,7 @@ fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
 
     canvas.set_fill_style(ColorU::new(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Right);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(
         unit,
         rect.upper_right() + Vector2F::new(-0.3, 0.5) * Vector2F::splat(rect.height()));
@@ -671,6 +681,7 @@ fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 128));
     canvas.set_text_align(TextAlign::Right);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(value,
                      rect.upper_right() + Vector2F::new(-unit_width - rect.height() * 0.5,
                                                         rect.height() * 0.5));
@@ -681,6 +692,8 @@ fn draw_check_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF
 
     canvas.set_font_size(15.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 160));
+    canvas.set_text_align(TextAlign::Left);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text, rect.origin() + Vector2F::new(28.0, rect.height() * 0.5));
 
     let check_box_rect =
@@ -727,6 +740,7 @@ fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, c
     let text_origin = rect.center() + Vector2F::new(icon_width * 0.25 - text_width * 0.5, 0.0);
     canvas.set_fill_style(ColorU::new(0, 0, 0, 160));
     canvas.set_text_align(TextAlign::Left);
+    canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text, text_origin - Vector2F::new(0.0, 1.0));
     canvas.set_fill_style(ColorU::new(255, 255, 255, 160));
     canvas.fill_text(text, text_origin);

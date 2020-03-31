@@ -430,6 +430,7 @@ struct State {
     shadow_blur: f32,
     shadow_offset: Vector2F,
     text_align: TextAlign,
+    text_baseline: TextBaseline,
     image_smoothing_enabled: bool,
     image_smoothing_quality: ImageSmoothingQuality,
     global_alpha: f32,
@@ -455,6 +456,7 @@ impl State {
             shadow_blur: 0.0,
             shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
+            text_baseline: TextBaseline::Alphabetic,
             image_smoothing_enabled: true,
             image_smoothing_quality: ImageSmoothingQuality::Low,
             global_alpha: 1.0,
@@ -637,6 +639,16 @@ pub enum TextAlign {
     Left,
     Right,
     Center,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TextBaseline {
+    Alphabetic,
+    Top,
+    Hanging,
+    Middle,
+    Ideographic,
+    Bottom,
 }
 
 // We duplicate `pathfinder_content::stroke::LineJoin` here because the HTML canvas API treats the
