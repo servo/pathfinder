@@ -41,6 +41,7 @@ impl UnitVector {
     pub fn halve_angle(&self) -> UnitVector {
         let x = self.0.x();
         let term = F32x2::new(x, -x);
-        UnitVector(Vector2F((F32x2::splat(0.5) * (F32x2::splat(1.0) + term)).sqrt()))
+        UnitVector(Vector2F((F32x2::splat(0.5) * (F32x2::splat(1.0) + term)).max(F32x2::default())
+                                                                            .sqrt()))
     }
 }
