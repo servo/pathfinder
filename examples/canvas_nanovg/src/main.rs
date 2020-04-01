@@ -44,6 +44,9 @@ use std::time::Instant;
 const PI_2: f32 = PI * 2.0;
 const FRAC_PI_2_3: f32 = PI * 2.0 / 3.0;
 
+const WINDOW_WIDTH: i32 = 1024;
+const WINDOW_HEIGHT: i32 = 768;
+
 static PARAGRAPH_TEXT: &'static str = "This is a longer chunk of text.
 
 I would have used lorem ipsum, but she was busy jumping over the lazy dog with the fox and all \
@@ -355,7 +358,9 @@ fn draw_color_wheel(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f3
 
     // Prepare to draw the selector.
     canvas.save();
-    canvas.set_current_transform(&(Transform2F::from_translation(center) *
+    let original_transform = canvas.current_transform();
+    canvas.set_current_transform(&(original_transform *
+                                   Transform2F::from_translation(center) *
                                    Transform2F::from_rotation(hue)));
 
     canvas.set_stroke_style(ColorU::new(255, 255, 255, 192));
@@ -491,7 +496,9 @@ fn draw_clip(canvas: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32)
     canvas.save();
 
     // Draw first rect.
-    let transform_a = Transform2F::from_translation(origin) *
+    let original_transform = canvas.current_transform();
+    let transform_a = original_transform *
+        Transform2F::from_translation(origin) *
         Transform2F::from_rotation(angle::angle_from_degrees(5.0));
     canvas.set_current_transform(&transform_a);
     canvas.set_fill_style(ColorU::new(255, 0, 0, 255));
@@ -812,8 +819,9 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
     let mut clip_path = Path2D::new();
     clip_path.rect(rect);
     canvas.clip_path(clip_path, FillRule::Winding);
-    canvas.set_current_transform(&Transform2F::from_translation(
-        vec2f(0.0, -scroll_y * (stack_height - rect.height()))));
+    let original_transform = canvas.current_transform();
+    canvas.set_current_transform(&(original_transform * Transform2F::from_translation(
+        vec2f(0.0, -scroll_y * (stack_height - rect.height())))));
 
     for image_index in 0..image_count {
         let image_origin = rect.origin() + vec2f(10.0, 10.0) +
@@ -939,7 +947,7 @@ fn fill_path_with_box_gradient(canvas: &mut CanvasRenderingContext2D,
                                outer_color: ColorU) {
     // TODO(pcwalton): Fill the corners with radial gradients.
 
-    let window_rect = RectF::new(Vector2F::zero(), vec2f(800.0, 600.0));
+    let window_rect = RectF::new(Vector2F::zero(), vec2i(WINDOW_WIDTH, WINDOW_HEIGHT).to_f32());
     let inner_rect = rect.contract(Vector2F::splat(blur_radius));
     let outer_rect = rect.dilate(Vector2F::splat(blur_radius));
 
@@ -1075,10 +1083,11 @@ fn main() {
     gl_attributes.set_context_version(3, 3);
 
     // Open a window.
-    let window_size = vec2i(800, 600);
+    let window_size = vec2i(WINDOW_WIDTH, WINDOW_HEIGHT);
     let window =
         video.window("NanoVG example port", window_size.x() as u32, window_size.y() as u32)
              .opengl()
+             .allow_highdpi()
              .build()
              .unwrap();
 
@@ -1087,6 +1096,11 @@ fn main() {
     gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
     window.gl_make_current(&gl_context).unwrap();
 
+    // Get the real window size (for HiDPI).
+    let (drawable_width, drawable_height) = window.drawable_size();
+    let drawable_size = vec2i(drawable_width as i32, drawable_height as i32);
+    let hidpi_factor = drawable_size.to_f32() / window_size.to_f32();
+
     // Load demo data.
     let resources = FilesystemResourceLoader::locate();
     let demo_data = DemoData::load(&resources);
@@ -1094,7 +1108,7 @@ fn main() {
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
                                      &resources,
-                                     DestFramebuffer::full_window(window_size),
+                                     DestFramebuffer::full_window(drawable_size),
                                      RendererOptions {
                                          background_color: Some(ColorF::new(0.3, 0.3, 0.32, 1.0)),
                                      });
@@ -1108,10 +1122,12 @@ fn main() {
     // Enter the main loop.
     loop {
         // Make a canvas.
-        let mut canvas = CanvasRenderingContext2D::new(font_context.clone(), window_size.to_f32());
+        let mut canvas = CanvasRenderingContext2D::new(font_context.clone(),
+                                                       drawable_size.to_f32());
 
         // Render the demo.
         let time = (Instant::now() - start_time).as_secs_f32();
+        canvas.set_current_transform(&Transform2F::from_scale(hidpi_factor));
         render_demo(&mut canvas, mouse_position, window_size.to_f32(), time, &demo_data);
 
         // Render the canvas to screen.
