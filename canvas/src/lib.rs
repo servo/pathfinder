@@ -26,7 +26,6 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
-use skribo::FontCollection;
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
@@ -37,7 +36,13 @@ use std::sync::Arc;
 pub use text::CanvasFontContext;
 
 #[cfg(feature = "pf-text")]
+use skribo::FontCollection;
+#[cfg(not(feature = "pf-text"))]
+use crate::text::FontCollection;
+
+#[cfg(feature = "pf-text")]
 pub use text::TextMetrics;
+
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 const DEFAULT_FONT_SIZE: f32 = 10.0;
