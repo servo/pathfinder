@@ -217,3 +217,31 @@ pub fn u8_slice_to_color_slice(slice: &[u8]) -> &[ColorU] {
 pub fn u8_vec_to_color_vec(buffer: Vec<u8>) -> Vec<ColorU> {
     u8_slice_to_color_slice(&buffer).to_vec()
 }
+
+/// A convenience method to construct a `ColorU` from an RGB triple.
+///
+/// Alpha is set to 255.
+#[inline]
+pub fn rgbu(r: u8, g: u8, b: u8) -> ColorU {
+    ColorU::new(r, g, b, 255)
+}
+
+/// A convenience method to construct a `ColorU` from an RGBA triple.
+#[inline]
+pub fn rgbau(r: u8, g: u8, b: u8, a: u8) -> ColorU {
+    ColorU::new(r, g, b, a)
+}
+
+/// A convenience method to construct a `ColorF` from an RGB triple.
+///
+/// Alpha is set to 1.0.
+#[inline]
+pub fn rgbf(r: f32, g: f32, b: f32) -> ColorF {
+    ColorF::new(r, g, b, 1.0)
+}
+
+/// A convenience method to construct a `ColorF` from an RGBA triple.
+#[inline]
+pub fn rgbaf(r: f32, g: f32, b: f32, a: f32) -> ColorF {
+    ColorF::new(r, g, b, a)
+}
