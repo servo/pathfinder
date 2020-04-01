@@ -20,6 +20,7 @@ use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::TextureSamplingFlags;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub enum RenderCommand {
@@ -42,7 +43,7 @@ pub enum RenderCommand {
     AllocateTexturePages(Vec<TexturePageDescriptor>),
 
     // Uploads data to a texture page.
-    UploadTexelData { texels: Vec<ColorU>, location: TextureLocation },
+    UploadTexelData { texels: Arc<Vec<ColorU>>, location: TextureLocation },
 
     // Associates a render target with a texture page.
     //

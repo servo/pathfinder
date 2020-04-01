@@ -18,6 +18,7 @@ use pathfinder_geometry::vector::{Vector2I, vec2i};
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 #[cfg(feature = "pf-image")]
 use image::RgbaImage;
@@ -42,7 +43,7 @@ pub enum PatternSource {
 #[derive(Clone, PartialEq, Eq)]
 pub struct Image {
     size: Vector2I,
-    pixels: Vec<ColorU>,
+    pixels: Arc<Vec<ColorU>>,
     pixels_hash: u64,
     is_opaque: bool,
 }
@@ -64,7 +65,7 @@ impl Pattern {
 
 impl Image {
     #[inline]
-    pub fn new(size: Vector2I, pixels: Vec<ColorU>) -> Image {
+    pub fn new(size: Vector2I, pixels: Arc<Vec<ColorU>>) -> Image {
         assert_eq!(size.x() as usize * size.y() as usize, pixels.len());
         let is_opaque = pixels.iter().all(|pixel| pixel.is_opaque());
 
@@ -79,7 +80,7 @@ impl Image {
     pub fn from_image_buffer(image_buffer: RgbaImage) -> Image {
         let (width, height) = image_buffer.dimensions();
         let pixels = color::u8_vec_to_color_vec(image_buffer.into_raw());
-        Image::new(vec2i(width as i32, height as i32), pixels)
+        Image::new(vec2i(width as i32, height as i32), Arc::new(pixels))
     }
 
     #[inline]
@@ -88,7 +89,7 @@ impl Image {
     }
 
     #[inline]
-    pub fn pixels(&self) -> &[ColorU] {
+    pub fn pixels(&self) -> &Arc<Vec<ColorU>> {
         &self.pixels
     }
 

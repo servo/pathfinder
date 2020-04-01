@@ -16,7 +16,7 @@ use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{Effects, Filter};
 use pathfinder_content::gradient::Gradient;
-use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource};
+use pathfinder_content::pattern::{Pattern, PatternFlags, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -26,6 +26,7 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x2, F32x4};
 use std::fmt::{self, Debug, Formatter};
+use std::sync::Arc;
 
 // The size of a gradient tile.
 //
@@ -216,17 +217,18 @@ impl Palette {
         let opacity_tile_builder = OpacityTileBuilder::new(&mut allocator);
         let mut solid_color_tile_builder = SolidColorTileBuilder::new();
         let mut gradient_tile_builder = GradientTileBuilder::new();
+        let mut image_texel_info = vec![];
         for paint in &self.paints {
             let (texture_location, mut sampling_flags, radial_gradient);
             match paint {
-                Paint::Color(_) => {
-                    texture_location = solid_color_tile_builder.allocate(&mut allocator);
+                Paint::Color(color) => {
+                    texture_location = solid_color_tile_builder.allocate(&mut allocator, *color);
                     sampling_flags = TextureSamplingFlags::empty();
                     radial_gradient = None;
                 }
                 Paint::Gradient(ref gradient) => {
                     // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
-                    texture_location = gradient_tile_builder.allocate(&mut allocator);
+                    texture_location = gradient_tile_builder.allocate(&mut allocator, gradient);
                     sampling_flags = TextureSamplingFlags::empty();
                     radial_gradient = gradient.radii().map(|radii| {
                         RadialGradientMetadata { line: gradient.line(), radii }
@@ -243,6 +245,10 @@ impl Palette {
                             // inside the atlas in some cases.
                             let allocation_mode = AllocationMode::OwnPage;
                             texture_location = allocator.allocate(image.size(), allocation_mode);
+                            image_texel_info.push(ImageTexelInfo {
+                                location: texture_location,
+                                texels: (*image.pixels()).clone(),
+                            });
                         }
                     }
 
@@ -327,39 +333,9 @@ impl Palette {
             texture_page_descriptors.push(TexturePageDescriptor { size: page_size });
         }
 
-        // Allocate the texels.
-        //
-        // TODO(pcwalton): This is slow. Do more on GPU.
-        let mut page_texels: Vec<_> =
-            texture_page_descriptors.iter()
-                                    .map(|descriptor| Texels::new(descriptor.size))
-                                    .collect();
-
-        // Draw to texels.
-        //
-        // TODO(pcwalton): Do more of this on GPU.
-        opacity_tile_builder.render(&mut page_texels);
-        for (paint, metadata) in self.paints.iter().zip(paint_metadata.iter()) {
-            let texture_page = metadata.location.page;
-            let texels = &mut page_texels[texture_page.0 as usize];
-
-            match paint {
-                Paint::Color(color) => {
-                    texels.put_texel(metadata.location.rect.origin(), *color);
-                }
-                Paint::Gradient(ref gradient) => {
-                    self.render_gradient(gradient, metadata.location.rect, texels);
-                }
-                Paint::Pattern(ref pattern) => {
-                    match pattern.source {
-                        PatternSource::RenderTarget(_) => {}
-                        PatternSource::Image(ref image) => {
-                            self.render_image(image, metadata.location.rect, texels);
-                        }
-                    }
-                }
-            }
-        }
+        // Gather opacity tile metadata.
+        let opacity_tile_page = opacity_tile_builder.tile_location.page;
+        let opacity_tile_transform = opacity_tile_builder.tile_transform(&allocator);
 
         // Create render commands.
         let mut render_commands = vec![
@@ -372,47 +348,22 @@ impl Palette {
                 location: metadata.location,
             });
         }
-        for (page_index, texels) in page_texels.into_iter().enumerate() {
-            if let Some(texel_data) = texels.data {
-                let page_id = TexturePageId(page_index as u32);
-                let page_size = allocator.page_size(page_id);
-                let rect = RectI::new(Vector2I::default(), page_size);
-                render_commands.push(RenderCommand::UploadTexelData {
-                    texels: texel_data,
-                    location: TextureLocation { page: page_id, rect },
-                });
-            }
+        solid_color_tile_builder.create_render_commands(&mut render_commands);
+        gradient_tile_builder.create_render_commands(&mut render_commands);
+        opacity_tile_builder.create_render_commands(&mut render_commands);
+        for image_texel_info in image_texel_info {
+            render_commands.push(RenderCommand::UploadTexelData {
+                texels: image_texel_info.texels,
+                location: image_texel_info.location,
+            });
         }
 
         PaintInfo {
             render_commands,
             paint_metadata,
             render_target_metadata,
-            opacity_tile_page: opacity_tile_builder.tile_location.page,
-            opacity_tile_transform: opacity_tile_builder.tile_transform(&allocator),
-        }
-    }
-
-    // TODO(pcwalton): This is slow. Do on GPU instead.
-    fn render_gradient(&self, gradient: &Gradient, tex_rect: RectI, texels: &mut Texels) {
-        // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
-        // TODO(pcwalton): Optimize this:
-        // 1. Calculate ∇t up front and use differencing in the inner loop.
-        // 2. Go four pixels at a time with SIMD.
-        for x in 0..(GRADIENT_TILE_LENGTH as i32) {
-            let point = tex_rect.origin() + vec2i(x, 0);
-            let t = (x as f32 + 0.5) / GRADIENT_TILE_LENGTH as f32;
-            texels.put_texel(point, gradient.sample(t));
-        }
-    }
-
-    fn render_image(&self, image: &Image, tex_rect: RectI, texels: &mut Texels) {
-        let image_size = image.size();
-        for y in 0..image_size.y() {
-            let dest_origin = tex_rect.origin() + vec2i(0, y);
-            let src_start_index = y as usize * image_size.x() as usize;
-            let src_end_index = src_start_index + image_size.x() as usize;
-            texels.blit_scanline(dest_origin, &image.pixels()[src_start_index..src_end_index]);
+            opacity_tile_page,
+            opacity_tile_transform,
         }
     }
 }
@@ -442,39 +393,6 @@ impl PaintMetadata {
     }
 }
 
-struct Texels {
-    data: Option<Vec<ColorU>>,
-    size: Vector2I,
-}
-
-impl Texels {
-    fn new(size: Vector2I) -> Texels {
-        Texels { data: None, size }
-    }
-
-    fn texel_index(&self, position: Vector2I) -> usize {
-        position.y() as usize * self.size.x() as usize + position.x() as usize
-    }
-
-    fn allocate_texels_if_necessary(&mut self) {
-        if self.data.is_none() {
-            let area = self.size.x() as usize * self.size.y() as usize;
-            self.data = Some(vec![ColorU::transparent_black(); area]);
-        }
-    }
-
-    fn blit_scanline(&mut self, dest_origin: Vector2I, src: &[ColorU]) {
-        self.allocate_texels_if_necessary();
-        let start_index = self.texel_index(dest_origin);
-        let end_index = start_index + src.len();
-        self.data.as_mut().unwrap()[start_index..end_index].copy_from_slice(src)
-    }
-
-    fn put_texel(&mut self, position: Vector2I, color: ColorU) {
-        self.blit_scanline(position, &[color])
-    }
-}
-
 fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
     rect.to_f32().scale_xy(texture_scale)
 }
@@ -496,15 +414,12 @@ impl OpacityTileBuilder {
         }
     }
 
-    fn render(&self, page_texels: &mut [Texels]) {
-        let texels = &mut page_texels[self.tile_location.page.0 as usize];
-        for y in 0..16 {
-            for x in 0..16 {
-                let color = ColorU::new(0xff, 0xff, 0xff, y * 16 + x);
-                let coords = self.tile_location.rect.origin() + vec2i(x as i32, y as i32);
-                texels.put_texel(coords, color);
-            }
+    fn create_texels(&self) -> Vec<ColorU> {
+        let mut texels = Vec::with_capacity(256);
+        for alpha in 0..=255 {
+            texels.push(ColorU::new(255, 255, 255, alpha));
         }
+        texels
     }
 
     fn tile_transform(&self, allocator: &TextureAllocator) -> Transform2F {
@@ -513,93 +428,136 @@ impl OpacityTileBuilder {
         let vector = rect_to_uv(self.tile_location.rect, texture_scale).origin();
         Transform2F { matrix, vector }
     }
+
+    fn create_render_commands(self, render_commands: &mut Vec<RenderCommand>) {
+        render_commands.push(RenderCommand::UploadTexelData {
+            texels: Arc::new(self.create_texels()),
+            location: self.tile_location,
+        });
+    }
 }
 
 // Solid color allocation
 
-struct SolidColorTileBuilder(Option<SolidColorTileBuilderData>);
+struct SolidColorTileBuilder {
+    tiles: Vec<SolidColorTile>,
+}
 
-struct SolidColorTileBuilderData {
-    tile_location: TextureLocation,
+struct SolidColorTile {
+    texels: Vec<ColorU>,
+    location: TextureLocation,
     next_index: u32,
 }
 
 impl SolidColorTileBuilder {
     fn new() -> SolidColorTileBuilder {
-        SolidColorTileBuilder(None)
+        SolidColorTileBuilder { tiles: vec![] }
     }
 
-    fn allocate(&mut self, allocator: &mut TextureAllocator) -> TextureLocation {
-        if self.0.is_none() {
-            // TODO(pcwalton): Handle allocation failure gracefully!
-            self.0 = Some(SolidColorTileBuilderData {
-                tile_location: allocator.allocate(Vector2I::splat(SOLID_COLOR_TILE_LENGTH as i32),
-                                                  AllocationMode::Atlas),
+    fn allocate(&mut self, allocator: &mut TextureAllocator, color: ColorU) -> TextureLocation {
+        if self.tiles.is_empty() ||
+                self.tiles.last().unwrap().next_index == MAX_SOLID_COLORS_PER_TILE {
+            let area = SOLID_COLOR_TILE_LENGTH as usize * SOLID_COLOR_TILE_LENGTH as usize;
+            self.tiles.push(SolidColorTile {
+                texels: vec![ColorU::black(); area],
+                location: allocator.allocate(Vector2I::splat(SOLID_COLOR_TILE_LENGTH as i32),
+                                             AllocationMode::Atlas),
                 next_index: 0,
             });
         }
 
-        let (location, tile_full);
-        {
-            let mut data = self.0.as_mut().unwrap();
-            let subtile_origin = vec2i((data.next_index % SOLID_COLOR_TILE_LENGTH) as i32,
-                                       (data.next_index / SOLID_COLOR_TILE_LENGTH) as i32);
-            location = TextureLocation {
-                page: data.tile_location.page,
-                rect: RectI::new(data.tile_location.rect.origin() + subtile_origin,
-                                 Vector2I::splat(1)),
-            };
-            data.next_index += 1;
-            tile_full = data.next_index == MAX_SOLID_COLORS_PER_TILE;
-        }
+        let mut data = self.tiles.last_mut().unwrap();
+        let subtile_origin = vec2i((data.next_index % SOLID_COLOR_TILE_LENGTH) as i32,
+                                   (data.next_index / SOLID_COLOR_TILE_LENGTH) as i32);
+        data.next_index += 1;
 
-        if tile_full {
-            self.0 = None;
-        }
+        let location = TextureLocation {
+            page: data.location.page,
+            rect: RectI::new(data.location.rect.origin() + subtile_origin, vec2i(1, 1)),
+        };
+
+        data.texels[subtile_origin.y() as usize * SOLID_COLOR_TILE_LENGTH as usize +
+                    subtile_origin.x() as usize] = color;
 
         location
+    }
+
+    fn create_render_commands(self, render_commands: &mut Vec<RenderCommand>) {
+        for tile in self.tiles {
+            render_commands.push(RenderCommand::UploadTexelData {
+                texels: Arc::new(tile.texels),
+                location: tile.location,
+            });
+        }
     }
 }
 
 // Gradient allocation
 
-struct GradientTileBuilder(Option<GradientTileBuilderData>);
+struct GradientTileBuilder {
+    tiles: Vec<GradientTile>,
+}
 
-struct GradientTileBuilderData {
+struct GradientTile {
+    texels: Vec<ColorU>,
     page: TexturePageId,
     next_index: u32,
 }
 
 impl GradientTileBuilder {
     fn new() -> GradientTileBuilder {
-        GradientTileBuilder(None)
+        GradientTileBuilder { tiles: vec![] }
     }
 
-    fn allocate(&mut self, allocator: &mut TextureAllocator) -> TextureLocation {
-        if self.0.is_none() {
+    fn allocate(&mut self, allocator: &mut TextureAllocator, gradient: &Gradient)
+                -> TextureLocation {
+        if self.tiles.is_empty() ||
+                self.tiles.last().unwrap().next_index == GRADIENT_TILE_LENGTH {
             let size = Vector2I::splat(GRADIENT_TILE_LENGTH as i32);
-            self.0 = Some(GradientTileBuilderData {
+            let area = size.x() as usize * size.y() as usize;
+            self.tiles.push(GradientTile {
+                texels: vec![ColorU::black(); area],
                 page: allocator.allocate(size, AllocationMode::OwnPage).page,
                 next_index: 0,
             })
         }
 
-        let (location, tile_full);
-        {
-            let mut data = self.0.as_mut().unwrap();
-            location = TextureLocation {
-                page: data.page,
-                rect: RectI::new(vec2i(0, data.next_index as i32),
-                                 vec2i(GRADIENT_TILE_LENGTH as i32, 1)),
-            };
-            data.next_index += 1;
-            tile_full = data.next_index == GRADIENT_TILE_LENGTH;
-        }
+        let mut data = self.tiles.last_mut().unwrap();
+        let location = TextureLocation {
+            page: data.page,
+            rect: RectI::new(vec2i(0, data.next_index as i32),
+                             vec2i(GRADIENT_TILE_LENGTH as i32, 1)),
+        };
+        data.next_index += 1;
 
-        if tile_full {
-            self.0 = None;
+        // FIXME(pcwalton): Paint transparent if gradient line has zero size, per spec.
+        // TODO(pcwalton): Optimize this:
+        // 1. Calculate ∇t up front and use differencing in the inner loop.
+        // 2. Go four pixels at a time with SIMD.
+        let first_address = location.rect.origin_y() as usize * GRADIENT_TILE_LENGTH as usize;
+        for x in 0..(GRADIENT_TILE_LENGTH as i32) {
+            let t = (x as f32 + 0.5) / GRADIENT_TILE_LENGTH as f32;
+            data.texels[first_address + x as usize] = gradient.sample(t);
         }
 
         location
     }
+
+    fn create_render_commands(self, render_commands: &mut Vec<RenderCommand>) {
+        for tile in self.tiles {
+            render_commands.push(RenderCommand::UploadTexelData {
+                texels: Arc::new(tile.texels),
+                location: TextureLocation {
+                    rect: RectI::new(Vector2I::zero(),
+                                     Vector2I::splat(GRADIENT_TILE_LENGTH as i32)),
+                    page: tile.page,
+                },
+            });
+        }
+    }
+}
+
+struct ImageTexelInfo {
+    location: TextureLocation,
+    texels: Arc<Vec<ColorU>>,
 }
