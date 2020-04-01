@@ -10,7 +10,7 @@
 
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, Path2D};
 use pathfinder_color::{ColorF, ColorU};
-use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
