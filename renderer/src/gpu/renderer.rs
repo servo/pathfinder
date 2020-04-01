@@ -1140,11 +1140,10 @@ impl<D> TextureCache<D> where D: Device {
     fn create_texture(&mut self, device: &mut D, format: TextureFormat, size: Vector2I)
                       -> D::Texture {
         for index in 0..self.textures.len() {
-            if device.texture_size(&self.textures[index]) != size ||
-                    device.texture_format(&self.textures[index]) != format {
-                continue;
+            if device.texture_size(&self.textures[index]) == size &&
+                    device.texture_format(&self.textures[index]) == format {
+                return self.textures.remove(index);
             }
-            return self.textures.remove(index);
         }
 
         device.create_texture(format, size)

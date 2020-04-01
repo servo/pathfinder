@@ -456,12 +456,15 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn destroy_framebuffer(&self, framebuffer: Self::Framebuffer) -> Self::Texture {
+    fn destroy_framebuffer(&self, mut framebuffer: Self::Framebuffer) -> Self::Texture {
         let texture = GLTexture {
             gl_texture: framebuffer.texture.gl_texture,
             size: framebuffer.texture.size,
             format: framebuffer.texture.format,
         };
+        unsafe {
+            gl::DeleteFramebuffers(1, &mut framebuffer.gl_framebuffer); ck();
+        }
         mem::forget(framebuffer);
         texture
     }
@@ -989,6 +992,14 @@ pub struct GLTexture {
     gl_texture: GLuint,
     pub size: Vector2I,
     pub format: TextureFormat,
+}
+
+impl Drop for GLTexture {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteTextures(1, &mut self.gl_texture); ck();
+        }
+    }
 }
 
 pub struct GLTimerQuery {
