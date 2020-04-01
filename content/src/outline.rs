@@ -420,7 +420,7 @@ impl Contour {
                                     direction: ArcDirection) {
         let mut direction_transform = Transform2F::default();
         if direction == ArcDirection::CCW {
-            chord = chord.reversed();
+            chord = chord.scale_xy(vec2f(1.0, -1.0));
             direction_transform = Transform2F::from_scale(vec2f(1.0, -1.0));
         }
 
@@ -446,7 +446,7 @@ impl Contour {
 
             let half_sweep_vector = sweep_vector.halve_angle();
             let rotation = Transform2F::from_rotation_vector(half_sweep_vector.rotate_by(vector));
-            segment = segment.transform(&(*transform * rotation * direction_transform));
+            segment = segment.transform(&(*transform * direction_transform * rotation));
 
             let mut push_segment_flags = PushSegmentFlags::UPDATE_BOUNDS;
             if segment_index == 0 {
