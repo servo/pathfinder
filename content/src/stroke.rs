@@ -383,11 +383,15 @@ impl Contour {
             LineJoin::Bevel => {}
             LineJoin::Miter(miter_limit) => {
                 if let Some(prev_tangent_t) = prev_tangent.intersection_t(next_tangent) {
+                    if prev_tangent_t < -EPSILON {
+                        return;
+                    }
                     let miter_endpoint = prev_tangent.sample(prev_tangent_t);
                     let threshold = miter_limit * distance;
-                    if (miter_endpoint - join_point).square_length() <= threshold * threshold {
-                        self.push_endpoint(miter_endpoint);
+                    if (miter_endpoint - join_point).square_length() > threshold * threshold {
+                        return;
                     }
+                    self.push_endpoint(miter_endpoint);
                 }
             }
             LineJoin::Round => {
