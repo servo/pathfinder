@@ -837,7 +837,9 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
                                    pattern_transform,
                                    PatternFlags::empty());
         canvas.set_fill_style(pattern);
+        canvas.set_global_alpha(alpha);
         canvas.fill_path(image_path, FillRule::Winding);
+        canvas.set_global_alpha(1.0);
 
         let mut shadow_path = create_rounded_rect_path(image_rect, 6.0);
         shadow_path.rect(image_rect.dilate(vec2f(5.0, 5.0)));
