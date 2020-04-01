@@ -267,7 +267,7 @@ impl TreeNode {
 
 #[cfg(test)]
 mod test {
-    use pathfinder_geometry::vector::Vector2I;
+    use pathfinder_geometry::vector::vec2i;
     use quickcheck;
     use std::u32;
 
