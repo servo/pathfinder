@@ -21,8 +21,7 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::PaintId;
 use pathfinder_text::{SceneExt, TextRenderMode};
-use skribo::{FontCollection, FontFamily, Layout, TextStyle};
-use std::iter;
+use skribo::{FontCollection, FontFamily, FontRef, Layout, TextStyle};
 use std::sync::Arc;
 
 impl CanvasRenderingContext2D {
@@ -95,37 +94,14 @@ impl CanvasRenderingContext2D {
     // Text styles
 
     #[inline]
-    pub fn set_font_collection(&mut self, font_collection: Arc<FontCollection>) {
-        self.current_state.font_collection = font_collection;
+    pub fn font(&self) -> Arc<FontCollection> {
+        self.current_state.font_collection.clone()
     }
 
     #[inline]
-    pub fn set_font_families<I>(&mut self, font_families: I) where I: Iterator<Item = FontFamily> {
-        let mut font_collection = FontCollection::new();
-        for font_family in font_families {
-            font_collection.add_family(font_family);
-        }
-        self.current_state.font_collection = Arc::new(font_collection);
-    }
-
-    /// A convenience method to set a single font family.
-    #[inline]
-    pub fn set_font_family(&mut self, font_family: FontFamily) {
-        self.set_font_families(iter::once(font_family))
-    }
-
-    /// A convenience method to set a single font family consisting of a single font.
-    #[inline]
-    pub fn set_font(&mut self, font: Font) {
-        self.set_font_family(FontFamily::new_from_font(font))
-    }
-
-    /// A convenience method to set a single font family consisting of a font
-    /// described by a PostScript name.
-    #[inline]
-    pub fn set_font_by_postscript_name(&mut self, postscript_name: &str) {
-        let font = self.font_context.font_source.select_by_postscript_name(postscript_name);
-        self.set_font(font.expect("Didn't find the font!").load().unwrap());
+    pub fn set_font<FC>(&mut self, font_collection: FC) where FC: IntoFontCollection {
+        let font_collection = font_collection.into_font_collection(&self.font_context);
+        self.current_state.font_collection = font_collection; 
     }
 
     #[inline]
@@ -261,5 +237,101 @@ impl LayoutExt for Layout {
     fn ideographic_baseline(&self) -> f32 {
         // TODO(pcwalton)
         0.0
+    }
+}
+
+/// Various things that can be conveniently converted into font collections for use with
+/// `CanvasRenderingContext2D::set_font()`.
+pub trait IntoFontCollection {
+    fn into_font_collection(self, font_context: &CanvasFontContext) -> Arc<FontCollection>;
+}
+
+impl IntoFontCollection for Arc<FontCollection> {
+    #[inline]
+    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+        self
+    }
+}
+
+impl IntoFontCollection for FontFamily {
+    #[inline]
+    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+        let mut font_collection = FontCollection::new();
+        font_collection.add_family(self);
+        Arc::new(font_collection)
+    }
+}
+
+impl IntoFontCollection for Vec<FontFamily> {
+    #[inline]
+    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+        let mut font_collection = FontCollection::new();
+        for family in self {
+            font_collection.add_family(family);
+        }
+        Arc::new(font_collection)
+    }
+}
+
+impl IntoFontCollection for Handle {
+    #[inline]
+    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+        self.load().expect("Failed to load the font!").into_font_collection(context)
+    }
+}
+
+impl<'a> IntoFontCollection for &'a [Handle] {
+    #[inline]
+    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+        let mut font_collection = FontCollection::new();
+        for handle in self {
+            let font = handle.load().expect("Failed to load the font!");
+            font_collection.add_family(FontFamily::new_from_font(font));
+        }
+        Arc::new(font_collection)
+    }
+}
+
+impl IntoFontCollection for Font {
+    #[inline]
+    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+        FontFamily::new_from_font(self).into_font_collection(context)
+    }
+}
+
+impl<'a> IntoFontCollection for &'a [Font] {
+    #[inline]
+    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+        let mut family = FontFamily::new();
+        for font in self {
+            family.add_font(FontRef::new((*font).clone()))
+        }
+        family.into_font_collection(context)
+    }
+}
+
+impl<'a> IntoFontCollection for &'a str {
+    #[inline]
+    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+        context.font_source
+               .select_by_postscript_name(self)
+               .expect("Couldn't find a font with that PostScript name!")
+               .into_font_collection(context)
+    }
+}
+
+impl<'a, 'b> IntoFontCollection for &'a [&'b str] {
+    #[inline]
+    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+        let mut font_collection = FontCollection::new();
+        for postscript_name in self {
+            let font = context.font_source
+                              .select_by_postscript_name(postscript_name)
+                              .expect("Failed to find a font with that PostScript name!")
+                              .load()
+                              .expect("Failed to load the font!");
+            font_collection.add_family(FontFamily::new_from_font(font));
+        }
+        Arc::new(font_collection)
     }
 }

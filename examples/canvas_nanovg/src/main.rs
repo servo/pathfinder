@@ -9,6 +9,8 @@
 // except according to those terms.
 
 use arrayvec::ArrayVec;
+use font_kit::handle::Handle;
+use font_kit::sources::mem::MemSource;
 use image;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
 use pathfinder_canvas::{TextAlign, TextBaseline};
@@ -37,6 +39,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use std::f32::consts::PI;
+use std::sync::Arc;
 use std::time::Instant;
 
 // TODO(pcwalton): See if we can reduce the amount of code by using the canvas shadow feature.
@@ -50,7 +53,7 @@ const WINDOW_HEIGHT: i32 = 768;
 static PARAGRAPH_TEXT: &'static str = "This is a longer chunk of text.
 
 I would have used lorem ipsum, but she was busy jumping over the lazy dog with the fox and all \
-the men who came to the aid of the party.";
+the men who came to the aid of the party. 🎉";
 
 fn render_demo(canvas: &mut CanvasRenderingContext2D,
                mouse_position: Vector2F,
@@ -205,6 +208,7 @@ fn draw_paragraph(canvas: &mut CanvasRenderingContext2D, rect: RectF) {
 
     canvas.save();
 
+    canvas.set_font(&["Roboto-Regular", "NotoEmoji"][..]);
     canvas.set_font_size(18.0);
 
     let mut cursor = rect.origin();
@@ -553,7 +557,7 @@ fn draw_window(canvas: &mut CanvasRenderingContext2D, title: &str, rect: RectF) 
     canvas.set_stroke_style(ColorU::new(0, 0, 0, 32));
     canvas.stroke_path(path);
 
-    // TODO(pcwalton): Bold text.
+    canvas.set_font("Roboto-Bold");
     canvas.set_font_size(15.0);
     canvas.set_text_align(TextAlign::Center);
     canvas.set_text_baseline(TextBaseline::Middle);
@@ -578,6 +582,7 @@ fn draw_search_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: Rect
                                 ColorU::new(0, 0, 0, 16),
                                 ColorU::new(0, 0, 0, 92));
 
+    canvas.set_font("Roboto-Bold");
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Left);
@@ -599,6 +604,7 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
     canvas.stroke_path(create_rounded_rect_path(rect.contract(vec2f(0.5, 0.5)),
                                                 CORNER_RADIUS - 0.5));
 
+    canvas.set_font("Roboto-Regular");
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 160));
     canvas.set_text_align(TextAlign::Left);
@@ -607,6 +613,7 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
 }
 
 fn draw_label(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+    canvas.set_font("Roboto-Regular");
     canvas.set_font_size(15.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 128));
     canvas.set_text_align(TextAlign::Left);
@@ -635,6 +642,7 @@ fn draw_edit_box(canvas: &mut CanvasRenderingContext2D, rect: RectF) {
 fn draw_text_edit_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     draw_edit_box(canvas, rect);
 
+    canvas.set_font("Roboto-Regular");
     canvas.set_font_size(17.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Left);
@@ -648,6 +656,7 @@ fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
                          rect: RectF) {
     draw_edit_box(canvas, rect);
 
+    canvas.set_font("Roboto-Regular");
     canvas.set_font_size(15.0);
     let unit_width = canvas.measure_text(unit).width;
 
@@ -667,6 +676,7 @@ fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
 fn draw_check_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     const CORNER_RADIUS: f32 = 3.0;
 
+    canvas.set_font("Roboto-Regular");
     canvas.set_font_size(15.0);
     canvas.set_fill_style(ColorU::new(255, 255, 255, 160));
     canvas.set_text_align(TextAlign::Left);
@@ -706,8 +716,8 @@ fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, c
     canvas.stroke_path(create_rounded_rect_path(rect.contract(vec2f(0.5, 0.5)),
                                                 CORNER_RADIUS - 0.5));
 
-    // TODO(pcwalton): Bold font.
     // TODO(pcwalton): Icon.
+    canvas.set_font("Roboto-Bold");
     canvas.set_font_size(17.0);
     let text_width = canvas.measure_text(text).width;
     let icon_width = 0.0;
@@ -1103,6 +1113,11 @@ fn main() {
 
     // Load demo data.
     let resources = FilesystemResourceLoader::locate();
+    let font_data = vec![
+        Handle::from_memory(Arc::new(resources.slurp("fonts/Roboto-Regular.ttf").unwrap()), 0),
+        Handle::from_memory(Arc::new(resources.slurp("fonts/Roboto-Bold.ttf").unwrap()), 0),
+        Handle::from_memory(Arc::new(resources.slurp("fonts/NotoEmoji-Regular.ttf").unwrap()), 0),
+    ];
     let demo_data = DemoData::load(&resources);
 
     // Create a Pathfinder renderer.
@@ -1113,11 +1128,14 @@ fn main() {
                                          background_color: Some(ColorF::new(0.3, 0.3, 0.32, 1.0)),
                                      });
 
-    // Initialize state.
+    // Initialize font state.
+    let font_source = Arc::new(MemSource::from_fonts(font_data.into_iter()).unwrap());
+    let font_context = CanvasFontContext::new(font_source.clone());
+
+    // Initialize general state.
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut mouse_position = Vector2F::zero();
     let start_time = Instant::now();
-    let font_context = CanvasFontContext::from_system_source();
 
     // Enter the main loop.
     loop {
