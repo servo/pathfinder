@@ -99,6 +99,7 @@ fn render_demo(canvas: &mut CanvasRenderingContext2D,
     position += vec2f(0.0, 38.0);
     draw_check_box(canvas, "Remember me", RectF::new(position, vec2f(140.0, 28.0)));
     draw_button(canvas,
+                Some("🚪"),
                 "Sign In",
                 RectF::new(position + vec2f(138.0, 0.0), vec2f(140.0, 28.0)),
                 rgbu(0, 96, 128));
@@ -113,8 +114,13 @@ fn render_demo(canvas: &mut CanvasRenderingContext2D,
     position += vec2f(0.0, 55.0);
 
     // Draw dialog box buttons.
-    draw_button(canvas, "Delete", RectF::new(position, vec2f(160.0, 28.0)), rgbu(128, 16, 8));
     draw_button(canvas,
+                Some("️❌"),
+                "Delete",
+                RectF::new(position, vec2f(160.0, 28.0)),
+                rgbu(128, 16, 8));
+    draw_button(canvas,
+                None,
                 "Cancel",
                 RectF::new(position + vec2f(170.0, 0.0), vec2f(110.0, 28.0)),
                 rgbau(0, 0, 0, 0));
@@ -580,12 +586,24 @@ fn draw_search_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: Rect
                                 rgbau(0, 0, 0, 16),
                                 rgbau(0, 0, 0, 92));
 
-    canvas.set_font(FONT_NAME_BOLD);
+    canvas.set_font_size(rect.height() * 0.5);
+    canvas.set_font(FONT_NAME_EMOJI);
+    canvas.set_fill_style(rgbau(255, 255, 255, 64));
+    canvas.set_text_align(TextAlign::Center);
+    canvas.set_text_baseline(TextBaseline::Middle);
+    canvas.fill_text("🔍", rect.origin() + (rect.height() * 0.55));
+
+    canvas.set_font(FONT_NAME_REGULAR);
     canvas.set_font_size(17.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Left);
     canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text, rect.origin() + vec2f(1.05, 0.5) * rect.height());
+
+    canvas.set_font_size(rect.height() * 0.5);
+    canvas.set_font(FONT_NAME_EMOJI);
+    canvas.set_text_align(TextAlign::Center);
+    canvas.fill_text("️❌", rect.upper_right() + vec2f(-1.0, 1.0) * (rect.height() * 0.55));
 }
 
 fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
@@ -607,6 +625,26 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
     canvas.set_text_align(TextAlign::Left);
     canvas.set_text_baseline(TextBaseline::Middle);
     canvas.fill_text(text, rect.origin() + vec2f(0.3, 0.5) * rect.height());
+
+    // Draw chevron. This is a glyph in the original, but I don't want to grab an icon font just
+    // for this.
+    canvas.save();
+    let original_transform = canvas.current_transform();
+    canvas.set_current_transform(&(
+        original_transform *
+        Transform2F::from_translation(rect.upper_right() + vec2f(-0.5, 0.33) * rect.height()) *
+        Transform2F::from_scale(0.1)));
+    canvas.set_fill_style(rgbau(255, 255, 255, 64));
+    let mut path = Path2D::new();
+    path.move_to(vec2f(0.0,  100.0));
+    path.line_to(vec2f(32.8, 50.0));
+    path.line_to(vec2f(0.0,  0.0));
+    path.line_to(vec2f(22.1, 0.0));
+    path.line_to(vec2f(54.2, 50.0));
+    path.line_to(vec2f(22.1, 100.0));
+    path.close_path();
+    canvas.fill_path(path, FillRule::Winding);
+    canvas.restore();
 }
 
 fn draw_label(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
@@ -689,10 +727,18 @@ fn draw_check_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF
                                 rgbau(0, 0, 0, 32),
                                 rgbau(0, 0, 0, 92));
 
-    // TODO(pcwalton): Icon.
+    canvas.set_font(FONT_NAME_EMOJI);
+    canvas.set_font_size(17.0);
+    canvas.set_fill_style(rgbau(255, 255, 255, 128));
+    canvas.set_text_align(TextAlign::Center);
+    canvas.fill_text("✔︎", rect.origin() + vec2f(11.0, rect.height() * 0.5));
 }
 
-fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, color: ColorU) {
+fn draw_button(canvas: &mut CanvasRenderingContext2D,
+               pre_icon: Option<&str>,
+               text: &str,
+               rect: RectF,
+               color: ColorU) {
     const CORNER_RADIUS: f32 = 4.0;
 
     let path = create_rounded_rect_path(rect.contract(1.0), CORNER_RADIUS - 1.0);
@@ -714,16 +760,33 @@ fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, c
     canvas.set_font(FONT_NAME_BOLD);
     canvas.set_font_size(17.0);
     let text_width = canvas.measure_text(text).width;
-    let icon_width = 0.0;
 
+    let icon_width;
+    match pre_icon {
+        None => icon_width = 0.0,
+        Some(icon) => {
+            canvas.set_font_size(rect.height() * 0.7);
+            canvas.set_font(FONT_NAME_EMOJI);
+            icon_width = canvas.measure_text(icon).width + rect.height() * 0.15;
+            canvas.set_fill_style(rgbau(255, 255, 255, 96));
+            canvas.set_text_align(TextAlign::Left);
+            canvas.set_text_baseline(TextBaseline::Middle);
+            canvas.fill_text(icon,
+                             rect.center() - vec2f(text_width * 0.5 + icon_width * 0.75, 0.0));
+        }
+    }
+
+    canvas.set_font(FONT_NAME_BOLD);
     canvas.set_font_size(17.0);
     let text_origin = rect.center() + vec2f(icon_width * 0.25 - text_width * 0.5, 0.0);
-    canvas.set_fill_style(rgbau(0, 0, 0, 160));
     canvas.set_text_align(TextAlign::Left);
     canvas.set_text_baseline(TextBaseline::Middle);
-    canvas.fill_text(text, text_origin - vec2f(0.0, 1.0));
+    canvas.set_shadow_color(rgbau(0, 0, 0, 160));
+    canvas.set_shadow_offset(vec2f(0.0, -1.0));
+    canvas.set_shadow_blur(0.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 160));
     canvas.fill_text(text, text_origin);
+    canvas.set_shadow_color(ColorU::transparent_black());
 }
 
 fn draw_slider(canvas: &mut CanvasRenderingContext2D, value: f32, rect: RectF) {
