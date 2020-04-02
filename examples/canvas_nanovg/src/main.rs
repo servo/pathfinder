@@ -537,11 +537,21 @@ fn draw_window(canvas: &mut CanvasRenderingContext2D, title: &str, rect: RectF) 
 
     // Draw window with shadow.
     canvas.set_fill_style(rgbau(28, 30, 34, 192));
-    canvas.set_shadow_offset(vec2f(0.0, 2.0));
-    canvas.set_shadow_blur(10.0);
-    canvas.set_shadow_color(rgbau(0, 0, 0, 128));
     canvas.fill_path(create_rounded_rect_path(rect, CORNER_RADIUS), FillRule::Winding);
-    canvas.set_shadow_color(rgbau(0, 0, 0, 0));
+
+    // Draw window drop shadow.
+    let mut path =
+        create_rounded_rect_path(RectF::new(rect.origin() - 10.0, rect.size() + vec2f(20.0, 30.0)),
+                                 CORNER_RADIUS);
+    path.rect(rect);
+    fill_path_with_box_gradient(canvas,
+                                path,
+                                FillRule::EvenOdd,
+                                rect + vec2f(0.0, 2.0),
+                                CORNER_RADIUS * 2.0,
+                                10.0,
+                                rgbau(0, 0, 0, 128),
+                                rgbau(0, 0, 0, 0));
 
     // Header.
     let mut header_gradient =
