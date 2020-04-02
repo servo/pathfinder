@@ -50,6 +50,10 @@ const FRAC_PI_2_3: f32 = PI * 2.0 / 3.0;
 const WINDOW_WIDTH: i32 = 1024;
 const WINDOW_HEIGHT: i32 = 768;
 
+static FONT_NAME_REGULAR: &'static str = "Roboto-Regular";
+static FONT_NAME_BOLD:    &'static str = "Roboto-Bold";
+static FONT_NAME_EMOJI:   &'static str = "NotoEmoji";
+
 static PARAGRAPH_TEXT: &'static str = "This is a longer chunk of text.
 
 I would have used lorem ipsum, but she was busy jumping over the lazy dog with the fox and all \
@@ -204,7 +208,7 @@ fn draw_paragraph(canvas: &mut CanvasRenderingContext2D, rect: RectF) {
 
     canvas.save();
 
-    canvas.set_font(&["Roboto-Regular", "NotoEmoji"][..]);
+    canvas.set_font(&[FONT_NAME_REGULAR, FONT_NAME_EMOJI][..]);
     canvas.set_font_size(18.0);
 
     let mut cursor = rect.origin();
@@ -551,7 +555,7 @@ fn draw_window(canvas: &mut CanvasRenderingContext2D, title: &str, rect: RectF) 
     canvas.set_stroke_style(rgbau(0, 0, 0, 32));
     canvas.stroke_path(path);
 
-    canvas.set_font("Roboto-Bold");
+    canvas.set_font(FONT_NAME_BOLD);
     canvas.set_font_size(15.0);
     canvas.set_text_align(TextAlign::Center);
     canvas.set_text_baseline(TextBaseline::Middle);
@@ -576,7 +580,7 @@ fn draw_search_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: Rect
                                 rgbau(0, 0, 0, 16),
                                 rgbau(0, 0, 0, 92));
 
-    canvas.set_font("Roboto-Bold");
+    canvas.set_font(FONT_NAME_BOLD);
     canvas.set_font_size(17.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Left);
@@ -597,7 +601,7 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
     canvas.set_stroke_style(rgbau(0, 0, 0, 48));
     canvas.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 
-    canvas.set_font("Roboto-Regular");
+    canvas.set_font(FONT_NAME_REGULAR);
     canvas.set_font_size(17.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 160));
     canvas.set_text_align(TextAlign::Left);
@@ -606,7 +610,7 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
 }
 
 fn draw_label(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
-    canvas.set_font("Roboto-Regular");
+    canvas.set_font(FONT_NAME_REGULAR);
     canvas.set_font_size(15.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 128));
     canvas.set_text_align(TextAlign::Left);
@@ -633,7 +637,7 @@ fn draw_edit_box(canvas: &mut CanvasRenderingContext2D, rect: RectF) {
 fn draw_text_edit_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     draw_edit_box(canvas, rect);
 
-    canvas.set_font("Roboto-Regular");
+    canvas.set_font(FONT_NAME_REGULAR);
     canvas.set_font_size(17.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 64));
     canvas.set_text_align(TextAlign::Left);
@@ -647,7 +651,7 @@ fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
                          rect: RectF) {
     draw_edit_box(canvas, rect);
 
-    canvas.set_font("Roboto-Regular");
+    canvas.set_font(FONT_NAME_REGULAR);
     canvas.set_font_size(15.0);
     let unit_width = canvas.measure_text(unit).width;
 
@@ -667,7 +671,7 @@ fn draw_numeric_edit_box(canvas: &mut CanvasRenderingContext2D,
 fn draw_check_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     const CORNER_RADIUS: f32 = 3.0;
 
-    canvas.set_font("Roboto-Regular");
+    canvas.set_font(FONT_NAME_REGULAR);
     canvas.set_font_size(15.0);
     canvas.set_fill_style(rgbau(255, 255, 255, 160));
     canvas.set_text_align(TextAlign::Left);
@@ -707,7 +711,7 @@ fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, c
     canvas.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 
     // TODO(pcwalton): Icon.
-    canvas.set_font("Roboto-Bold");
+    canvas.set_font(FONT_NAME_BOLD);
     canvas.set_font_size(17.0);
     let text_width = canvas.measure_text(text).width;
     let icon_width = 0.0;
