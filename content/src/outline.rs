@@ -420,7 +420,7 @@ impl Contour {
                                     direction: ArcDirection) {
         let mut direction_transform = Transform2F::default();
         if direction == ArcDirection::CCW {
-            chord = chord.scale_xy(vec2f(1.0, -1.0));
+            chord *= vec2f(1.0, -1.0);
             direction_transform = Transform2F::from_scale(vec2f(1.0, -1.0));
         }
 

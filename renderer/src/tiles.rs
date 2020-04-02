@@ -499,7 +499,7 @@ impl<'a> PackedTile<'a> {
 }
 
 pub fn round_rect_out_to_tile_bounds(rect: RectF) -> RectI {
-    rect.scale_xy(vec2f(1.0 / TILE_WIDTH as f32, 1.0 / TILE_HEIGHT as f32)).round_out().to_i32()
+    (rect * vec2f(1.0 / TILE_WIDTH as f32, 1.0 / TILE_HEIGHT as f32)).round_out().to_i32()
 }
 
 fn process_active_segment(

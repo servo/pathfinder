@@ -106,16 +106,15 @@ fn main() {
     );
     // Clear to swf stage background color.
     let mut scene = Scene::new();
-    scene.set_view_box(RectF::new(
-        Vector2F::zero(),
-        vec2f(stage.width() as f32, stage.height() as f32).scale(device_pixel_ratio)
-    ));
+    scene.set_view_box(RectF::new(Vector2F::zero(),
+                                  vec2f(stage.width() as f32,
+                                        stage.height() as f32) * device_pixel_ratio));
     draw_paths_into_scene(&library, &mut scene);
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(scene, RayonExecutor);
     let mut build_options = BuildOptions::default();
-    let scale_transform = Transform2F::from_scale(Vector2F::splat(device_pixel_ratio));
+    let scale_transform = Transform2F::from_scale(device_pixel_ratio);
     build_options.transform = RenderTransform::Transform2D(scale_transform);
     scene.build_and_render(&mut renderer, build_options);
 

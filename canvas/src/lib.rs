@@ -23,7 +23,7 @@ use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, vec2f};
+use pathfinder_geometry::vector::{IntoVector2F, Vector2F, vec2f};
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
 use std::borrow::Cow;
@@ -550,7 +550,7 @@ impl Path2D {
                start_angle: f32,
                end_angle: f32,
                direction: ArcDirection) {
-        let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
+        let transform = Transform2F::from_scale(radius).translate(center);
         self.current_contour.push_arc(&transform, start_angle, end_angle, direction);
     }
 
@@ -562,12 +562,10 @@ impl Path2D {
         let (vu0, vu1) = (v0.normalize(), v1.normalize());
         let hypot = radius / f32::sqrt(0.5 * (1.0 - vu0.dot(vu1)));
         let bisector = vu0 + vu1;
-        let center = ctrl + bisector.scale(hypot / bisector.length());
+        let center = ctrl + bisector * (hypot / bisector.length());
 
-        let transform = Transform2F::from_scale(Vector2F::splat(radius)).translate(center);
-
-        let chord = LineSegment2F::new(vu0.yx().scale_xy(vec2f(-1.0,  1.0)),
-                                       vu1.yx().scale_xy(vec2f( 1.0, -1.0)));
+        let transform = Transform2F::from_scale(radius).translate(center);
+        let chord = LineSegment2F::new(vu0.yx() * vec2f(-1.0,  1.0), vu1.yx() * vec2f( 1.0, -1.0));
 
         // FIXME(pcwalton): Is clockwise direction correct?
         self.current_contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
@@ -582,12 +580,13 @@ impl Path2D {
         self.current_contour.close();
     }
 
-    pub fn ellipse(&mut self,
-                   center: Vector2F,
-                   axes: Vector2F,
-                   rotation: f32,
-                   start_angle: f32,
-                   end_angle: f32) {
+    pub fn ellipse<A>(&mut self,
+                      center: Vector2F,
+                      axes: A,
+                      rotation: f32,
+                      start_angle: f32,
+                      end_angle: f32)
+                      where A: IntoVector2F {
         self.flush_current_contour();
 
         let transform = Transform2F::from_scale(axes).rotate(rotation).translate(center);

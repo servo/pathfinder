@@ -177,7 +177,7 @@ impl Scene {
     #[inline]
     pub(crate) fn effective_view_box(&self, render_options: &PreparedBuildOptions) -> RectF {
         if render_options.subpixel_aa_enabled {
-            self.view_box.scale_xy(vec2f(3.0, 1.0))
+            self.view_box * vec2f(3.0, 1.0)
         } else {
             self.view_box
         }

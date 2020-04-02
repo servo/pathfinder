@@ -12,7 +12,7 @@
 
 use crate::rect::RectF;
 use crate::transform2d::Matrix2x2F;
-use crate::vector::{Vector2F, Vector2I, Vector3F, Vector4F, vec2f};
+use crate::vector::{Vector2F, Vector2I, Vector3F, Vector4F};
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Mul, MulAssign, Neg};
 
@@ -407,7 +407,7 @@ impl Mul<Vector2F> for Perspective {
     #[inline]
     fn mul(self, vector: Vector2F) -> Vector2F {
         let point = (self.transform * vector.to_4d()).to_2d() * Vector2F::new(1.0, -1.0);
-        (point + vec2f(1.0, 1.0)) * self.window_size.to_f32().scale(0.5)
+        (point + 1.0) * self.window_size.to_f32() * 0.5
     }
 }
 

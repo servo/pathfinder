@@ -11,10 +11,10 @@
 //! Line segment types, optimized with SIMD.
 
 use crate::transform2d::Matrix2x2F;
-use crate::vector::Vector2F;
+use crate::vector::{Vector2F, vec2f};
 use crate::util;
 use pathfinder_simd::default::F32x4;
-use std::ops::{Add, Sub};
+use std::ops::{Add, Mul, MulAssign, Sub};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct LineSegment2F(pub F32x4);
@@ -85,21 +85,6 @@ impl LineSegment2F {
     #[inline]
     pub fn set_to_y(&mut self, y: f32) {
         self.0[3] = y
-    }
-
-    #[inline]
-    pub fn translate(self, offset: Vector2F) -> LineSegment2F {
-        LineSegment2F(self.0 + offset.0.to_f32x4().xyxy())
-    }
-
-    #[inline]
-    pub fn scale(self, factor: f32) -> LineSegment2F {
-        LineSegment2F(self.0 * F32x4::splat(factor))
-    }
-
-    #[inline]
-    pub fn scale_xy(self, factors: Vector2F) -> LineSegment2F {
-        LineSegment2F(self.0 * factors.0.to_f32x4().xyxy())
     }
 
     #[inline]
@@ -239,7 +224,7 @@ impl LineSegment2F {
 
     #[inline]
     pub fn sample(self, t: f32) -> Vector2F {
-        self.from() + self.vector().scale(t)
+        self.from() + self.vector() * t
     }
 
     #[inline]
@@ -252,7 +237,7 @@ impl LineSegment2F {
         if self.is_zero_length() {
             self
         } else {
-            self + self.vector().yx().normalize().scale_xy(Vector2F::new(-distance, distance))
+            self + self.vector().yx().normalize() * vec2f(-distance, distance)
         }
     }
 
@@ -275,6 +260,29 @@ impl Sub<Vector2F> for LineSegment2F {
     #[inline]
     fn sub(self, point: Vector2F) -> LineSegment2F {
         LineSegment2F(self.0 - point.0.to_f32x4().xyxy())
+    }
+}
+
+impl Mul<Vector2F> for LineSegment2F {
+    type Output = LineSegment2F;
+    #[inline]
+    fn mul(self, factors: Vector2F) -> LineSegment2F {
+        LineSegment2F(self.0 * factors.0.to_f32x4().xyxy())
+    }
+}
+
+impl Mul<f32> for LineSegment2F {
+    type Output = LineSegment2F;
+    #[inline]
+    fn mul(self, factor: f32) -> LineSegment2F {
+        LineSegment2F(self.0 * F32x4::splat(factor))
+    }
+}
+
+impl MulAssign<Vector2F> for LineSegment2F {
+    #[inline]
+    fn mul_assign(&mut self, factors: Vector2F) {
+        *self = *self * factors
     }
 }
 

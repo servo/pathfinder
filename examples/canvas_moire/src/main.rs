@@ -119,9 +119,9 @@ impl MoireRenderer {
         let foreground_color = self.colors.sample(color_time + 0.5);
 
         // Calculate outer and inner circle centers (circle and Leminscate of Gerono respectively).
-        let window_center = self.window_size.to_f32().scale(0.5);
-        let outer_center = window_center + vec2f(sin_time, cos_time).scale(OUTER_RADIUS);
-        let inner_center = window_center + vec2f(1.0, sin_time).scale(cos_time * INNER_RADIUS);
+        let window_center = self.window_size.to_f32() * 0.5;
+        let outer_center = window_center + vec2f(sin_time, cos_time) * OUTER_RADIUS;
+        let inner_center = window_center + vec2f(1.0, sin_time) * (cos_time * INNER_RADIUS);
 
         // Clear to background color.
         self.renderer.set_options(RendererOptions { background_color: Some(background_color) });
@@ -144,12 +144,12 @@ impl MoireRenderer {
         self.frame += 1;
     }
 
-    fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, center: Vector2F) {
-        let center = center.scale(self.device_pixel_ratio);
+    fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, mut center: Vector2F) {
+        center *= self.device_pixel_ratio;
         for index in 0..CIRCLE_COUNT {
             let radius = (index + 1) as f32 * CIRCLE_SPACING * self.device_pixel_ratio;
             let mut path = Path2D::new();
-            path.ellipse(center, Vector2F::splat(radius), 0.0, 0.0, PI * 2.0);
+            path.ellipse(center, radius, 0.0, 0.0, PI * 2.0);
             canvas.stroke_path(path);
         }
     }

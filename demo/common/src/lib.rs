@@ -255,8 +255,7 @@ impl<W> DemoApp<W> where W: Window {
             transform: self.render_transform.clone().unwrap(),
             dilation: if self.ui_model.stem_darkening_effect_enabled {
                 let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
-                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                vec2f(x, y).scale(font_size)
+                vec2f(STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]) * font_size
             } else {
                 Vector2F::zero()
             },
@@ -290,15 +289,8 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::MouseMoved(new_position) if self.mouselook_enabled => {
                     let mouse_position = self.process_mouse_position(new_position);
-                    if let Camera::ThreeD {
-                        ref mut modelview_transform,
-                        ..
-                    } = self.camera
-                    {
-                        let rotation = mouse_position
-                            .relative
-                            .to_f32()
-                            .scale(MOUSELOOK_ROTATION_SPEED);
+                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
+                        let rotation = mouse_position.relative.to_f32() * MOUSELOOK_ROTATION_SPEED;
                         modelview_transform.yaw += rotation.x();
                         modelview_transform.pitch += rotation.y();
                         self.dirty = true;
@@ -312,19 +304,15 @@ impl<W> DemoApp<W> where W: Window {
                 Event::Zoom(d_dist, position) => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
                         let backing_scale_factor = self.window_size.backing_scale_factor;
-                        let position = position.to_f32().scale(backing_scale_factor);
+                        let position = position.to_f32() * backing_scale_factor;
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
                         *transform = transform.translate(-position)
-                                              .uniform_scale(scale_delta)
+                                              .scale(scale_delta)
                                               .translate(position);
                     }
                 }
                 Event::Look { pitch, yaw } => {
-                    if let Camera::ThreeD {
-                        ref mut modelview_transform,
-                        ..
-                    } = self.camera
-                    {
+                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
                         modelview_transform.pitch += pitch;
                         modelview_transform.yaw += yaw;
                     }
@@ -470,7 +458,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn process_mouse_position(&mut self, new_position: Vector2I) -> MousePosition {
-        let absolute = new_position.scale(self.window_size.backing_scale_factor as i32);
+        let absolute = new_position * self.window_size.backing_scale_factor as i32;
         let relative = absolute - self.last_mouse_position;
         self.last_mouse_position = absolute;
         MousePosition { absolute, relative }
@@ -487,10 +475,8 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.debug_ui_presenter.ui_presenter.event_queue.push(*ui_event);
         }
 
-        self.renderer.debug_ui_presenter.ui_presenter.mouse_position = self
-            .last_mouse_position
-            .to_f32()
-            .scale(self.window_size.backing_scale_factor);
+        self.renderer.debug_ui_presenter.ui_presenter.mouse_position =
+            self.last_mouse_position.to_f32() * self.window_size.backing_scale_factor;
 
         let mut ui_action = UIAction::None;
         if self.options.ui == UIVisibility::All {
@@ -605,7 +591,7 @@ impl<W> DemoApp<W> where W: Window {
             }
             UIAction::ZoomIn => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    let scale = Vector2F::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
+                    let scale = 1.0 + CAMERA_ZOOM_AMOUNT_2D;
                     let center = center_of_window(&self.window_size);
                     *transform = transform.translate(-center).scale(scale).translate(center);
                     self.dirty = true;
@@ -613,7 +599,7 @@ impl<W> DemoApp<W> where W: Window {
             }
             UIAction::ZoomOut => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    let scale = Vector2F::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
+                    let scale = 1.0 - CAMERA_ZOOM_AMOUNT_2D;
                     let center = center_of_window(&self.window_size);
                     *transform = transform.translate(-center).scale(scale).translate(center);
                     self.dirty = true;
@@ -779,7 +765,7 @@ fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, effects: Option<Effects>
                 _ => vec2i(1, 1),
             };
             let name = "Text".to_owned();
-            let render_target = RenderTarget::new(viewport_size.scale_xy(scale), name);
+            let render_target = RenderTarget::new(viewport_size * scale, name);
             Some(scene.push_render_target(render_target))
         }
     };
@@ -794,7 +780,7 @@ fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, effects: Option<Effects>
 }
 
 fn center_of_window(window_size: &WindowSize) -> Vector2F {
-    window_size.device_size().to_f32().scale(0.5)
+    window_size.device_size().to_f32() * 0.5
 }
 
 fn get_svg_building_message(built_svg: &BuiltSVG) -> String {

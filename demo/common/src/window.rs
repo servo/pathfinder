@@ -10,9 +10,9 @@
 
 //! A minimal cross-platform windowing layer.
 
-use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
@@ -90,10 +90,7 @@ pub struct WindowSize {
 impl WindowSize {
     #[inline]
     pub fn device_size(&self) -> Vector2I {
-        self.logical_size
-            .to_f32()
-            .scale(self.backing_scale_factor)
-            .to_i32()
+        (self.logical_size.to_f32() * self.backing_scale_factor).to_i32()
     }
 }
 

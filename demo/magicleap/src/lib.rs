@@ -218,7 +218,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32 /
             f32::max(svg.scene.bounds().size().x(), svg.scene.bounds().size().y());
         let transform = Transform2F::from_translation(svg.scene.bounds().size().scale(-0.5))
-            .post_mul(&Transform2F::from_scale(Vector2F::splat(scale)))
+            .post_mul(&Transform2F::from_scale(scale))
             .post_mul(&Transform2F::from_translation(viewport_size.to_f32().scale(0.5)));
 
         let render_options = RenderOptions {

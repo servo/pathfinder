@@ -53,10 +53,10 @@ impl Camera {
     }
 
     fn new_2d(view_box: RectF, viewport_size: Vector2I) -> Camera {
-        let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
-            * scale_factor_for_view_box(view_box);
-        let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
-        Camera::TwoD(Transform2F::from_uniform_scale(scale).translate(origin))
+        let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32 *
+            scale_factor_for_view_box(view_box);
+        let origin = viewport_size.to_f32() * 0.5 - view_box.size() * (scale * 0.5);
+        Camera::TwoD(Transform2F::from_scale(scale).translate(origin))
     }
 
     fn new_3d(mode: Mode, view_box: RectF, viewport_size: Vector2I) -> Camera {

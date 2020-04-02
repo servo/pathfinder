@@ -189,10 +189,9 @@ impl TreeNode {
                                                        requested_size) {
                     return Some(origin);
                 }
-                if let Some(origin) = kids[3].allocate(
-                        this_origin + Vector2I::splat(kid_size as i32),
-                        kid_size,
-                        requested_size) {
+                if let Some(origin) = kids[3].allocate(this_origin + kid_size as i32,
+                                                       kid_size,
+                                                       requested_size) {
                     return Some(origin);
                 }
 
@@ -217,7 +216,7 @@ impl TreeNode {
         }
 
         let child_size = this_size / 2;
-        let this_center = this_origin + Vector2I::splat(child_size as i32);
+        let this_center = this_origin + child_size as i32;
 
         let child_index;
         let mut child_origin = this_origin;

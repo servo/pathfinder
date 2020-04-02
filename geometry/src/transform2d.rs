@@ -14,7 +14,7 @@ use crate::line_segment::LineSegment2F;
 use crate::rect::RectF;
 use crate::transform3d::Transform4F;
 use crate::unit_vector::UnitVector;
-use crate::vector::{Vector2F, vec2f};
+use crate::vector::{IntoVector2F, Vector2F, vec2f};
 use pathfinder_simd::default::F32x4;
 use std::ops::{Mul, MulAssign, Sub};
 
@@ -25,13 +25,14 @@ pub struct Matrix2x2F(pub F32x4);
 impl Default for Matrix2x2F {
     #[inline]
     fn default() -> Matrix2x2F {
-        Self::from_scale(vec2f(1.0, 1.0))
+        Self::from_scale(1.0)
     }
 }
 
 impl Matrix2x2F {
     #[inline]
-    pub fn from_scale(scale: Vector2F) -> Matrix2x2F {
+    pub fn from_scale<S>(scale: S) -> Matrix2x2F where S: IntoVector2F {
+        let scale = scale.into_vector_2f();
         Matrix2x2F(F32x4::new(scale.x(), 0.0, 0.0, scale.y()))
     }
 
@@ -137,16 +138,12 @@ impl Default for Transform2F {
 
 impl Transform2F {
     #[inline]
-    pub fn from_scale(scale: Vector2F) -> Transform2F {
+    pub fn from_scale<S>(scale: S) -> Transform2F where S: IntoVector2F {
+        let scale = scale.into_vector_2f();
         Transform2F {
             matrix: Matrix2x2F::from_scale(scale),
             vector: Vector2F::zero(),
         }
-    }
-
-    #[inline]
-    pub fn from_uniform_scale(scale: f32) -> Transform2F {
-        Transform2F::from_scale(Vector2F::splat(scale))
     }
 
     #[inline]
@@ -171,11 +168,9 @@ impl Transform2F {
     }
 
     #[inline]
-    pub fn from_scale_rotation_translation(
-        scale: Vector2F,
-        theta: f32,
-        translation: Vector2F,
-    ) -> Transform2F {
+    pub fn from_scale_rotation_translation<S>(scale: S, theta: f32, translation: Vector2F)
+                                              -> Transform2F where S: IntoVector2F {
+        let scale = scale.into_vector_2f();
         let rotation = Transform2F::from_rotation(theta);
         let translation = Transform2F::from_translation(translation);
         Transform2F::from_scale(scale) * rotation * translation
@@ -245,13 +240,9 @@ impl Transform2F {
     }
 
     #[inline]
-    pub fn scale(&self, scale: Vector2F) -> Transform2F {
+    pub fn scale<S>(&self, scale: S) -> Transform2F where S: IntoVector2F {
+        let scale = scale.into_vector_2f();
         Transform2F::from_scale(scale) * *self
-    }
-
-    #[inline]
-    pub fn uniform_scale(&self, scale: f32) -> Transform2F {
-        self.scale(Vector2F::splat(scale))
     }
 
     /// Returns the translation part of this matrix.

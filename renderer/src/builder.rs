@@ -278,9 +278,7 @@ impl<'a> SceneBuilder<'a> {
                                 continue;
                             }
 
-                            let uv_rect =
-                                RectI::new(tile_coords, Vector2I::splat(1)).to_f32()
-                                                                           .scale_xy(uv_scale);
+                            let uv_rect = RectI::new(tile_coords, vec2i(1, 1)).to_f32() * uv_scale;
                             tiles.push(Tile::new_solid_from_texture_rect(tile_coords, uv_rect));
                         }
                     }
@@ -894,12 +892,12 @@ fn calculate_mask_uv(tile_index: u16, tile_offset: Vector2I) -> Vector2F {
     let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
     let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
     let scale = vec2f(1.0 / MASK_TILES_ACROSS as f32, 1.0 / MASK_TILES_DOWN as f32);
-    (vec2i(mask_u, mask_v) + tile_offset).to_f32().scale_xy(scale)
+    (vec2i(mask_u, mask_v) + tile_offset).to_f32() * scale
 }
 
 fn calculate_opacity_uv(draw_tiling_path_info: &DrawTilingPathInfo) -> Vector2F {
     let DrawTilingPathInfo { opacity_tile_transform, opacity, .. } = *draw_tiling_path_info;
     let texel_coord = (vec2i((opacity % 16) as i32, (opacity / 16) as i32).to_f32() +
-                       vec2f(0.5, 0.5)).scale(1.0 / 16.0);
+                       vec2f(0.5, 0.5)) * (1.0 / 16.0);
     opacity_tile_transform * texel_coord
 }

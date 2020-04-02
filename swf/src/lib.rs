@@ -13,7 +13,7 @@ use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Outline, Contour};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
-use pathfinder_geometry::vector::{Vector2F, vec2f};
+use pathfinder_geometry::vector::vec2f;
 use pathfinder_renderer::scene::{DrawPath, Scene};
 
 use swf_types::tags::SetBackgroundColor;

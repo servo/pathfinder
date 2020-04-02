@@ -10,9 +10,9 @@
 
 //! 2D axis-aligned rectangles, optimized with SIMD.
 
-use crate::vector::{Vector2F, Vector2I};
+use crate::vector::{IntoVector2F, Vector2F, Vector2I};
 use pathfinder_simd::default::{F32x4, I32x4};
-use std::ops::Add;
+use std::ops::{Add, Mul};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct RectF(pub F32x4);
@@ -158,17 +158,7 @@ impl RectF {
 
     #[inline]
     pub fn center(self) -> Vector2F {
-        self.origin() + self.size().scale(0.5)
-    }
-
-    #[inline]
-    pub fn scale(self, factor: f32) -> RectF {
-        RectF(self.0 * F32x4::splat(factor))
-    }
-
-    #[inline]
-    pub fn scale_xy(self, factors: Vector2F) -> RectF {
-        RectF(self.0 * factors.0.concat_xy_xy(factors.0))
+        self.origin() + self.size() * 0.5
     }
 
     /// Rounds all points to the nearest integer.
@@ -183,12 +173,14 @@ impl RectF {
     }
 
     #[inline]
-    pub fn dilate(self, amount: Vector2F) -> RectF {
+    pub fn dilate<A>(self, amount: A) -> RectF where A: IntoVector2F {
+        let amount = amount.into_vector_2f();
         RectF::from_points(self.origin() - amount, self.lower_right() + amount)
     }
 
     #[inline]
-    pub fn contract(self, amount: Vector2F) -> RectF {
+    pub fn contract<A>(self, amount: A) -> RectF where A: IntoVector2F {
+        let amount = amount.into_vector_2f();
         RectF::from_points(self.origin() + amount, self.lower_right() - amount)
     }
 
@@ -203,6 +195,22 @@ impl Add<Vector2F> for RectF {
     #[inline]
     fn add(self, other: Vector2F) -> RectF {
         RectF::new(self.origin() + other, self.size())
+    }
+}
+
+impl Mul<Vector2F> for RectF {
+    type Output = RectF;
+    #[inline]
+    fn mul(self, factors: Vector2F) -> RectF {
+        RectF(self.0 * factors.0.concat_xy_xy(factors.0))
+    }
+}
+
+impl Mul<f32> for RectF {
+    type Output = RectF;
+    #[inline]
+    fn mul(self, factor: f32) -> RectF {
+        RectF(self.0 * F32x4::splat(factor))
     }
 }
 
@@ -319,7 +327,7 @@ impl RectI {
     #[inline]
     pub fn contains_point(&self, point: Vector2I) -> bool {
         // self.origin <= point && point <= self.lower_right - 1
-        let lower_right = self.lower_right() - Vector2I::splat(1);
+        let lower_right = self.lower_right() - 1;
         self.origin()
             .0
             .concat_xy_xy(point.0)

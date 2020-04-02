@@ -33,7 +33,7 @@ impl<'a> ContourDilator<'a> {
 
     pub fn dilate(&mut self) {
         // Determine orientation.
-        let scale = self.amount.scale_xy(match self.orientation {
+        let scale = self.amount * (match self.orientation {
             Orientation::Ccw => vec2f( 1.0, -1.0),
             Orientation::Cw  => vec2f(-1.0,  1.0),
         });
@@ -86,7 +86,7 @@ impl<'a> ContourDilator<'a> {
             let scaled_bisector = if bisector_length == 0.0 {
                 Vector2F::zero()
             } else {
-                bisector.scale_xy(scale).scale(1.0 / bisector_length)
+                bisector * scale * (1.0 / bisector_length)
             };
             let new_position = position - scaled_bisector;
 

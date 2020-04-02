@@ -16,7 +16,7 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::util::EPSILON;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use std::f32;
 
 const TOLERANCE: f32 = 0.01;
@@ -139,10 +139,10 @@ impl<'a> OutlineStrokeToFill<'a> {
             LineCap::Butt => unreachable!(),
 
             LineCap::Square => {
-                let offset = gradient.scale(width * 0.5);
+                let offset = gradient * (width * 0.5);
 
                 let p2 = p1 + offset;
-                let p3 = p2 + gradient.yx().scale_xy(Vector2F::new(-width, width));
+                let p3 = p2 + gradient.yx() * vec2f(-width, width);
                 let p4 = p3 - offset;
 
                 contour.push_endpoint(p2);
@@ -151,9 +151,9 @@ impl<'a> OutlineStrokeToFill<'a> {
             }
 
             LineCap::Round => {
-                let scale = Vector2F::splat(width * 0.5);
-                let offset = gradient.yx().scale_xy(Vector2F::new(-1.0, 1.0));
-                let translation = p1 + offset.scale(width * 0.5);
+                let scale = width * 0.5;
+                let offset = gradient.yx() * vec2f(-1.0, 1.0);
+                let translation = p1 + offset * (width * 0.5);
                 let transform = Transform2F::from_scale(scale).translate(translation);
                 let chord = LineSegment2F::new(-offset, offset);
                 contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
@@ -395,7 +395,7 @@ impl Contour {
                 }
             }
             LineJoin::Round => {
-                let scale = Vector2F::splat(distance.abs());
+                let scale = distance.abs();
                 let transform = Transform2F::from_scale(scale).translate(join_point);
                 let chord_from = (prev_tangent.to() - join_point).normalize();
                 let chord_to = (next_tangent.to() - join_point).normalize();

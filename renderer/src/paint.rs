@@ -297,8 +297,7 @@ impl Palette {
                 Paint::Gradient(Gradient { radii: Some(_), .. }) => {
                     let texture_origin_uv =
                         rect_to_inset_uv(metadata.location.rect, texture_scale).origin();
-                    let gradient_tile_scale =
-                        texture_scale.scale((GRADIENT_TILE_LENGTH - 1) as f32);
+                    let gradient_tile_scale = texture_scale * (GRADIENT_TILE_LENGTH - 1) as f32;
                     Transform2F {
                         matrix: Matrix2x2F::from_scale(gradient_tile_scale),
                         vector: texture_origin_uv,
@@ -320,7 +319,7 @@ impl Palette {
                     let texture_origin_uv = rect_to_uv(metadata.location.rect,
                                                        texture_scale).lower_left();
                     Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(texture_scale.scale_xy(vec2f(1.0, -1.0))) *
+                        Transform2F::from_scale(texture_scale * vec2f(1.0, -1.0)) *
                         transform.inverse()
                 }
             }
@@ -372,7 +371,7 @@ impl PaintMetadata {
     // TODO(pcwalton): Apply clamp/repeat to tile rect.
     pub(crate) fn calculate_tex_coords(&self, tile_position: Vector2I) -> Vector2F {
         let tile_size = vec2i(TILE_WIDTH as i32, TILE_HEIGHT as i32);
-        let position = tile_position.scale_xy(tile_size).to_f32();
+        let position = (tile_position * tile_size).to_f32();
         let tex_coords = self.texture_transform * position;
         tex_coords
     }
@@ -394,11 +393,11 @@ impl PaintMetadata {
 }
 
 fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
-    rect.to_f32().scale_xy(texture_scale)
+    rect.to_f32() * texture_scale
 }
 
 fn rect_to_inset_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
-    rect_to_uv(rect, texture_scale).contract(texture_scale.scale(0.5))
+    rect_to_uv(rect, texture_scale).contract(texture_scale * 0.5)
 }
 
 // Opacity allocation
@@ -424,7 +423,7 @@ impl OpacityTileBuilder {
 
     fn tile_transform(&self, allocator: &TextureAllocator) -> Transform2F {
         let texture_scale = allocator.page_scale(self.tile_location.page);
-        let matrix = Matrix2x2F::from_scale(texture_scale.scale(16.0));
+        let matrix = Matrix2x2F::from_scale(texture_scale * 16.0);
         let vector = rect_to_uv(self.tile_location.rect, texture_scale).origin();
         Transform2F { matrix, vector }
     }
@@ -548,8 +547,7 @@ impl GradientTileBuilder {
             render_commands.push(RenderCommand::UploadTexelData {
                 texels: Arc::new(tile.texels),
                 location: TextureLocation {
-                    rect: RectI::new(Vector2I::zero(),
-                                     Vector2I::splat(GRADIENT_TILE_LENGTH as i32)),
+                    rect: RectI::new(vec2i(0, 0), Vector2I::splat(GRADIENT_TILE_LENGTH as i32)),
                     page: tile.page,
                 },
             });

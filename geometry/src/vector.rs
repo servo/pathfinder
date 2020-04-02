@@ -12,7 +12,7 @@
 
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
 use std::hash::{Hash, Hasher};
-use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
@@ -91,16 +91,6 @@ impl Vector2F {
     }
 
     #[inline]
-    pub fn scale(self, x: f32) -> Vector2F {
-        Vector2F(self.0 * F32x2::splat(x))
-    }
-
-    #[inline]
-    pub fn scale_xy(self, factors: Vector2F) -> Vector2F {
-        Vector2F(self.0 * factors.0)
-    }
-
-    #[inline]
     pub fn floor(self) -> Vector2F {
         Vector2F(self.0.floor())
     }
@@ -132,7 +122,7 @@ impl Vector2F {
     /// Treats this point as a vector and normalizes it.
     #[inline]
     pub fn normalize(self) -> Vector2F {
-        self.scale(1.0 / self.length())
+        self * (1.0 / self.length())
     }
 
     /// Swaps y and x.
@@ -157,7 +147,7 @@ impl Vector2F {
 
     #[inline]
     pub fn lerp(self, other: Vector2F, t: f32) -> Vector2F {
-        self + (other - self).scale(t)
+        self + (other - self) * t
     }
 
     #[inline]
@@ -187,6 +177,14 @@ impl Add<Vector2F> for Vector2F {
     }
 }
 
+impl Add<f32> for Vector2F {
+    type Output = Vector2F;
+    #[inline]
+    fn add(self, other: f32) -> Vector2F {
+        self + Vector2F::splat(other)
+    }
+}
+
 impl AddAssign<Vector2F> for Vector2F {
     #[inline]
     fn add_assign(&mut self, other: Vector2F) {
@@ -210,6 +208,28 @@ impl Mul<Vector2F> for Vector2F {
     }
 }
 
+impl Mul<f32> for Vector2F {
+    type Output = Vector2F;
+    #[inline]
+    fn mul(self, other: f32) -> Vector2F {
+        self * Vector2F::splat(other)
+    }
+}
+
+impl MulAssign<Vector2F> for Vector2F {
+    #[inline]
+    fn mul_assign(&mut self, other: Vector2F) {
+        *self = *self * other
+    }
+}
+
+impl MulAssign<f32> for Vector2F {
+    #[inline]
+    fn mul_assign(&mut self, other: f32) {
+        *self = *self * other
+    }
+}
+
 impl Div<Vector2F> for Vector2F {
     type Output = Vector2F;
     #[inline]
@@ -223,6 +243,30 @@ impl Neg for Vector2F {
     #[inline]
     fn neg(self) -> Vector2F {
         Vector2F(-self.0)
+    }
+}
+
+/// Either a scalar or a `Vector2F`.
+/// 
+/// Scalars will be automatically splatted (i.e. `x` becomes `vec2f(x, x)`).
+/// 
+/// Be judicious with the use of this trait. Only use it if it will aid readability without the
+/// potential to introduce bugs.
+pub trait IntoVector2F {
+    fn into_vector_2f(self) -> Vector2F;
+}
+
+impl IntoVector2F for Vector2F {
+    #[inline]
+    fn into_vector_2f(self) -> Vector2F {
+        self
+    }
+}
+
+impl IntoVector2F for f32 {
+    #[inline]
+    fn into_vector_2f(self) -> Vector2F {
+        Vector2F::splat(self)
     }
 }
 
@@ -277,16 +321,6 @@ impl Vector2I {
     }
 
     #[inline]
-    pub fn scale(self, factor: i32) -> Vector2I {
-        Vector2I(self.0 * I32x2::splat(factor))
-    }
-
-    #[inline]
-    pub fn scale_xy(self, factors: Vector2I) -> Vector2I {
-        Vector2I(self.0 * factors.0)
-    }
-
-    #[inline]
     pub fn to_f32(self) -> Vector2F {
         Vector2F(self.0.to_f32x2())
     }
@@ -303,6 +337,14 @@ impl Add<Vector2I> for Vector2I {
     #[inline]
     fn add(self, other: Vector2I) -> Vector2I {
         Vector2I(self.0 + other.0)
+    }
+}
+
+impl Add<i32> for Vector2I {
+    type Output = Vector2I;
+    #[inline]
+    fn add(self, other: i32) -> Vector2I {
+        self + Vector2I::splat(other)
     }
 }
 
@@ -326,6 +368,30 @@ impl Sub<Vector2I> for Vector2I {
     #[inline]
     fn sub(self, other: Vector2I) -> Vector2I {
         Vector2I(self.0 - other.0)
+    }
+}
+
+impl Sub<i32> for Vector2I {
+    type Output = Vector2I;
+    #[inline]
+    fn sub(self, other: i32) -> Vector2I {
+        self - Vector2I::splat(other)
+    }
+}
+
+impl Mul<Vector2I> for Vector2I {
+    type Output = Vector2I;
+    #[inline]
+    fn mul(self, other: Vector2I) -> Vector2I {
+        Vector2I(self.0 * other.0)
+    }
+}
+
+impl Mul<i32> for Vector2I {
+    type Output = Vector2I;
+    #[inline]
+    fn mul(self, other: i32) -> Vector2I {
+        self * Vector2I::splat(other)
     }
 }
 

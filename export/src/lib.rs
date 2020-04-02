@@ -100,8 +100,8 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
                         let current = segment.baseline.from();
                         let c = segment.ctrl.from();
                         let p = segment.baseline.to();
-                        let c1 = Vector2F::splat(2./3.) * c + Vector2F::splat(1./3.) * current;
-                        let c2 = Vector2F::splat(2./3.) * c + Vector2F::splat(1./3.) * p;
+                        let c1 = c * (2.0 / 3.0) + current * (1.0 / 3.0);
+                        let c2 = c * (2.0 / 3.0) + p * (1.0 / 3.0);
                         pdf.cubic_to(c1, c2, p);
                     }
                     SegmentKind::Cubic => {
@@ -166,8 +166,8 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
                         let current = segment.baseline.from();
                         let c = segment.ctrl.from();
                         let p = segment.baseline.to();
-                        let c1 = Vector2F::splat(2. / 3.) * c + Vector2F::splat(1. / 3.) * current;
-                        let c2 = Vector2F::splat(2. / 3.) * c + Vector2F::splat(1. / 3.) * p;
+                        let c1 = c * (2.0 / 3.0) + current * (1.0 / 3.0);
+                        let c2 = c * (2.0 / 3.0) + p * (1.0 / 3.0);
                         writeln!(writer, "{} {} {} curveto", P(c1), P(c2), P(p))?;
                     }
                     SegmentKind::Cubic => {

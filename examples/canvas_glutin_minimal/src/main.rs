@@ -18,7 +18,7 @@ use glutin::window::WindowBuilder;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
+use pathfinder_geometry::vector::{vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;

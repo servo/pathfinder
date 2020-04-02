@@ -103,7 +103,7 @@ impl Segment {
         let p0 = Vector2F::splat(SQRT_2 * 0.5);
         let p1 = vec2f(-SQRT_2 / 6.0 + 4.0 / 3.0, 7.0 * SQRT_2 / 6.0 - 4.0 / 3.0);
         let flip = vec2f(1.0, -1.0);
-        let (p2, p3) = (p1.scale_xy(flip), p0.scale_xy(flip));
+        let (p2, p3) = (p1 * flip, p0 * flip);
         Segment::cubic(LineSegment2F::new(p3, p0), LineSegment2F::new(p2, p1))
     }
 
@@ -150,7 +150,7 @@ impl Segment {
         let mut new_segment = *self;
         let p1_2 = self.ctrl.from() + self.ctrl.from();
         new_segment.ctrl = LineSegment2F::new(self.baseline.from() + p1_2,
-                                              p1_2 + self.baseline.to()).scale(1.0 / 3.0);
+                                              p1_2 + self.baseline.to()) * (1.0 / 3.0);
         new_segment.kind = SegmentKind::Cubic;
         new_segment
     }
