@@ -112,11 +112,21 @@ pub struct CanvasRenderingContext2D {
 }
 
 impl CanvasRenderingContext2D {
-    // Finalization
+    // Canvas accessors
+
+    #[inline]
+    pub fn canvas(&self) -> &Canvas {
+        &self.canvas
+    }
 
     #[inline]
     pub fn into_canvas(self) -> Canvas {
         self.canvas
+    }
+
+    #[inline]
+    pub fn font_context(&self) -> CanvasFontContext {
+        self.font_context.clone()
     }
 
     // Drawing rectangles
@@ -413,6 +423,30 @@ impl CanvasRenderingContext2D {
         self.current_state.global_composite_operation = new_composite_operation;
     }
 
+    // Drawing images
+
+    #[inline]
+    pub fn draw_image<I, L>(&mut self, image: I, dest_location: L)
+                            where I: CanvasImageSource, L: CanvasImageDestLocation {
+        let pattern = image.to_pattern(self, Transform2F::default());
+        let src_rect = RectF::new(vec2f(0.0, 0.0), pattern.size().to_f32());
+        self.draw_subimage(pattern, src_rect, dest_location)
+    }
+
+    pub fn draw_subimage<I, L>(&mut self, image: I, src_location: RectF, dest_location: L)
+                               where I: CanvasImageSource, L: CanvasImageDestLocation {
+        let dest_size = dest_location.size().unwrap_or(src_location.size());
+        let scale = dest_size / src_location.size();
+        let offset = dest_location.origin() - src_location.origin();
+        let transform = Transform2F::from_scale(scale).translate(offset);
+
+        let pattern = image.to_pattern(self, transform);
+        let old_fill_paint = self.current_state.fill_paint.clone();
+        self.set_fill_style(pattern);
+        self.fill_rect(RectF::new(dest_location.origin(), dest_size));
+        self.current_state.fill_paint = old_fill_paint;
+    }
+
     // Image smoothing
 
     #[inline]
@@ -451,15 +485,19 @@ impl CanvasRenderingContext2D {
 
     // Extensions
 
-    pub fn create_pattern_from_canvas(&mut self, canvas: Canvas) -> Pattern {
+    pub fn create_pattern_from_canvas(&mut self, canvas: Canvas, transform: Transform2F)
+                                      -> Pattern {
         let subscene = canvas.into_scene();
         let subscene_size = subscene.view_box().size().ceil().to_i32();
         let render_target = RenderTarget::new(subscene_size, String::new());
         let render_target_id = self.canvas.scene.push_render_target(render_target);
         self.canvas.scene.append_scene(subscene);
         self.canvas.scene.pop_render_target();
-        let pattern_source = PatternSource::RenderTarget(render_target_id);
-        Pattern::new(pattern_source, Transform2F::default(), PatternFlags::empty())
+        let pattern_source = PatternSource::RenderTarget {
+            id: render_target_id,
+            size: subscene_size,
+        };
+        Pattern::new(pattern_source, transform, PatternFlags::empty())
     }
 }
 
@@ -780,6 +818,54 @@ pub enum ImageSmoothingQuality {
     Low,
     Medium,
     High,
+}
+
+pub trait CanvasImageSource {
+    fn to_pattern(self, dest_context: &mut CanvasRenderingContext2D, transform: Transform2F)
+                  -> Pattern;
+}
+
+pub trait CanvasImageDestLocation {
+    fn origin(&self) -> Vector2F;
+    fn size(&self) -> Option<Vector2F>;
+}
+
+impl CanvasImageSource for Pattern {
+    #[inline]
+    fn to_pattern(mut self, _: &mut CanvasRenderingContext2D, transform: Transform2F) -> Pattern {
+        self.transform(transform);
+        self
+    }
+}
+
+impl CanvasImageSource for Canvas {
+    #[inline]
+    fn to_pattern(self, dest_context: &mut CanvasRenderingContext2D, transform: Transform2F)
+                  -> Pattern {
+        dest_context.create_pattern_from_canvas(self, transform)
+    }
+}
+
+impl CanvasImageDestLocation for RectF {
+    #[inline]
+    fn origin(&self) -> Vector2F {
+        RectF::origin(*self)
+    }
+    #[inline]
+    fn size(&self) -> Option<Vector2F> {
+        Some(RectF::size(*self))
+    }
+}
+
+impl CanvasImageDestLocation for Vector2F {
+    #[inline]
+    fn origin(&self) -> Vector2F {
+        *self
+    }
+    #[inline]
+    fn size(&self) -> Option<Vector2F> {
+        None
+    }
 }
 
 impl Debug for Path2D {

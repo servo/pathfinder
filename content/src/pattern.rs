@@ -34,7 +34,10 @@ pub struct Pattern {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum PatternSource {
     Image(Image),
-    RenderTarget(RenderTargetId),
+    RenderTarget {
+        id: RenderTargetId,
+        size: Vector2I,
+    }
 }
 
 /// RGBA, non-premultiplied.
@@ -60,6 +63,19 @@ impl Pattern {
     #[inline]
     pub fn new(source: PatternSource, transform: Transform2F, flags: PatternFlags) -> Pattern {
         Pattern { source, transform, flags }
+    }
+
+    #[inline]
+    pub fn transform(&mut self, transform: Transform2F) {
+        self.transform *= transform
+    }
+
+    #[inline]
+    pub fn size(&self) -> Vector2I {
+        match self.source {
+            PatternSource::Image(ref image) => image.size(),
+            PatternSource::RenderTarget { size, .. } => size,
+        }
     }
 }
 
@@ -104,7 +120,7 @@ impl PatternSource {
     pub fn is_opaque(&self) -> bool {
         match *self {
             PatternSource::Image(ref image) => image.is_opaque(),
-            PatternSource::RenderTarget(_) => {
+            PatternSource::RenderTarget { .. } => {
                 // TODO(pcwalton): Maybe do something smarter here?
                 false
             }
