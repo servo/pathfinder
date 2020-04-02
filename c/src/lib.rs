@@ -13,8 +13,8 @@
 use font_kit::handle::Handle;
 use foreign_types::ForeignTypeRef;
 use gl;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin, Path2D};
-use pathfinder_canvas::{TextAlign, TextMetrics};
+use pathfinder_canvas::{Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
+use pathfinder_canvas::{Path2D, TextAlign, TextMetrics};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::ArcDirection;
@@ -196,8 +196,7 @@ pub type PFRenderTransformRef = *mut RenderTransform;
 pub unsafe extern "C" fn PFCanvasCreate(font_context: PFCanvasFontContextRef,
                                         size: *const PFVector2F)
                                         -> PFCanvasRef {
-    Box::into_raw(Box::new(CanvasRenderingContext2D::new((*font_context).clone(),
-                                                         (*size).to_rust())))
+    Box::into_raw(Box::new(Canvas::new((*size).to_rust()).get_context_2d((*font_context).clone())))
 }
 
 #[no_mangle]
@@ -235,7 +234,7 @@ pub unsafe extern "C" fn PFCanvasFontContextRelease(font_context: PFCanvasFontCo
 /// the scene is destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreateScene(canvas: PFCanvasRef) -> PFSceneRef {
-    Box::into_raw(Box::new(Box::from_raw(canvas).into_scene()))
+    Box::into_raw(Box::new(Box::from_raw(canvas).into_canvas().into_scene()))
 }
 
 // Drawing rectangles

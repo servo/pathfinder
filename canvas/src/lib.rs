@@ -16,7 +16,7 @@ use pathfinder_content::effects::{BlendMode, BlurDirection, Effects, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
-use pathfinder_content::pattern::{Pattern, PatternFlags};
+use pathfinder_content::pattern::{Pattern, PatternFlags, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
@@ -43,7 +43,6 @@ use crate::text::FontCollection;
 #[cfg(feature = "pf-text")]
 pub use text::TextMetrics;
 
-
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 const DEFAULT_FONT_SIZE: f32 = 10.0;
 
@@ -68,8 +67,44 @@ mod text {
 #[cfg(test)]
 mod tests;
 
-pub struct CanvasRenderingContext2D {
+pub struct Canvas {
     scene: Scene,
+}
+
+impl Canvas {
+    #[inline]
+    pub fn new(size: Vector2F) -> Canvas {
+        let mut scene = Scene::new();
+        scene.set_view_box(RectF::new(Vector2F::zero(), size));
+        Canvas::from_scene(scene)
+    }
+
+    #[inline]
+    pub fn from_scene(scene: Scene) -> Canvas {
+        Canvas { scene }
+    }
+
+    #[inline]
+    pub fn into_scene(self) -> Scene {
+        self.scene
+    }
+
+    pub fn get_context_2d(self, font_context: CanvasFontContext) -> CanvasRenderingContext2D {
+        #[cfg(feature = "pf-text")]
+        let default_font_collection = font_context.default_font_collection.clone();
+        #[cfg(not(feature = "pf-text"))]
+        let default_font_collection = Arc::new(FontCollection);
+        CanvasRenderingContext2D {
+            canvas: self,
+            current_state: State::default(default_font_collection),
+            saved_states: vec![],
+            font_context,
+        }
+    }
+}
+
+pub struct CanvasRenderingContext2D {
+    canvas: Canvas,
     current_state: State,
     saved_states: Vec<State>,
     #[allow(dead_code)]
@@ -77,29 +112,11 @@ pub struct CanvasRenderingContext2D {
 }
 
 impl CanvasRenderingContext2D {
-    #[inline]
-    pub fn new(font_context: CanvasFontContext, size: Vector2F) -> CanvasRenderingContext2D {
-        let mut scene = Scene::new();
-        scene.set_view_box(RectF::new(Vector2F::zero(), size));
-        CanvasRenderingContext2D::from_scene(font_context, scene)
-    }
-
-    pub fn from_scene(font_context: CanvasFontContext, scene: Scene) -> CanvasRenderingContext2D {
-        #[cfg(feature = "pf-text")]
-        let default_font_collection = font_context.default_font_collection.clone();
-        #[cfg(not(feature = "pf-text"))]
-        let default_font_collection = Arc::new(FontCollection);
-        CanvasRenderingContext2D {
-            scene,
-            current_state: State::default(default_font_collection),
-            saved_states: vec![],
-            font_context,
-        }
-    }
+    // Finalization
 
     #[inline]
-    pub fn into_scene(self) -> Scene {
-        self.scene
+    pub fn into_canvas(self) -> Canvas {
+        self.canvas
     }
 
     // Drawing rectangles
@@ -124,14 +141,14 @@ impl CanvasRenderingContext2D {
 
         let paint = Paint::transparent_black();
         let paint = self.current_state.resolve_paint(&paint);
-        let paint_id = self.scene.push_paint(&paint);
+        let paint_id = self.canvas.scene.push_paint(&paint);
 
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
         let mut path = DrawPath::new(outline, paint_id);
         path.set_blend_mode(BlendMode::Clear);
-        self.scene.push_path(path);
+        self.canvas.scene.push_path(path);
     }
 
     // Line styles
@@ -225,14 +242,14 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn fill_path(&mut self, path: Path2D, fill_rule: FillRule) {
         let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
-        let paint_id = self.scene.push_paint(&paint);
+        let paint_id = self.canvas.scene.push_paint(&paint);
         self.push_path(path.into_outline(), paint_id, fill_rule);
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
         let paint = self.current_state.resolve_paint(&self.current_state.stroke_paint);
-        let paint_id = self.scene.push_paint(&paint);
+        let paint_id = self.canvas.scene.push_paint(&paint);
 
         let mut stroke_style = self.current_state.resolve_stroke_style();
 
@@ -267,7 +284,7 @@ impl CanvasRenderingContext2D {
 
         let mut clip_path = ClipPath::new(outline);
         clip_path.set_fill_rule(fill_rule);
-        let clip_path_id = self.scene.push_clip_path(clip_path);
+        let clip_path_id = self.canvas.scene.push_clip_path(clip_path);
 
         self.current_state.clip_path = Some(clip_path_id);
     }
@@ -282,7 +299,7 @@ impl CanvasRenderingContext2D {
             let shadow_blur_render_target_ids = self.push_shadow_blur_render_targets_if_needed();
 
             let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
-            let paint_id = self.scene.push_paint(&paint);
+            let paint_id = self.canvas.scene.push_paint(&paint);
 
             let mut outline = outline.clone();
             outline.transform(&(Transform2F::from_translation(self.current_state.shadow_offset) *
@@ -293,7 +310,7 @@ impl CanvasRenderingContext2D {
             path.set_fill_rule(fill_rule);
             path.set_blend_mode(blend_mode);
             path.set_opacity(opacity);
-            self.scene.push_path(path);
+            self.canvas.scene.push_path(path);
 
             self.composite_shadow_blur_render_targets_if_needed(shadow_blur_render_target_ids);
         }
@@ -305,7 +322,7 @@ impl CanvasRenderingContext2D {
         path.set_fill_rule(fill_rule);
         path.set_blend_mode(blend_mode);
         path.set_opacity(opacity);
-        self.scene.push_path(path);
+        self.canvas.scene.push_path(path);
     }
 
     fn push_shadow_blur_render_targets_if_needed(&mut self) -> Option<[RenderTargetId; 2]> {
@@ -313,11 +330,11 @@ impl CanvasRenderingContext2D {
             return None;
         }
 
-        let render_target_size = self.scene.view_box().size().ceil().to_i32();
-        let render_target_id_a =
-            self.scene.push_render_target(RenderTarget::new(render_target_size, String::new()));
-        let render_target_id_b =
-            self.scene.push_render_target(RenderTarget::new(render_target_size, String::new()));
+        let render_target_size = self.canvas.scene.view_box().size().ceil().to_i32();
+        let render_target_a = RenderTarget::new(render_target_size, String::new());
+        let render_target_id_a = self.canvas.scene.push_render_target(render_target_a);
+        let render_target_b = RenderTarget::new(render_target_size, String::new());
+        let render_target_id_b = self.canvas.scene.push_render_target(render_target_b);
         Some([render_target_id_a, render_target_id_b])
     }
 
@@ -330,13 +347,13 @@ impl CanvasRenderingContext2D {
         };
 
         let sigma = self.current_state.shadow_blur * 0.5;
-        self.scene.pop_render_target();
-        self.scene.draw_render_target(render_target_ids[1], Effects::new(Filter::Blur {
+        self.canvas.scene.pop_render_target();
+        self.canvas.scene.draw_render_target(render_target_ids[1], Effects::new(Filter::Blur {
             direction: BlurDirection::X,
             sigma,
         }));
-        self.scene.pop_render_target();
-        self.scene.draw_render_target(render_target_ids[0], Effects::new(Filter::Blur {
+        self.canvas.scene.pop_render_target();
+        self.canvas.scene.draw_render_target(render_target_ids[0], Effects::new(Filter::Blur {
             direction: BlurDirection::Y,
             sigma,
         }));
@@ -430,6 +447,19 @@ impl CanvasRenderingContext2D {
         if let Some(state) = self.saved_states.pop() {
             self.current_state = state;
         }
+    }
+
+    // Extensions
+
+    pub fn create_pattern_from_canvas(&mut self, canvas: Canvas) -> Pattern {
+        let subscene = canvas.into_scene();
+        let subscene_size = subscene.view_box().size().ceil().to_i32();
+        let render_target = RenderTarget::new(subscene_size, String::new());
+        let render_target_id = self.canvas.scene.push_render_target(render_target);
+        self.canvas.scene.append_scene(subscene);
+        self.canvas.scene.pop_render_target();
+        let pattern_source = PatternSource::RenderTarget(render_target_id);
+        Pattern::new(pattern_source, Transform2F::default(), PatternFlags::empty())
     }
 }
 

@@ -15,7 +15,7 @@ use glutin::{ContextBuilder, GlProfile, GlRequest};
 use glutin::event_loop::{ControlFlow, EventLoop};
 use glutin::event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent};
 use glutin::window::WindowBuilder;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::{Canvas, CanvasFontContext, Path2D};
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{vec2f, vec2i};
@@ -54,8 +54,8 @@ fn main() {
                                      RendererOptions { background_color: Some(ColorF::white()) });
 
     // Make a canvas. We're going to draw a house.
-    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::from_system_source(),
-                                                   window_size.to_f32());
+    let font_context = CanvasFontContext::from_system_source();
+    let mut canvas = Canvas::new(window_size.to_f32()).get_context_2d(font_context);
 
     // Set line width.
     canvas.set_line_width(10.0);
@@ -75,7 +75,7 @@ fn main() {
     canvas.stroke_path(path);
 
     // Render the canvas to screen.
-    let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
+    let scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(), RayonExecutor);
     scene.build_and_render(&mut renderer, BuildOptions::default());
     gl_context.swap_buffers().unwrap();
 

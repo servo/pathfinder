@@ -50,7 +50,7 @@ pub enum Paint {
     Pattern(Pattern),
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PaintId(pub u16);
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

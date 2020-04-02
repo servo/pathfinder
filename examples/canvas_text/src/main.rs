@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use font_kit::handle::Handle;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, TextAlign};
+use pathfinder_canvas::{Canvas, CanvasFontContext, TextAlign};
 use pathfinder_color::ColorF;
 use pathfinder_geometry::vector::{vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -61,7 +61,7 @@ fn main() {
     let font_context = CanvasFontContext::from_fonts(iter::once(font));
 
     // Make a canvas.
-    let mut canvas = CanvasRenderingContext2D::new(font_context, window_size.to_f32());
+    let mut canvas = Canvas::new(window_size.to_f32()).get_context_2d(font_context);
 
     // Draw the text.
     canvas.set_font("Overpass-Regular");
@@ -71,7 +71,7 @@ fn main() {
     canvas.stroke_text("Goodbye Pathfinder!", vec2f(608.0, 464.0));
 
     // Render the canvas to screen.
-    let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
+    let scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(), RayonExecutor);
     scene.build_and_render(&mut renderer, BuildOptions::default());
     window.gl_swap_window();
 

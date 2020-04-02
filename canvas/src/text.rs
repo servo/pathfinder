@@ -26,12 +26,12 @@ use std::sync::Arc;
 
 impl CanvasRenderingContext2D {
     pub fn fill_text(&mut self, string: &str, position: Vector2F) {
-        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        let paint_id = self.canvas.scene.push_paint(&self.current_state.fill_paint);
         self.fill_or_stroke_text(string, position, paint_id, TextRenderMode::Fill);
     }
 
     pub fn stroke_text(&mut self, string: &str, position: Vector2F) {
-        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        let paint_id = self.canvas.scene.push_paint(&self.current_state.stroke_paint);
         let render_mode = TextRenderMode::Stroke(self.current_state.resolve_stroke_style());
         self.fill_or_stroke_text(string, position, paint_id, render_mode);
     }
@@ -41,13 +41,13 @@ impl CanvasRenderingContext2D {
     }
 
     pub fn fill_layout(&mut self, layout: &Layout, transform: Transform2F) {
-        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
-        drop(self.scene.push_layout(&layout,
-                                    &TextStyle { size: self.current_state.font_size },
-                                    &(transform * self.current_state.transform),
-                                    TextRenderMode::Fill,
-                                    HintingOptions::None,
-                                    paint_id));
+        let paint_id = self.canvas.scene.push_paint(&self.current_state.fill_paint);
+        drop(self.canvas.scene.push_layout(&layout,
+                                           &TextStyle { size: self.current_state.font_size },
+                                           &(transform * self.current_state.transform),
+                                           TextRenderMode::Fill,
+                                           HintingOptions::None,
+                                           paint_id));
     }
 
     fn fill_or_stroke_text(&mut self,
@@ -77,12 +77,12 @@ impl CanvasRenderingContext2D {
         let transform = self.current_state.transform * Transform2F::from_translation(position);
 
         // TODO(pcwalton): Report errors.
-        drop(self.scene.push_layout(&layout,
-                                    &TextStyle { size: self.current_state.font_size },
-                                    &transform,
-                                    render_mode,
-                                    HintingOptions::None,
-                                    paint_id));
+        drop(self.canvas.scene.push_layout(&layout,
+                                           &TextStyle { size: self.current_state.font_size },
+                                           &transform,
+                                           render_mode,
+                                           HintingOptions::None,
+                                           paint_id));
     }
 
     fn layout_text(&self, string: &str) -> Layout {

@@ -22,6 +22,7 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2I, vec2f};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Scene {
@@ -83,6 +84,51 @@ impl Scene {
 
     pub fn draw_render_target(&mut self, render_target: RenderTargetId, effects: Effects) {
         self.display_list.push(DisplayItem::DrawRenderTarget { render_target, effects });
+    }
+
+    pub fn append_scene(&mut self, scene: Scene) {
+        // Merge render targets.
+        let mut render_target_mapping = HashMap::new();
+        for (old_render_target_index, render_target) in scene.palette   
+                                                             .render_targets
+                                                             .into_iter()
+                                                             .enumerate() {
+            let old_render_target_id = RenderTargetId(old_render_target_index as u32);
+            let new_render_target_id = self.palette.push_render_target(render_target);
+            render_target_mapping.insert(old_render_target_id, new_render_target_id);
+        }
+
+        // Merge paints.
+        let mut paint_mapping = HashMap::new();
+        for (old_paint_index, paint) in scene.palette.paints.iter().enumerate() {
+            let old_paint_id = PaintId(old_paint_index as u16);
+            let new_paint_id = self.palette.push_paint(&paint);
+            paint_mapping.insert(old_paint_id, new_paint_id);
+        }
+
+        // Merge clip paths.
+        let mut clip_path_mapping = Vec::with_capacity(scene.clip_paths.len());
+        for clip_path in scene.clip_paths {
+            clip_path_mapping.push(self.clip_paths.len());
+            self.clip_paths.push(clip_path);
+        }
+
+        // Merge draw paths.
+        let mut draw_path_mapping = Vec::with_capacity(scene.paths.len());
+        for draw_path in scene.paths {
+            draw_path_mapping.push(self.paths.len());
+            self.paths.push(DrawPath {
+                outline: draw_path.outline,
+                paint: paint_mapping[&draw_path.paint],
+                clip_path: draw_path.clip_path.map(|clip_path_id| {
+                    ClipPathId(clip_path_mapping[clip_path_id.0 as usize] as u32)
+                }),
+                fill_rule: draw_path.fill_rule,
+                blend_mode: draw_path.blend_mode,
+                opacity: draw_path.opacity,
+                name: draw_path.name,
+            });
+        }
     }
 
     #[inline]

@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, Path2D};
+use pathfinder_canvas::{Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, Path2D};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -127,8 +127,8 @@ impl MoireRenderer {
         self.renderer.set_options(RendererOptions { background_color: Some(background_color) });
 
         // Make a canvas.
-        let mut canvas = CanvasRenderingContext2D::new(self.font_context.clone(),
-                                                       self.drawable_size.to_f32());
+        let mut canvas =    
+            Canvas::new(self.drawable_size.to_f32()).get_context_2d(self.font_context.clone());
         canvas.set_line_width(CIRCLE_THICKNESS * self.device_pixel_ratio);
         canvas.set_stroke_style(FillStyle::Color(foreground_color.to_u8()));
         canvas.set_global_alpha(0.75);
@@ -138,7 +138,7 @@ impl MoireRenderer {
         self.draw_circles(&mut canvas, inner_center);
 
         // Build and render scene.
-        self.scene.replace_scene(canvas.into_scene());
+        self.scene.replace_scene(canvas.into_canvas().into_scene());
         self.scene.build_and_render(&mut self.renderer, BuildOptions::default());
 
         self.frame += 1;
