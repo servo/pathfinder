@@ -345,12 +345,27 @@ impl CanvasRenderingContext2D {
     // Transformations
 
     #[inline]
-    pub fn current_transform(&self) -> Transform2F {
+    pub fn rotate(&mut self, angle: f32) {
+        self.current_state.transform *= Transform2F::from_rotation(angle)
+    }
+
+    #[inline]
+    pub fn scale<S>(&mut self, scale: S) where S: IntoVector2F {
+        self.current_state.transform *= Transform2F::from_scale(scale)
+    }
+
+    #[inline]
+    pub fn translate(&mut self, offset: Vector2F) {
+        self.current_state.transform *= Transform2F::from_translation(offset)
+    }
+
+    #[inline]
+    pub fn transform(&self) -> Transform2F {
         self.current_state.transform
     }
 
     #[inline]
-    pub fn set_current_transform(&mut self, new_transform: &Transform2F) {
+    pub fn set_transform(&mut self, new_transform: &Transform2F) {
         self.current_state.transform = *new_transform;
     }
 

@@ -313,8 +313,9 @@ pub unsafe extern "C" fn PFCanvasSetLineDash(canvas: PFCanvasRef,
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFCanvasSetCurrentTransform(canvas: PFCanvasRef, transform: *const PFTransform2F) {
-    (*canvas).set_current_transform(&(*transform).to_rust());
+pub unsafe extern "C" fn PFCanvasSetTransform(canvas: PFCanvasRef,
+                                              transform: *const PFTransform2F) {
+    (*canvas).set_transform(&(*transform).to_rust());
 }
 
 #[no_mangle]

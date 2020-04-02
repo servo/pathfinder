@@ -368,10 +368,8 @@ fn draw_color_wheel(canvas: &mut CanvasRenderingContext2D, rect: RectF, time: f3
 
     // Prepare to draw the selector.
     canvas.save();
-    let original_transform = canvas.current_transform();
-    canvas.set_current_transform(&(original_transform *
-                                   Transform2F::from_translation(center) *
-                                   Transform2F::from_rotation(hue)));
+    canvas.translate(center);
+    canvas.rotate(hue);
 
     canvas.set_stroke_style(rgbau(255, 255, 255, 192));
     canvas.set_line_width(2.0);
@@ -504,11 +502,11 @@ fn draw_clip(canvas: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32)
     canvas.save();
 
     // Draw first rect.
-    let original_transform = canvas.current_transform();
+    let original_transform = canvas.transform();
     let transform_a = original_transform *
         Transform2F::from_translation(origin) *
         Transform2F::from_rotation(angle::angle_from_degrees(5.0));
-    canvas.set_current_transform(&transform_a);
+    canvas.set_transform(&transform_a);
     canvas.set_fill_style(rgbu(255, 0, 0));
     let mut clip_path = Path2D::new();
     clip_path.rect(RectF::new(vec2f(-20.0, -20.0), vec2f(60.0, 40.0)));
@@ -517,15 +515,15 @@ fn draw_clip(canvas: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32)
     // Draw second rectangle with no clip.
     let transform_b = transform_a * Transform2F::from_translation(vec2f(40.0, 0.0)) *
                                     Transform2F::from_rotation(time);
-    canvas.set_current_transform(&transform_b);
+    canvas.set_transform(&transform_b);
     canvas.set_fill_style(rgbau(255, 128, 0, 64));
     let fill_rect = RectF::new(vec2f(-20.0, -10.0), vec2f(60.0, 30.0));
     canvas.fill_rect(fill_rect);
 
     // Draw second rectangle with clip.
-    canvas.set_current_transform(&transform_a);
+    canvas.set_transform(&transform_a);
     canvas.clip_path(clip_path, FillRule::Winding);
-    canvas.set_current_transform(&transform_b);
+    canvas.set_transform(&transform_b);
     canvas.set_fill_style(rgbu(255, 128, 0));
     canvas.fill_rect(fill_rect);
 
@@ -629,11 +627,8 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
     // Draw chevron. This is a glyph in the original, but I don't want to grab an icon font just
     // for this.
     canvas.save();
-    let original_transform = canvas.current_transform();
-    canvas.set_current_transform(&(
-        original_transform *
-        Transform2F::from_translation(rect.upper_right() + vec2f(-0.5, 0.33) * rect.height()) *
-        Transform2F::from_scale(0.1)));
+    canvas.translate(rect.upper_right() + vec2f(-0.5, 0.33) * rect.height());
+    canvas.scale(0.1);
     canvas.set_fill_style(rgbau(255, 255, 255, 64));
     let mut path = Path2D::new();
     path.move_to(vec2f(0.0,  100.0));
@@ -884,9 +879,7 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
     let mut clip_path = Path2D::new();
     clip_path.rect(rect);
     canvas.clip_path(clip_path, FillRule::Winding);
-    let original_transform = canvas.current_transform();
-    canvas.set_current_transform(&(original_transform * Transform2F::from_translation(
-        vec2f(0.0, -scroll_y * (stack_height - rect.height())))));
+    canvas.translate(vec2f(0.0, -scroll_y * (stack_height - rect.height())));
 
     for image_index in 0..image_count {
         let image_origin = rect.origin() + vec2f(10.0, 10.0) +
@@ -1198,7 +1191,7 @@ fn main() {
 
         // Render the demo.
         let time = (Instant::now() - start_time).as_secs_f32();
-        canvas.set_current_transform(&Transform2F::from_scale(hidpi_factor));
+        canvas.scale(hidpi_factor);
         render_demo(&mut canvas, mouse_position, window_size.to_f32(), time, &demo_data);
 
         // Render the canvas to screen.
