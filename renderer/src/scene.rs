@@ -86,8 +86,8 @@ impl Scene {
     }
 
     #[inline]
-    pub fn build_paint_info(&self) -> PaintInfo {
-        self.palette.build_paint_info()
+    pub fn build_paint_info(&self, render_transform: Transform2F) -> PaintInfo {
+        self.palette.build_paint_info(render_transform)
     }
 
     #[allow(clippy::trivially_copy_pass_by_ref)]

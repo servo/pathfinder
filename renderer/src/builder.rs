@@ -14,7 +14,7 @@ use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeExt, MASK_TILES_ACROSS, MASK_TILES_DOWN};
 use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TexturePageId, Tile, TileBatch};
 use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive, TileVertex};
-use crate::options::{PreparedBuildOptions, RenderCommandListener};
+use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata, RenderTargetMetadata};
 use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
@@ -117,6 +117,11 @@ impl<'a> SceneBuilder<'a> {
             needs_readable_framebuffer,
         });
 
+        let render_transform = match self.built_options.transform {
+            PreparedRenderTransform::Transform2D(tr) => tr.inverse(),
+            _ => Transform2F::default()
+        };
+
         // Build paint data.
         let PaintInfo {
             render_commands,
@@ -124,7 +129,7 @@ impl<'a> SceneBuilder<'a> {
             render_target_metadata,
             opacity_tile_page,
             opacity_tile_transform,
-        } = self.scene.build_paint_info();
+        } = self.scene.build_paint_info(render_transform);
         for render_command in render_commands {
             self.listener.send(render_command);
         }

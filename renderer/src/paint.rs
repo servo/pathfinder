@@ -202,7 +202,7 @@ impl Palette {
         id
     }
 
-    pub fn build_paint_info(&self) -> PaintInfo {
+    pub fn build_paint_info(&self, render_transform: Transform2F) -> PaintInfo {
         let mut allocator = TextureAllocator::new();
         let (mut paint_metadata, mut render_target_metadata) = (vec![], vec![]);
 
@@ -283,7 +283,7 @@ impl Palette {
             metadata.texture_transform = match paint {
                 Paint::Color(_) => {
                     let vector = rect_to_inset_uv(metadata.location.rect, texture_scale).origin();
-                    Transform2F { matrix: Matrix2x2F(F32x4::default()), vector }
+                    Transform2F { matrix: Matrix2x2F(F32x4::default()), vector } * render_transform.inverse()
                 }
                 Paint::Gradient(Gradient { line: gradient_line, radii: None, .. }) => {
                     let v0 = metadata.location.rect.to_f32().center().y() * texture_scale.y();
@@ -292,7 +292,7 @@ impl Palette {
                     Transform2F {
                         matrix: Matrix2x2F::row_major(d.x(), d.y(), 0.0, 0.0).scale(length_inv),
                         vector: Vector2F::new(-p0.dot(d) * length_inv, v0),
-                    }
+                    } * render_transform
                 }
                 Paint::Gradient(Gradient { radii: Some(_), .. }) => {
                     let texture_origin_uv =
@@ -301,14 +301,14 @@ impl Palette {
                     Transform2F {
                         matrix: Matrix2x2F::from_scale(gradient_tile_scale),
                         vector: texture_origin_uv,
-                    }
+                    } * render_transform
                 }
                 Paint::Pattern(Pattern { source: PatternSource::Image(_), transform, .. }) => {
                     let texture_origin_uv =
                         rect_to_uv(metadata.location.rect, texture_scale).origin();
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(texture_scale) *
-                        transform.inverse()
+                        transform.inverse() * render_transform
                 }
                 Paint::Pattern(Pattern {
                     source: PatternSource::RenderTarget(_),
@@ -320,7 +320,7 @@ impl Palette {
                                                        texture_scale).lower_left();
                     Transform2F::from_translation(texture_origin_uv) *
                         Transform2F::from_scale(texture_scale * vec2f(1.0, -1.0)) *
-                        transform.inverse()
+                        transform.inverse() * render_transform
                 }
             }
         }
