@@ -200,6 +200,14 @@ impl Sub<Vector2F> for Vector2F {
     }
 }
 
+impl Sub<f32> for Vector2F {
+    type Output = Vector2F;
+    #[inline]
+    fn sub(self, other: f32) -> Vector2F {
+        self - Vector2F::splat(other)
+    }
+}
+
 impl Mul<Vector2F> for Vector2F {
     type Output = Vector2F;
     #[inline]

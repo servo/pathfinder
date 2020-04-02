@@ -12,7 +12,7 @@
 
 use crate::vector::{IntoVector2F, Vector2F, Vector2I};
 use pathfinder_simd::default::{F32x4, I32x4};
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Sub};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct RectF(pub F32x4);
@@ -198,6 +198,14 @@ impl Add<Vector2F> for RectF {
     }
 }
 
+impl Add<f32> for RectF {
+    type Output = RectF;
+    #[inline]
+    fn add(self, other: f32) -> RectF {
+        RectF::new(self.origin() + other, self.size())
+    }
+}
+
 impl Mul<Vector2F> for RectF {
     type Output = RectF;
     #[inline]
@@ -211,6 +219,22 @@ impl Mul<f32> for RectF {
     #[inline]
     fn mul(self, factor: f32) -> RectF {
         RectF(self.0 * F32x4::splat(factor))
+    }
+}
+
+impl Sub<Vector2F> for RectF {
+    type Output = RectF;
+    #[inline]
+    fn sub(self, other: Vector2F) -> RectF {
+        RectF::new(self.origin() - other, self.size())
+    }
+}
+
+impl Sub<f32> for RectF {
+    type Output = RectF;
+    #[inline]
+    fn sub(self, other: f32) -> RectF {
+        RectF::new(self.origin() - other, self.size())
     }
 }
 
