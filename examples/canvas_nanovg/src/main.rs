@@ -591,12 +591,11 @@ fn draw_dropdown(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF)
     background_gradient.add_color_stop(rgbau(255, 255, 255, 16), 0.0);
     background_gradient.add_color_stop(rgbau(0,   0,   0,   16), 1.0);
     canvas.set_fill_style(background_gradient);
-    canvas.fill_path(create_rounded_rect_path(rect.contract(vec2f(1.0, 1.0)), CORNER_RADIUS - 1.0),
+    canvas.fill_path(create_rounded_rect_path(rect.contract(1.0), CORNER_RADIUS - 1.0),
                      FillRule::Winding);
 
     canvas.set_stroke_style(rgbau(0, 0, 0, 48));
-    canvas.stroke_path(create_rounded_rect_path(rect.contract(vec2f(0.5, 0.5)),
-                                                CORNER_RADIUS - 0.5));
+    canvas.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 
     canvas.set_font("Roboto-Regular");
     canvas.set_font_size(17.0);
@@ -619,18 +618,16 @@ fn draw_edit_box(canvas: &mut CanvasRenderingContext2D, rect: RectF) {
     const CORNER_RADIUS: f32 = 4.0;
 
     fill_path_with_box_gradient(canvas,
-                                create_rounded_rect_path(rect.contract(vec2f(1.0, 1.0)),
-                                                         CORNER_RADIUS - 1.0),
+                                create_rounded_rect_path(rect.contract(1.0), CORNER_RADIUS - 1.0),
                                 FillRule::Winding,
-                                rect.contract(vec2f(1.0, 1.0)) + vec2f(0.0, 1.5),
+                                rect.contract(1.0) + vec2f(0.0, 1.5),
                                 3.0,
                                 4.0,
                                 rgbau(255, 255, 255, 32),
                                 rgbau(32,  32,  32,  32));
 
     canvas.set_stroke_style(rgbau(0, 0, 0, 48));
-    canvas.stroke_path(create_rounded_rect_path(rect.contract(vec2f(0.5, 0.5)),
-                                                CORNER_RADIUS - 0.5));
+    canvas.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 }
 
 fn draw_text_edit_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
@@ -694,7 +691,7 @@ fn draw_check_box(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF
 fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, color: ColorU) {
     const CORNER_RADIUS: f32 = 4.0;
 
-    let path = create_rounded_rect_path(rect.contract(vec2f(1.0, 1.0)), CORNER_RADIUS - 1.0);
+    let path = create_rounded_rect_path(rect.contract(1.0), CORNER_RADIUS - 1.0);
     if color != ColorU::transparent_black() {
         canvas.set_fill_style(color);
         canvas.fill_path(path.clone(), FillRule::Winding);
@@ -707,8 +704,7 @@ fn draw_button(canvas: &mut CanvasRenderingContext2D, text: &str, rect: RectF, c
     canvas.fill_path(path, FillRule::Winding);
 
     canvas.set_stroke_style(rgbau(0, 0, 0, 48));
-    canvas.stroke_path(create_rounded_rect_path(rect.contract(vec2f(0.5, 0.5)),
-                                                CORNER_RADIUS - 0.5));
+    canvas.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 
     // TODO(pcwalton): Icon.
     canvas.set_font("Roboto-Bold");
@@ -851,7 +847,7 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
         canvas.set_global_alpha(1.0);
 
         let mut shadow_path = create_rounded_rect_path(image_rect, 6.0);
-        shadow_path.rect(image_rect.dilate(vec2f(5.0, 5.0)));
+        shadow_path.rect(image_rect.dilate(5.0));
         // TODO(pcwalton): Union clip paths.
         /*
         fill_path_with_box_gradient(
@@ -907,7 +903,7 @@ fn draw_thumbnails(canvas: &mut CanvasRenderingContext2D,
     fill_path_with_box_gradient(canvas,
                                 create_rounded_rect_path(knob_rect, 2.0),
                                 FillRule::Winding,
-                                knob_rect.dilate(vec2f(2.0, 2.0)) + vec2f(0.0, 1.0),
+                                knob_rect.dilate(2.0) + vec2f(0.0, 1.0),
                                 3.0,
                                 4.0,
                                 rgbu(220, 220, 220),
