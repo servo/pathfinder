@@ -15,13 +15,13 @@ use crate::gpu::renderer::{BlendModeExt, MASK_TILES_ACROSS, MASK_TILES_DOWN};
 use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TexturePageId, Tile, TileBatch};
 use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive, TileVertex};
 use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderCommandListener};
-use crate::paint::{PaintInfo, PaintMetadata, RenderTargetMetadata};
+use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, DrawTilingPathInfo, PackedTile, TILE_HEIGHT, TILE_WIDTH};
 use crate::tiles::{Tiler, TilingPathInfo};
 use crate::z_buffer::{DepthMetadata, ZBuffer};
-use pathfinder_content::effects::{BlendMode, Effects};
+use pathfinder_content::effects::{BlendMode, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
@@ -38,9 +38,7 @@ use std::u16;
 pub(crate) struct SceneBuilder<'a> {
     scene: &'a Scene,
     built_options: &'a PreparedBuildOptions,
-
     next_alpha_tile_index: AtomicUsize,
-
     pub(crate) listener: Box<dyn RenderCommandListener>,
 }
 
@@ -55,7 +53,7 @@ pub(crate) struct ObjectBuilder {
 struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
-    effects: Effects,
+    filter: Filter,
     color_texture_page_0: TexturePageId,
     color_texture_page_1: TexturePageId,
     sampling_flags_0: TextureSamplingFlags,
@@ -126,9 +124,9 @@ impl<'a> SceneBuilder<'a> {
         let PaintInfo {
             render_commands,
             paint_metadata,
-            render_target_metadata,
             opacity_tile_page,
             opacity_tile_transform,
+            render_target_metadata: _
         } = self.scene.build_paint_info(render_transform);
         for render_command in render_commands {
             self.listener.send(render_command);
@@ -160,7 +158,7 @@ impl<'a> SceneBuilder<'a> {
             })
         });
 
-        self.finish_building(&paint_metadata, &render_target_metadata, built_draw_paths);
+        self.finish_building(&paint_metadata, built_draw_paths);
 
         let build_time = Instant::now() - start_time;
         self.listener.send(RenderCommand::Finish { build_time });
@@ -220,7 +218,7 @@ impl<'a> SceneBuilder<'a> {
         BuiltDrawPath {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
-            effects: paint_metadata.effects(),
+            filter: paint_metadata.filter(),
             color_texture_page_0: paint_metadata.location.page,
             sampling_flags_0: paint_metadata.sampling_flags,
             color_texture_page_1: opacity_tile_page,
@@ -230,10 +228,7 @@ impl<'a> SceneBuilder<'a> {
         }
     }
 
-    fn cull_tiles(&self,
-                  paint_metadata: &[PaintMetadata],
-                  render_target_metadata: &[RenderTargetMetadata],
-                  built_draw_paths: Vec<BuiltDrawPath>)
+    fn cull_tiles(&self, paint_metadata: &[PaintMetadata], built_draw_paths: Vec<BuiltDrawPath>)
                   -> CulledTiles {
         let mut culled_tiles = CulledTiles { display_list: vec![] };
 
@@ -269,40 +264,6 @@ impl<'a> SceneBuilder<'a> {
                     layer_z_buffers_stack.pop();
                 }
 
-                DisplayItem::DrawRenderTarget { render_target, effects } => {
-                    let effective_view_box = self.scene.effective_view_box(self.built_options);
-                    let tile_rect = tiles::round_rect_out_to_tile_bounds(effective_view_box);
-                    let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
-                    let mut tiles = vec![];
-                    let uv_scale = vec2f(1.0, 1.0) / tile_rect.lower_right().to_f32();
-                    let metadata = &render_target_metadata[render_target.0 as usize];
-                    for tile_y in tile_rect.min_y()..tile_rect.max_y() {
-                        for tile_x in tile_rect.min_x()..tile_rect.max_x() {
-                            let tile_coords = vec2i(tile_x, tile_y);
-                            if !layer_z_buffer.test(tile_coords, current_depth) {
-                                continue;
-                            }
-
-                            let uv_rect = RectI::new(tile_coords, vec2i(1, 1)).to_f32() * uv_scale;
-                            tiles.push(Tile::new_solid_from_texture_rect(tile_coords, uv_rect));
-                        }
-                    }
-                    let batch = TileBatch {
-                        tiles,
-                        color_texture_0: Some(TileBatchTexture {
-                            page: metadata.location.page,
-                            sampling_flags: TextureSamplingFlags::empty(),
-                        }),
-                        color_texture_1: None,
-                        effects,
-                        blend_mode: BlendMode::SrcOver,
-                        mask_0_fill_rule: None,
-                        mask_1_fill_rule: None,
-                    };
-                    culled_tiles.display_list.push(CulledDisplayItem::DrawTiles(batch));
-                    current_depth += 1;
-                }
-
                 DisplayItem::DrawPaths {
                     start_index: start_draw_path_index,
                     end_index: end_draw_path_index,
@@ -328,7 +289,7 @@ impl<'a> SceneBuilder<'a> {
                                              None,
                                              None,
                                              built_draw_path.blend_mode,
-                                             built_draw_path.effects,
+                                             built_draw_path.filter,
                                              None,
                                              None);
 
@@ -339,7 +300,7 @@ impl<'a> SceneBuilder<'a> {
                                              color_texture_0,
                                              color_texture_1,
                                              built_draw_path.blend_mode,
-                                             built_draw_path.effects,
+                                             built_draw_path.filter,
                                              Some(built_draw_path.mask_0_fill_rule),
                                              None);
 
@@ -351,7 +312,7 @@ impl<'a> SceneBuilder<'a> {
                                                  color_texture_0,
                                                  color_texture_1,
                                                  built_draw_path.blend_mode,
-                                                 built_draw_path.effects,
+                                                 built_draw_path.filter,
                                                  Some(built_draw_path.mask_0_fill_rule),
                                                  Some(mask_1_fill_rule));
                         }
@@ -365,7 +326,7 @@ impl<'a> SceneBuilder<'a> {
                                                      color_texture_0,
                                                      color_texture_1,
                                                      built_draw_path.blend_mode,
-                                                     built_draw_path.effects,
+                                                     built_draw_path.filter,
                                                      None,
                                                      None);
                             }
@@ -416,10 +377,6 @@ impl<'a> SceneBuilder<'a> {
                         current_depth += 1;
                     }
                 }
-                DisplayItem::DrawRenderTarget { .. } => {
-                    // FIXME(pcwalton): Not great that this doesn't participate in Z-buffering!
-                    current_depth += 1;
-                }
             }
         }
         debug_assert_eq!(z_buffer_index_stack.len(), 1);
@@ -435,7 +392,7 @@ impl<'a> SceneBuilder<'a> {
                        color_texture_0: Option<TileBatchTexture>,
                        color_texture_1: Option<TileBatchTexture>,
                        blend_mode: BlendMode,
-                       effects: Effects,
+                       filter: Filter,
                        mask_0_fill_rule: Option<FillRule>,
                        mask_1_fill_rule: Option<FillRule>) {
         if alpha_tiles.is_empty() {
@@ -454,13 +411,13 @@ impl<'a> SceneBuilder<'a> {
                 color_texture_0: ref batch_color_texture_0,
                 color_texture_1: ref batch_color_texture_1,
                 blend_mode: batch_blend_mode,
-                effects: batch_effects,
+                filter: batch_filter,
                 mask_0_fill_rule: batch_mask_0_fill_rule,
                 mask_1_fill_rule: batch_mask_1_fill_rule,
             })) if *batch_color_texture_0 == color_texture_0 &&
                 *batch_color_texture_1 == color_texture_1 &&
                 batch_blend_mode == blend_mode &&
-                batch_effects == effects &&
+                batch_filter == filter &&
                 batch_mask_0_fill_rule == mask_0_fill_rule &&
                 batch_mask_1_fill_rule == mask_1_fill_rule &&
                 !batch_blend_mode.needs_readable_framebuffer() => {}
@@ -470,7 +427,7 @@ impl<'a> SceneBuilder<'a> {
                     color_texture_0,
                     color_texture_1,
                     blend_mode,
-                    effects,
+                    filter,
                     mask_0_fill_rule,
                     mask_1_fill_rule,
                 };
@@ -512,12 +469,9 @@ impl<'a> SceneBuilder<'a> {
 
     fn finish_building(&mut self,
                        paint_metadata: &[PaintMetadata],
-                       render_target_metadata: &[RenderTargetMetadata],
                        built_draw_paths: Vec<BuiltDrawPath>) {
         self.listener.send(RenderCommand::FlushFills);
-        let culled_tiles = self.cull_tiles(paint_metadata,
-                                           render_target_metadata,
-                                           built_draw_paths);
+        let culled_tiles = self.cull_tiles(paint_metadata, built_draw_paths);
         self.pack_tiles(culled_tiles);
     }
 
@@ -525,7 +479,6 @@ impl<'a> SceneBuilder<'a> {
         let mut framebuffer_nesting = 0;
         for display_item in &self.scene.display_list {
             match *display_item {
-                DisplayItem::DrawRenderTarget { .. } => {}
                 DisplayItem::PushRenderTarget(_) => framebuffer_nesting += 1,
                 DisplayItem::PopRenderTarget => framebuffer_nesting -= 1,
                 DisplayItem::DrawPaths { start_index, end_index } => {

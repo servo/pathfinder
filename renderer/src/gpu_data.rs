@@ -12,7 +12,7 @@
 
 use crate::options::BoundingQuad;
 use pathfinder_color::ColorU;
-use pathfinder_content::effects::{BlendMode, Effects};
+use pathfinder_content::effects::{BlendMode, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
@@ -91,8 +91,8 @@ pub struct TileBatch {
     pub color_texture_1: Option<TileBatchTexture>,
     pub mask_0_fill_rule: Option<FillRule>,
     pub mask_1_fill_rule: Option<FillRule>,
+    pub filter: Filter,
     pub blend_mode: BlendMode,
-    pub effects: Effects,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

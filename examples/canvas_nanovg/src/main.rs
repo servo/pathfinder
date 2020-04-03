@@ -18,7 +18,7 @@ use pathfinder_color::{ColorF, ColorU, rgbau, rgbf, rgbu};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::ArcDirection;
-use pathfinder_content::pattern::{Image, Pattern, PatternFlags, PatternSource};
+use pathfinder_content::pattern::{Image, Pattern};
 use pathfinder_content::stroke::LineCap;
 use pathfinder_geometry::angle;
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -537,21 +537,11 @@ fn draw_window(context: &mut CanvasRenderingContext2D, title: &str, rect: RectF)
 
     // Draw window with shadow.
     context.set_fill_style(rgbau(28, 30, 34, 192));
+    context.set_shadow_blur(10.0);
+    context.set_shadow_offset(vec2f(0.0, 2.0));
+    context.set_shadow_color(rgbau(0, 0, 0, 128));
     context.fill_path(create_rounded_rect_path(rect, CORNER_RADIUS), FillRule::Winding);
-
-    // Draw window drop shadow.
-    let mut path =
-        create_rounded_rect_path(RectF::new(rect.origin() - 10.0, rect.size() + vec2f(20.0, 30.0)),
-                                 CORNER_RADIUS);
-    path.rect(rect);
-    fill_path_with_box_gradient(context,
-                                path,
-                                FillRule::EvenOdd,
-                                rect + vec2f(0.0, 2.0),
-                                CORNER_RADIUS * 2.0,
-                                10.0,
-                                rgbau(0, 0, 0, 128),
-                                rgbau(0, 0, 0, 0));
+    context.set_shadow_color(rgbau(0, 0, 0, 0));
 
     // Header.
     let mut header_gradient =
@@ -585,21 +575,22 @@ fn draw_window(context: &mut CanvasRenderingContext2D, title: &str, rect: RectF)
 fn draw_search_box(context: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     let corner_radius = rect.height() * 0.5 - 1.0;
 
-    fill_path_with_box_gradient(context,
-                                create_rounded_rect_path(rect, corner_radius),
-                                FillRule::Winding,
-                                rect + vec2f(0.0, 1.5),
-                                rect.height() * 0.5,
-                                5.0,
-                                rgbau(0, 0, 0, 16),
-                                rgbau(0, 0, 0, 92));
+    let path = create_rounded_rect_path(rect, corner_radius);
+    context.save();
+    context.clip_path(path.clone(), FillRule::Winding);
+    context.set_shadow_offset(vec2f(0.0, 1.5));
+    context.set_shadow_blur(5.0);
+    context.set_shadow_color(rgbau(0, 0, 0, 92));
+    context.set_fill_style(rgbau(0, 0, 0, 16));
+    context.fill_path(path, FillRule::Winding);
+    context.restore();
 
     context.set_font_size(rect.height() * 0.5);
     context.set_font(FONT_NAME_EMOJI);
     context.set_fill_style(rgbau(255, 255, 255, 64));
     context.set_text_align(TextAlign::Center);
     context.set_text_baseline(TextBaseline::Middle);
-    context.fill_text("🔍", rect.origin() + (rect.height() * 0.55));
+    context.fill_text("🔍", rect.origin() + Vector2F::splat(rect.height() * 0.55));
 
     context.set_font(FONT_NAME_REGULAR);
     context.set_font_size(17.0);
@@ -908,9 +899,8 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
                 (image_index % IMAGES_ACROSS) as i32,
                 (image_index / IMAGES_ACROSS) as i32).to_f32() * THUMB_HEIGHT) *
             Transform2F::from_scale(0.5);
-        let pattern = Pattern::new(PatternSource::Image((*image).clone()),
-                                   pattern_transform,
-                                   PatternFlags::empty());
+        let mut pattern = Pattern::from_image((*image).clone());
+        pattern.apply_transform(pattern_transform);
         context.set_fill_style(pattern);
         context.set_global_alpha(alpha);
         context.fill_path(image_path, FillRule::Winding);

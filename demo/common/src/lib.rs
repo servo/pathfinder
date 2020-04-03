@@ -22,10 +22,14 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
-use pathfinder_content::effects::{DEFRINGING_KERNEL_CORE_GRAPHICS, Effects};
-use pathfinder_content::effects::{Filter, STEM_DARKENING_FACTORS};
+use pathfinder_content::effects::DEFRINGING_KERNEL_CORE_GRAPHICS;
+use pathfinder_content::effects::PatternFilter;
+use pathfinder_content::effects::STEM_DARKENING_FACTORS;
+use pathfinder_content::outline::Outline;
+use pathfinder_content::pattern::Pattern;
+use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_export::{Export, FileFormat};
-use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
@@ -34,7 +38,8 @@ use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, ScenePro
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::{RenderStats, RenderTime, Renderer};
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
-use pathfinder_renderer::scene::{RenderTarget, Scene};
+use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::scene::{DrawPath, RenderTarget, Scene};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
@@ -136,13 +141,13 @@ impl<W> DemoApp<W> where W: Window {
         let mut ui_model = DemoUIModel::new(&options);
         let render_options = RendererOptions { background_color: None };
 
-        let effects = build_effects(&ui_model);
+        let filter = build_filter(&ui_model);
 
         let viewport = window.viewport(options.mode.view(0));
         let (mut built_svg, svg_tree) = load_scene(resources,
                                                    &options.input_path,
                                                    viewport.size(),
-                                                   effects);
+                                                   filter);
 
         let message = get_svg_building_message(&built_svg);
 
@@ -420,11 +425,11 @@ impl<W> DemoApp<W> where W: Window {
 
                 Event::OpenSVG(ref svg_path) => {
                     let viewport = self.window.viewport(self.ui_model.mode.view(0));
-                    let effects = build_effects(&self.ui_model);
+                    let filter = build_filter(&self.ui_model);
                     let (mut built_svg, svg_tree) = load_scene(self.window.resource_loader(),
                                                                svg_path,
                                                                viewport.size(),
-                                                               effects);
+                                                               filter);
 
                     self.ui_model.message = get_svg_building_message(&built_svg);
 
@@ -578,8 +583,8 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::ModelChanged => self.dirty = true,
             UIAction::EffectsChanged => {
                 let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
-                let effects = build_effects(&self.ui_model);
-                let mut built_svg = build_svg_tree(&self.svg_tree, viewport_size, effects);
+                let filter = build_filter(&self.ui_model);
+                let mut built_svg = build_svg_tree(&self.svg_tree, viewport_size, filter);
                 self.scene_metadata =
                     SceneMetadata::new_clipping_view_box(&mut built_svg.scene, viewport_size);
                 self.scene_proxy.replace_scene(built_svg.scene);
@@ -737,7 +742,7 @@ pub enum UIVisibility {
 fn load_scene(resource_loader: &dyn ResourceLoader,
               input_path: &SVGPath,
               viewport_size: Vector2I,
-              effects: Option<Effects>)
+              filter: Option<PatternFilter>)
               -> (BuiltSVG, Tree) {
     let mut data;
     match *input_path {
@@ -750,33 +755,47 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
     };
 
     let tree = Tree::from_data(&data, &UsvgOptions::default()).expect("Failed to parse the SVG!");
-    let built_svg = build_svg_tree(&tree, viewport_size, effects);
+    let built_svg = build_svg_tree(&tree, viewport_size, filter);
     (built_svg, tree)
 }
 
-fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, effects: Option<Effects>) -> BuiltSVG {
+// FIXME(pcwalton): Rework how transforms work in the demo. The transform affects the final
+// composite steps, breaking this approach.
+fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, filter: Option<PatternFilter>)
+                  -> BuiltSVG {
     let mut scene = Scene::new();
-
-    let render_target_id = match effects {
-        None => None,
-        Some(effects) => {
-            let scale = match effects.filter {
-                Filter::Text { defringing_kernel: Some(_), .. } => vec2i(3, 1),
-                _ => vec2i(1, 1),
-            };
-            let name = "Text".to_owned();
-            let render_target = RenderTarget::new(viewport_size * scale, name);
-            Some(scene.push_render_target(render_target))
-        }
-    };
+    let filter_info = filter.map(|filter| {
+        let scale = match filter {
+            PatternFilter::Text { defringing_kernel: Some(_), .. } => vec2i(3, 1),
+            _ => vec2i(1, 1),
+        };
+        let name = "Text".to_owned();
+        let render_target_size = viewport_size * scale;
+        let render_target = RenderTarget::new(render_target_size, name);
+        let render_target_id = scene.push_render_target(render_target);
+        FilterInfo { filter, render_target_id, render_target_size }
+    });
 
     let mut built_svg = BuiltSVG::from_tree_and_scene(&tree, scene);
+    if let Some(FilterInfo { filter, render_target_id, render_target_size }) = filter_info {
+        let mut paint = Pattern::from_render_target(render_target_id, render_target_size);
+        paint.set_filter(Some(filter));
+        let paint_id = built_svg.scene.push_paint(&Paint::Pattern(paint));
 
-    if let (Some(render_target_id), Some(effects)) = (render_target_id, effects) {
+        let outline = Outline::from_rect(RectI::new(vec2i(0, 0), viewport_size).to_f32());
+        let path = DrawPath::new(outline, paint_id);
+
         built_svg.scene.pop_render_target();
-        built_svg.scene.draw_render_target(render_target_id, effects);
+        built_svg.scene.push_path(path);
     }
-    built_svg
+
+    return built_svg;
+
+    struct FilterInfo {
+        filter: PatternFilter,
+        render_target_id: RenderTargetId,
+        render_target_size: Vector2I,
+    }
 }
 
 fn center_of_window(window_size: &WindowSize) -> Vector2F {
@@ -863,22 +882,20 @@ impl SceneMetadata {
     }
 }
 
-fn build_effects(ui_model: &DemoUIModel) -> Option<Effects> {
+fn build_filter(ui_model: &DemoUIModel) -> Option<PatternFilter> {
     if !ui_model.gamma_correction_effect_enabled && !ui_model.subpixel_aa_effect_enabled {
         return None;
     }
 
-    Some(Effects {
-        filter: Filter::Text {
-            fg_color: ui_model.foreground_color().to_f32(),
-            bg_color: ui_model.background_color().to_f32(),
-            gamma_correction: ui_model.gamma_correction_effect_enabled,
-            defringing_kernel: if ui_model.subpixel_aa_effect_enabled {
-                // TODO(pcwalton): Select FreeType defringing kernel as necessary.
-                Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
-            } else {
-                None
-            }
-        },
+    Some(PatternFilter::Text {
+        fg_color: ui_model.foreground_color().to_f32(),
+        bg_color: ui_model.background_color().to_f32(),
+        gamma_correction: ui_model.gamma_correction_effect_enabled,
+        defringing_kernel: if ui_model.subpixel_aa_effect_enabled {
+            // TODO(pcwalton): Select FreeType defringing kernel as necessary.
+            Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
+        } else {
+            None
+        }
     })
 }

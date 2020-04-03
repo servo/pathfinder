@@ -19,7 +19,8 @@ use crate::gpu_data::{TexturePageId, Tile, TileBatchTexture};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_color::{self as color, ColorF, ColorU};
-use pathfinder_content::effects::{BlendMode, BlurDirection, DefringingKernel, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, BlurDirection, DefringingKernel};
+use pathfinder_content::effects::{Filter, PatternFilter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -313,7 +314,7 @@ where
                                 batch.mask_0_fill_rule,
                                 batch.mask_1_fill_rule,
                                 batch.blend_mode,
-                                batch.effects)
+                                batch.filter)
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -583,7 +584,7 @@ where
                   mask_0_fill_rule: Option<FillRule>,
                   mask_1_fill_rule: Option<FillRule>,
                   blend_mode: BlendMode,
-                  effects: Effects) {
+                  filter: Filter) {
         // TODO(pcwalton): Disable blend for solid tiles.
 
         let needs_readable_framebuffer = blend_mode.needs_readable_framebuffer();
@@ -658,13 +659,18 @@ where
 
         ctrl |= blend_mode.to_composite_ctrl() << COMBINER_CTRL_COMPOSITE_SHIFT;
 
-        match effects.filter {
+        match filter {
             Filter::None => {}
             Filter::RadialGradient { line, radii, uv_origin } => {
                 ctrl |= COMBINER_CTRL_FILTER_RADIAL_GRADIENT << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
                 self.set_uniforms_for_radial_gradient_filter(&mut uniforms, line, radii, uv_origin)
             }
-            Filter::Text { fg_color, bg_color, defringing_kernel, gamma_correction } => {
+            Filter::PatternFilter(PatternFilter::Text {
+                fg_color,
+                bg_color,
+                defringing_kernel,
+                gamma_correction,
+            }) => {
                 ctrl |= COMBINER_CTRL_FILTER_TEXT << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
                 self.set_uniforms_for_text_filter(&mut textures,
                                                   &mut uniforms,
@@ -673,7 +679,7 @@ where
                                                   defringing_kernel,
                                                   gamma_correction);
             }
-            Filter::Blur { direction, sigma } => {
+            Filter::PatternFilter(PatternFilter::Blur { direction, sigma }) => {
                 ctrl |= COMBINER_CTRL_FILTER_BLUR << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
                 self.set_uniforms_for_blur_filter(&mut uniforms, direction, sigma);
             }

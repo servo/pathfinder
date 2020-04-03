@@ -14,9 +14,9 @@ use crate::scene::RenderTarget;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
-use pathfinder_content::effects::{Effects, Filter};
+use pathfinder_content::effects::{Filter, PatternFilter};
 use pathfinder_content::gradient::Gradient;
-use pathfinder_content::pattern::{Pattern, PatternFlags, PatternSource};
+use pathfinder_content::pattern::{Pattern, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
@@ -93,7 +93,7 @@ impl Paint {
             Paint::Gradient(ref gradient) => {
                 gradient.stops().iter().all(|stop| stop.color.is_opaque())
             }
-            Paint::Pattern(ref pattern) => pattern.source.is_opaque(),
+            Paint::Pattern(ref pattern) => pattern.is_opaque(),
         }
     }
 
@@ -133,7 +133,7 @@ impl Paint {
                                                                             0.5))));
                 }
             }
-            Paint::Pattern(ref mut pattern) => pattern.transform = *transform * pattern.transform,
+            Paint::Pattern(ref mut pattern) => pattern.apply_transform(*transform),
         }
     }
 }
@@ -165,8 +165,8 @@ pub struct PaintMetadata {
     pub sampling_flags: TextureSamplingFlags,
     /// True if this paint is fully opaque.
     pub is_opaque: bool,
-    /// The radial gradient for this paint, if applicable.
-    pub radial_gradient: Option<RadialGradientMetadata>,
+    /// The filter to be applied to this paint.
+    pub filter: PaintFilter,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -181,6 +181,18 @@ pub struct RadialGradientMetadata {
 pub struct RenderTargetMetadata {
     /// The location of the render target.
     pub location: TextureLocation,
+}
+
+#[derive(Debug)]
+pub enum PaintFilter {
+    None,
+    RadialGradient {
+        /// The line segment that connects the two circles.
+        line: LineSegment2F,
+        /// The radii of the two circles.
+        radii: F32x2,
+    },
+    PatternFilter(PatternFilter),
 }
 
 impl Palette {
@@ -219,23 +231,26 @@ impl Palette {
         let mut gradient_tile_builder = GradientTileBuilder::new();
         let mut image_texel_info = vec![];
         for paint in &self.paints {
-            let (texture_location, mut sampling_flags, radial_gradient);
+            let (texture_location, mut sampling_flags, filter);
             match paint {
                 Paint::Color(color) => {
                     texture_location = solid_color_tile_builder.allocate(&mut allocator, *color);
                     sampling_flags = TextureSamplingFlags::empty();
-                    radial_gradient = None;
+                    filter = PaintFilter::None;
                 }
                 Paint::Gradient(ref gradient) => {
                     // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
                     texture_location = gradient_tile_builder.allocate(&mut allocator, gradient);
                     sampling_flags = TextureSamplingFlags::empty();
-                    radial_gradient = gradient.radii().map(|radii| {
-                        RadialGradientMetadata { line: gradient.line(), radii }
-                    });
+                    filter = match gradient.radii() {
+                        None => PaintFilter::None,
+                        Some(radii) => {
+                            PaintFilter::RadialGradient { line: gradient.line(), radii }
+                        }
+                    };
                 }
                 Paint::Pattern(ref pattern) => {
-                    match pattern.source {
+                    match *pattern.source() {
                         PatternSource::RenderTarget { id: render_target_id, .. } => {
                             texture_location =
                                 render_target_metadata[render_target_id.0 as usize].location;
@@ -253,18 +268,21 @@ impl Palette {
                     }
 
                     sampling_flags = TextureSamplingFlags::empty();
-                    if pattern.flags.contains(PatternFlags::REPEAT_X) {
+                    if pattern.repeat_x() {
                         sampling_flags.insert(TextureSamplingFlags::REPEAT_U);
                     }
-                    if pattern.flags.contains(PatternFlags::REPEAT_Y) {
+                    if pattern.repeat_y() {
                         sampling_flags.insert(TextureSamplingFlags::REPEAT_V);
                     }
-                    if pattern.flags.contains(PatternFlags::NO_SMOOTHING) {
+                    if !pattern.smoothing_enabled() {
                         sampling_flags.insert(TextureSamplingFlags::NEAREST_MIN |
                                               TextureSamplingFlags::NEAREST_MAG);
                     }
 
-                    radial_gradient = None;
+                    filter = match pattern.filter() {
+                        None => PaintFilter::None,
+                        Some(pattern_filter) => PaintFilter::PatternFilter(pattern_filter),
+                    };
                 }
             };
 
@@ -273,7 +291,7 @@ impl Palette {
                 texture_transform: Transform2F::default(),
                 sampling_flags,
                 is_opaque: paint.is_opaque(),
-                radial_gradient,
+                filter,
             });
         }
 
@@ -303,24 +321,24 @@ impl Palette {
                         vector: texture_origin_uv,
                     } * render_transform
                 }
-                Paint::Pattern(Pattern { source: PatternSource::Image(_), transform, .. }) => {
-                    let texture_origin_uv =
-                        rect_to_uv(metadata.location.rect, texture_scale).origin();
-                    Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(texture_scale) *
-                        transform.inverse() * render_transform
-                }
-                Paint::Pattern(Pattern {
-                    source: PatternSource::RenderTarget { .. },
-                    transform,
-                    ..
-                }) => {
-                    // FIXME(pcwalton): Only do this in GL, not Metal!
-                    let texture_origin_uv = rect_to_uv(metadata.location.rect,
-                                                       texture_scale).lower_left();
-                    Transform2F::from_translation(texture_origin_uv) *
-                        Transform2F::from_scale(texture_scale * vec2f(1.0, -1.0)) *
-                        transform.inverse() * render_transform
+                Paint::Pattern(pattern) => {
+                    match pattern.source() {
+                        PatternSource::Image(_) => {
+                            let texture_origin_uv =
+                                rect_to_uv(metadata.location.rect, texture_scale).origin();
+                            Transform2F::from_translation(texture_origin_uv) *
+                                Transform2F::from_scale(texture_scale) *
+                                pattern.transform().inverse() * render_transform
+                        }
+                        PatternSource::RenderTarget { .. } => {
+                            // FIXME(pcwalton): Only do this in GL, not Metal!
+                            let texture_origin_uv = rect_to_uv(metadata.location.rect,
+                                                            texture_scale).lower_left();
+                            Transform2F::from_translation(texture_origin_uv) *
+                                Transform2F::from_scale(texture_scale * vec2f(1.0, -1.0)) *
+                                pattern.transform().inverse() * render_transform
+                        }
+                    }
                 }
             }
         }
@@ -376,18 +394,14 @@ impl PaintMetadata {
         tex_coords
     }
 
-    pub(crate) fn effects(&self) -> Effects {
-        Effects {
-            filter: match self.radial_gradient {
-                None => Filter::None,
-                Some(gradient) => {
-                    Filter::RadialGradient {
-                        line: gradient.line,
-                        radii: gradient.radii,
-                        uv_origin: self.texture_transform.vector,
-                    }
-                }
-            },
+    pub(crate) fn filter(&self) -> Filter {
+        match self.filter {
+            PaintFilter::None => Filter::None,
+            PaintFilter::RadialGradient { line, radii } => {
+                let uv_origin = self.texture_transform.vector;
+                Filter::RadialGradient { line, radii, uv_origin }
+            }
+            PaintFilter::PatternFilter(pattern_filter) => Filter::PatternFilter(pattern_filter),
         }
     }
 }

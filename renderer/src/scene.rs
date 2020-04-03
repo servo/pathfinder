@@ -15,7 +15,7 @@ use crate::concurrent::executor::Executor;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId, PaintInfo, Palette};
-use pathfinder_content::effects::{BlendMode, Effects};
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
 use pathfinder_content::pattern::{Pattern, PatternSource};
@@ -87,10 +87,6 @@ impl Scene {
         self.display_list.push(DisplayItem::PopRenderTarget);
     }
 
-    pub fn draw_render_target(&mut self, render_target: RenderTargetId, effects: Effects) {
-        self.display_list.push(DisplayItem::DrawRenderTarget { render_target, effects });
-    }
-
     pub fn append_scene(&mut self, scene: Scene) {
         // Merge render targets.
         let mut render_target_mapping = HashMap::new();
@@ -108,19 +104,20 @@ impl Scene {
         for (old_paint_index, old_paint) in scene.palette.paints.iter().enumerate() {
             let old_paint_id = PaintId(old_paint_index as u16);
             let new_paint_id = match old_paint {
-                Paint::Pattern(Pattern {
-                    source: PatternSource::RenderTarget { id: old_render_target_id, size },
-                    transform,
-                    flags
-                }) => {
-                    self.palette.push_paint(&Paint::Pattern(Pattern {
-                        source: PatternSource::RenderTarget {
-                            id: render_target_mapping[old_render_target_id],
-                            size: *size,
-                        },
-                        transform: *transform,
-                        flags: *flags,
-                    }))
+                Paint::Pattern(pattern) => {
+                    match pattern.source() {
+                        PatternSource::RenderTarget { id: old_render_target_id, size } => {
+                            let mut new_pattern =
+                                Pattern::from_render_target(*old_render_target_id, *size);
+                            new_pattern.set_filter(pattern.filter());
+                            new_pattern.apply_transform(pattern.transform());
+                            new_pattern.set_repeat_x(pattern.repeat_x());
+                            new_pattern.set_repeat_y(pattern.repeat_y());
+                            new_pattern.set_smoothing_enabled(pattern.smoothing_enabled());
+                            self.palette.push_paint(&Paint::Pattern(new_pattern))
+                        }
+                        _ => self.palette.push_paint(old_paint),
+                    }
                 }
                 paint => self.palette.push_paint(paint),
             };
@@ -154,13 +151,6 @@ impl Scene {
         // Merge display items.
         for display_item in scene.display_list {
             match display_item {
-                DisplayItem::DrawRenderTarget {
-                    render_target: old_render_target_id,
-                    effects,
-                } => {
-                    let new_render_target_id = render_target_mapping[&old_render_target_id];
-                    self.draw_render_target(new_render_target_id, effects)
-                }
                 DisplayItem::PushRenderTarget(old_render_target_id) => {
                     let new_render_target_id = render_target_mapping[&old_render_target_id];
                     self.display_list.push(DisplayItem::PushRenderTarget(new_render_target_id));
@@ -348,13 +338,6 @@ pub struct RenderTarget {
 pub enum DisplayItem {
     /// Draws paths to the render target on top of the stack.
     DrawPaths { start_index: u32, end_index: u32 },
-
-    /// Draws an entire render target to the render target on top of the stack.
-    ///
-    /// FIXME(pcwalton): This draws the entire render target, so it's inefficient. We should get
-    /// rid of this command and transition all uses to `DrawPaths`. The reason it exists is that we
-    /// don't have logic to create tiles for blur bounding regions yet.
-    DrawRenderTarget { render_target: RenderTargetId, effects: Effects },
 
     /// Pushes a render target onto the top of the stack.
     PushRenderTarget(RenderTargetId),

@@ -111,6 +111,13 @@ impl Outline {
     }
 
     #[inline]
+    pub fn from_rect(rect: RectF) -> Outline {
+        let mut outline = Outline::new();
+        outline.push_contour(Contour::from_rect(rect));
+        outline
+    }
+
+    #[inline]
     pub fn bounds(&self) -> RectF {
         self.bounds
     }
@@ -264,6 +271,18 @@ impl Contour {
             bounds: RectF::default(),
             closed: false,
         }
+    }
+
+    #[inline]
+    pub fn from_rect(rect: RectF) -> Contour {
+        let mut contour = Contour::new();
+        contour.push_point(rect.origin(), PointFlags::empty(), false);
+        contour.push_point(rect.upper_right(), PointFlags::empty(), false);
+        contour.push_point(rect.lower_right(), PointFlags::empty(), false);
+        contour.push_point(rect.lower_left(), PointFlags::empty(), false);
+        contour.close();
+        contour.bounds = rect;
+        contour
     }
 
     // Replaces this contour with a new one, with arrays preallocated to match `self`.

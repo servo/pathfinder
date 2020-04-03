@@ -15,7 +15,7 @@ use crate::gpu_data::{Tile, TileBatch, TileBatchTexture, TileVertex};
 use crate::paint::{PaintId, PaintMetadata};
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_content::effects::{BlendMode, Effects};
+use pathfinder_content::effects::{BlendMode, Filter};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
 use vec_map::VecMap;
@@ -94,7 +94,7 @@ impl ZBuffer {
                         }),
                         color_texture_1: None,
                         tiles: vec![],
-                        effects: Effects::default(),
+                        filter: Filter::None,
                         blend_mode: BlendMode::default(),
                         mask_0_fill_rule: None,
                         mask_1_fill_rule: None,
@@ -122,19 +122,6 @@ impl Tile {
                                                                   paint_metadata),
             lower_right: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(1, 1),
                                                                    paint_metadata),
-        }
-    }
-
-    pub(crate) fn new_solid_from_texture_rect(tile_position: Vector2I, texture_rect: RectF)
-                                              -> Tile {
-        Tile {
-            upper_left: TileVertex::new_solid_from_uv(tile_position, texture_rect.origin()),
-            upper_right: TileVertex::new_solid_from_uv(tile_position + vec2i(1, 0),
-                                                       texture_rect.upper_right()),
-            lower_left: TileVertex::new_solid_from_uv(tile_position + vec2i(0, 1),
-                                                      texture_rect.lower_left()),
-            lower_right: TileVertex::new_solid_from_uv(tile_position + vec2i(1, 1),
-                                                       texture_rect.lower_right()),
         }
     }
 }

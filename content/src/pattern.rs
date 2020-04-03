@@ -10,6 +10,7 @@
 
 //! Raster image patterns.
 
+use crate::effects::PatternFilter;
 use crate::render_target::RenderTargetId;
 use crate::util;
 use pathfinder_color::{self as color, ColorU};
@@ -26,9 +27,10 @@ use image::RgbaImage;
 /// A raster image pattern.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Pattern {
-    pub source: PatternSource,
-    pub transform: Transform2F,
-    pub flags: PatternFlags,
+    source: PatternSource,
+    transform: Transform2F,
+    filter: Option<PatternFilter>,
+    flags: PatternFlags,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -61,13 +63,33 @@ bitflags! {
 
 impl Pattern {
     #[inline]
-    pub fn new(source: PatternSource, transform: Transform2F, flags: PatternFlags) -> Pattern {
-        Pattern { source, transform, flags }
+    fn from_source(source: PatternSource) -> Pattern {
+        Pattern {
+            source,
+            transform: Transform2F::default(),
+            filter: None,
+            flags: PatternFlags::empty(),
+        }
     }
 
     #[inline]
-    pub fn transform(&mut self, transform: Transform2F) {
-        self.transform *= transform
+    pub fn from_image(image: Image) -> Pattern {
+        Pattern::from_source(PatternSource::Image(image))
+    }
+
+    #[inline]
+    pub fn from_render_target(id: RenderTargetId, size: Vector2I) -> Pattern {
+        Pattern::from_source(PatternSource::RenderTarget { id, size })
+    }
+
+    #[inline]
+    pub fn transform(&self) -> Transform2F {
+        self.transform
+    }
+
+    #[inline]
+    pub fn apply_transform(&mut self, transform: Transform2F) {
+        self.transform = transform * self.transform;
     }
 
     #[inline]
@@ -76,6 +98,56 @@ impl Pattern {
             PatternSource::Image(ref image) => image.size(),
             PatternSource::RenderTarget { size, .. } => size,
         }
+    }
+
+    #[inline]
+    pub fn filter(&self) -> Option<PatternFilter> {
+        self.filter
+    }
+
+    #[inline]
+    pub fn set_filter(&mut self, filter: Option<PatternFilter>) {
+        self.filter = filter;
+    }
+
+    #[inline]
+    pub fn repeat_x(&self) -> bool {
+        self.flags.contains(PatternFlags::REPEAT_X)
+    }
+
+    #[inline]
+    pub fn set_repeat_x(&mut self, repeat_x: bool) {
+        self.flags.set(PatternFlags::REPEAT_X, repeat_x);
+    }
+
+    #[inline]
+    pub fn repeat_y(&self) -> bool {
+        self.flags.contains(PatternFlags::REPEAT_Y)
+    }
+
+    #[inline]
+    pub fn set_repeat_y(&mut self, repeat_y: bool) {
+        self.flags.set(PatternFlags::REPEAT_Y, repeat_y);
+    }
+
+    #[inline]
+    pub fn smoothing_enabled(&self) -> bool {
+        !self.flags.contains(PatternFlags::NO_SMOOTHING)
+    }
+
+    #[inline]
+    pub fn set_smoothing_enabled(&mut self, enable: bool) {
+        self.flags.set(PatternFlags::NO_SMOOTHING, !enable);
+    }
+
+    #[inline]
+    pub fn is_opaque(&self) -> bool {
+        self.source.is_opaque()
+    }
+
+    #[inline]
+    pub fn source(&self) -> &PatternSource {
+        &self.source
     }
 }
 

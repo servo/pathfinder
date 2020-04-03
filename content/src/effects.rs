@@ -31,13 +31,6 @@ pub const MAX_STEM_DARKENING_AMOUNT: [f32; 2] = [0.3, 0.3];
 /// This value is a subjective cutoff. Above this ppem value, no stem darkening is performed.
 pub const MAX_STEM_DARKENING_PIXELS_PER_EM: f32 = 72.0;
 
-/// Effects that can be applied to a layer.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct Effects {
-    /// The shader that should be used when compositing this layer onto its destination.
-    pub filter: Filter,
-}
-
 /// The shader that should be used when compositing this layer onto its destination.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Filter {
@@ -54,6 +47,12 @@ pub enum Filter {
         uv_origin: Vector2F,
     },
 
+    PatternFilter(PatternFilter),
+}
+
+/// Shaders applicable to patterns.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PatternFilter {
     /// Performs postprocessing operations useful for monochrome text.
     Text {
         /// The foreground color of the text.
@@ -133,13 +132,6 @@ impl Default for Filter {
     #[inline]
     fn default() -> Filter {
         Filter::None
-    }
-}
-
-impl Effects {
-    #[inline]
-    pub fn new(filter: Filter) -> Effects {
-        Effects { filter }
     }
 }
 

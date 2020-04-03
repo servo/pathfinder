@@ -12,18 +12,18 @@
 
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
-use pathfinder_content::effects::{BlendMode, BlurDirection, Effects, Filter};
+use pathfinder_content::effects::{BlendMode, BlurDirection, PatternFilter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{ArcDirection, Contour, Outline};
-use pathfinder_content::pattern::{Pattern, PatternFlags, PatternSource};
+use pathfinder_content::pattern::Pattern;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{IntoVector2F, Vector2F, vec2f};
+use pathfinder_geometry::vector::{IntoVector2F, Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
 use std::borrow::Cow;
@@ -100,6 +100,11 @@ impl Canvas {
             saved_states: vec![],
             font_context,
         }
+    }
+
+    #[inline]
+    pub fn size(&self) -> Vector2I {
+        self.scene.view_box().size().ceil().to_i32()
     }
 }
 
@@ -340,7 +345,7 @@ impl CanvasRenderingContext2D {
             return None;
         }
 
-        let render_target_size = self.canvas.scene.view_box().size().ceil().to_i32();
+        let render_target_size = self.canvas.size();
         let render_target_a = RenderTarget::new(render_target_size, String::new());
         let render_target_id_a = self.canvas.scene.push_render_target(render_target_a);
         let render_target_b = RenderTarget::new(render_target_size, String::new());
@@ -357,16 +362,24 @@ impl CanvasRenderingContext2D {
         };
 
         let sigma = self.current_state.shadow_blur * 0.5;
+
+        let mut paint_x = Pattern::from_render_target(render_target_ids[1], self.canvas.size());
+        let mut paint_y = Pattern::from_render_target(render_target_ids[0], self.canvas.size());
+        paint_x.set_filter(Some(PatternFilter::Blur { direction: BlurDirection::X, sigma }));
+        paint_y.set_filter(Some(PatternFilter::Blur { direction: BlurDirection::Y, sigma }));
+
+        let paint_id_x = self.canvas.scene.push_paint(&Paint::Pattern(paint_x));
+        let paint_id_y = self.canvas.scene.push_paint(&Paint::Pattern(paint_y));
+
+        // TODO(pcwalton): Apply clip as necessary.
+        let outline = Outline::from_rect(RectI::new(vec2i(0, 0), self.canvas.size()).to_f32());
+        let path_x = DrawPath::new(outline.clone(), paint_id_x);
+        let path_y = DrawPath::new(outline.clone(), paint_id_y);
+
         self.canvas.scene.pop_render_target();
-        self.canvas.scene.draw_render_target(render_target_ids[1], Effects::new(Filter::Blur {
-            direction: BlurDirection::X,
-            sigma,
-        }));
+        self.canvas.scene.push_path(path_x);
         self.canvas.scene.pop_render_target();
-        self.canvas.scene.draw_render_target(render_target_ids[0], Effects::new(Filter::Blur {
-            direction: BlurDirection::Y,
-            sigma,
-        }));
+        self.canvas.scene.push_path(path_y);
     }
 
     // Transformations
@@ -487,17 +500,16 @@ impl CanvasRenderingContext2D {
 
     pub fn create_pattern_from_canvas(&mut self, canvas: Canvas, transform: Transform2F)
                                       -> Pattern {
+        let subscene_size = canvas.size();
         let subscene = canvas.into_scene();
-        let subscene_size = subscene.view_box().size().ceil().to_i32();
         let render_target = RenderTarget::new(subscene_size, String::new());
         let render_target_id = self.canvas.scene.push_render_target(render_target);
         self.canvas.scene.append_scene(subscene);
         self.canvas.scene.pop_render_target();
-        let pattern_source = PatternSource::RenderTarget {
-            id: render_target_id,
-            size: subscene_size,
-        };
-        Pattern::new(pattern_source, transform, PatternFlags::empty())
+
+        let mut pattern = Pattern::from_render_target(render_target_id, subscene_size);
+        pattern.apply_transform(transform);
+        pattern
     }
 }
 
@@ -557,8 +569,7 @@ impl State {
         let mut must_copy = !self.transform.is_identity();
         if !must_copy {
             if let Paint::Pattern(ref pattern) = *paint {
-                must_copy = !self.image_smoothing_enabled !=
-                    pattern.flags.contains(PatternFlags::NO_SMOOTHING);
+                must_copy = self.image_smoothing_enabled != pattern.smoothing_enabled()
             }
         }
 
@@ -569,7 +580,7 @@ impl State {
         let mut paint = (*paint).clone();
         paint.apply_transform(&self.transform);
         if let Paint::Pattern(ref mut pattern) = paint {
-            pattern.flags.set(PatternFlags::NO_SMOOTHING, !self.image_smoothing_enabled);
+            pattern.set_smoothing_enabled(self.image_smoothing_enabled);
         }
         Cow::Owned(paint)
     }
@@ -833,7 +844,7 @@ pub trait CanvasImageDestLocation {
 impl CanvasImageSource for Pattern {
     #[inline]
     fn to_pattern(mut self, _: &mut CanvasRenderingContext2D, transform: Transform2F) -> Pattern {
-        self.transform(transform);
+        self.apply_transform(transform);
         self
     }
 }
