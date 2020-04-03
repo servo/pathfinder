@@ -78,6 +78,7 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
     draw_lines(context,
                RectF::new(vec2f(120.0, window_size.y() - 50.0), vec2f(600.0, 50.0)),
                time);
+    draw_widths(context, vec2f(10.0, 50.0), 30.0);
     draw_caps(context, RectF::new(vec2f(10.0, 300.0), vec2f(30.0, 40.0)));
     draw_clip(context, vec2f(50.0, window_size.y() - 80.0), time);
 
@@ -472,6 +473,22 @@ fn draw_lines(context: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
 
             context.stroke_path(path);
         }
+    }
+
+    context.restore();
+}
+
+fn draw_widths(context: &mut CanvasRenderingContext2D, mut origin: Vector2F, width: f32) {
+    context.save();
+    context.set_stroke_style(rgbau(0, 0, 0, 255));
+
+    for index in 0..20 {
+        context.set_line_width((index as f32 + 0.5) * 0.1);
+        let mut path = Path2D::new();
+        path.move_to(origin);
+        path.line_to(origin + vec2f(1.0, 0.3) * width);
+        context.stroke_path(path);
+        origin += vec2f(0.0, 10.0);
     }
 
     context.restore();
