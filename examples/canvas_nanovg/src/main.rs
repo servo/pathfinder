@@ -59,6 +59,9 @@ static PARAGRAPH_TEXT: &'static str = "This is a longer chunk of text.
 I would have used lorem ipsum, but she was busy jumping over the lazy dog with the fox and all \
 the men who came to the aid of the party. 🎉";
 
+static HOVER_TEXT: &'static str = "Hover your mouse over the text to see the calculated caret \
+position.";
+
 fn render_demo(context: &mut CanvasRenderingContext2D,
                mouse_position: Vector2F,
                window_size: Vector2F,
@@ -68,7 +71,7 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
               RectF::new(vec2f(window_size.x() - 250.0, 50.0), vec2f(150.0, 100.0)),
               mouse_position,
               time);
-    draw_paragraph(context, RectF::new(vec2f(window_size.x() - 450.0, 50.0), vec2f(150.0, 100.0)));
+    draw_paragraph(context, vec2f(window_size.x() - 450.0, 50.0), 150.0, mouse_position);
     draw_graph(context,
                RectF::new(window_size * vec2f(0.0, 0.5), window_size * vec2f(1.0, 0.5)),
                time);
@@ -210,52 +213,112 @@ fn draw_eyes(context: &mut CanvasRenderingContext2D,
     context.fill_path(path, FillRule::Winding);
 }
 
-// This is nowhere near correct line layout, but it suffices to more or less match what NanoVG
-// does.
-fn draw_paragraph(context: &mut CanvasRenderingContext2D, rect: RectF) {
-    const LINE_HEIGHT: f32 = 24.0;
-
+fn draw_paragraph(context: &mut CanvasRenderingContext2D,
+                  origin: Vector2F,
+                  line_width: f32,
+                  mouse_position: Vector2F) {
     context.save();
 
     context.set_font(&[FONT_NAME_REGULAR, FONT_NAME_EMOJI][..]);
     context.set_font_size(18.0);
+    context.set_fill_style(ColorU::white());
+    let main_first_line_box = RectF::new(origin, vec2f(line_width, 24.0));
+    let main_bounds = render_multiline_text(context,
+                                            PARAGRAPH_TEXT,
+                                            main_first_line_box,
+                                            rgbau(255, 255, 255, 16),
+                                            ColorU::white());
 
-    let mut cursor = rect.origin();
-    next_line(context, &mut cursor, rect);
+    // Fade out the tooltip when close to it.
+    context.set_font_size(11.0);
+    let tooltip_first_line_box = RectF::new(main_bounds.lower_left() + vec2f(0.0, 20.0),
+                                            vec2f(150.0, 18.0));
+    let tooltip_bounds = render_multiline_text(context,
+                                               HOVER_TEXT,
+                                               tooltip_first_line_box,
+                                               rgbau(0, 0, 0, 0),
+                                               rgbau(0, 0, 0, 0));
+    let mouse_vector = mouse_position.clamp(tooltip_bounds.origin(),
+                                            tooltip_bounds.lower_right()) - mouse_position;
+    context.set_global_alpha(util::clamp(mouse_vector.length() / 30.0, 0.0, 1.0));
+
+    // Draw tooltip background.
+    context.set_fill_style(rgbau(220, 220, 220, 255));
+    let mut path = create_rounded_rect_path(tooltip_bounds.dilate(2.0), 3.0);
+    path.move_to(vec2f(tooltip_bounds.center().x(), tooltip_bounds.origin_y() - 10.0));
+    path.line_to(vec2f(tooltip_bounds.center().x() + 7.0, tooltip_bounds.origin_y() + 1.0));
+    path.line_to(vec2f(tooltip_bounds.center().x() - 7.0, tooltip_bounds.origin_y() + 1.0));
+    context.fill_path(path, FillRule::Winding);
+
+    // Draw tooltip.
+    context.set_fill_style(rgbau(0, 0, 0, 220));
+    render_multiline_text(context,
+                          HOVER_TEXT,
+                          tooltip_first_line_box,
+                          rgbau(0, 0, 0, 0),
+                          rgbau(0, 0, 0, 220));
+
+    context.restore();
+}
+
+// This is nowhere near correct line layout, but it suffices to more or less match what NanoVG
+// does.
+fn render_multiline_text(context: &mut CanvasRenderingContext2D,
+                         text: &str,
+                         first_line_box: RectF,
+                         bg_color: ColorU,
+                         fg_color: ColorU)
+                         -> RectF {
+    let mut bounds = RectF::new(first_line_box.origin(), vec2f(0.0, 0.0));
+
+    let mut cursor = first_line_box.origin();
+    next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
 
     let space_width = context.measure_text("A B").width - context.measure_text("AB").width;
 
-    for space_separated in PARAGRAPH_TEXT.split(' ') {
+    for space_separated in text.split(' ') {
         let mut first = true;
         for word in space_separated.split('\n') {
             if !first {
-                next_line(context, &mut cursor, rect);
+                next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
             }
             first = false;
 
             let word_width = context.measure_text(word).width;
-            if cursor.x() + space_width + word_width > rect.max_x() {
-                next_line(context, &mut cursor, rect);
-            } else if cursor.x() > rect.min_x() {
-                cursor = cursor + vec2f(space_width, 0.0);
+            if cursor.x() + space_width + word_width > first_line_box.max_x() {
+                next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
+            } else if cursor.x() > first_line_box.min_x() {
+                cursor += vec2f(space_width, 0.0);
             }
 
-            context.set_fill_style(ColorU::white());
-            context.fill_text(word, cursor);
+            if !fg_color.is_fully_transparent() {
+                context.set_fill_style(fg_color);
+                context.fill_text(word, cursor);
+            }
 
             cursor += vec2f(word_width, 0.0);
         }
     }
 
-    context.restore();
+    if cursor.x() > first_line_box.min_x() {
+        next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
+    }
 
-    fn next_line(context: &mut CanvasRenderingContext2D, cursor: &mut Vector2F, rect: RectF) {
-        cursor.set_x(rect.min_x());
+    return bounds;
 
-        context.set_fill_style(rgbau(255, 255, 255, 16));
-        context.fill_rect(RectF::new(*cursor, vec2f(rect.width(), LINE_HEIGHT)));
-
-        *cursor += vec2f(0.0, LINE_HEIGHT);
+    fn next_line(context: &mut CanvasRenderingContext2D,
+                 cursor: &mut Vector2F,
+                 first_line_box: RectF,
+                 bg_color: ColorU,
+                 bounds: &mut RectF) {
+        cursor.set_x(first_line_box.min_x());
+        let line_rect = RectF::new(*cursor, first_line_box.size());
+        if !bg_color.is_fully_transparent() {
+            context.set_fill_style(bg_color);
+            context.fill_rect(line_rect);
+        }
+        *bounds = bounds.union_rect(line_rect);
+        *cursor += vec2f(0.0, first_line_box.height());
     }
 }
 
