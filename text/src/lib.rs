@@ -14,15 +14,17 @@ use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder, Build};
+use pathfinder_content::effects::BlendMode;
 use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::PaintId;
-use pathfinder_renderer::scene::{DrawPath, Scene};
+use pathfinder_renderer::scene::{ClipPathId, DrawPath, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
 use std::mem;
 
+// FIXME(pcwalton): Too many parameters!
 pub trait SceneExt {
     // TODO(pcwalton): Support stroked glyphs.
     fn push_glyph<F>(&mut self,
@@ -31,6 +33,9 @@ pub trait SceneExt {
                      transform: &Transform2F,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
+                     clip_path: Option<ClipPathId>,
+                     blend_mode: BlendMode,
+                     opacity: u8,
                      paint_id: PaintId)
                      -> Result<(), GlyphLoadingError>
                      where F: Loader;
@@ -41,6 +46,9 @@ pub trait SceneExt {
                    transform: &Transform2F,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
+                   clip_path: Option<ClipPathId>,
+                   blend_mode: BlendMode,
+                   opacity: u8,
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError>;
 
@@ -51,6 +59,9 @@ pub trait SceneExt {
                  transform: &Transform2F,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
+                 clip_path: Option<ClipPathId>,
+                 blend_mode: BlendMode,
+                 opacity: u8,
                  paint_id: PaintId)
                  -> Result<(), GlyphLoadingError>;
 }
@@ -63,6 +74,9 @@ impl SceneExt for Scene {
                      transform: &Transform2F,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
+                     clip_path: Option<ClipPathId>,
+                     blend_mode: BlendMode,
+                     opacity: u8,
                      paint_id: PaintId)
                      -> Result<(), GlyphLoadingError>
                      where F: Loader {
@@ -76,7 +90,12 @@ impl SceneExt for Scene {
             outline = stroke_to_fill.into_outline();
         }
 
-        self.push_path(DrawPath::new(outline, paint_id));
+        let mut path = DrawPath::new(outline, paint_id);
+        path.set_clip_path(clip_path);
+        path.set_blend_mode(blend_mode);
+        path.set_opacity(opacity);
+
+        self.push_path(path);
         Ok(())
     }
 
@@ -86,6 +105,9 @@ impl SceneExt for Scene {
                    transform: &Transform2F,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
+                   clip_path: Option<ClipPathId>,
+                   blend_mode: BlendMode,
+                   opacity: u8,
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError> {
         for glyph in &layout.glyphs {
@@ -100,6 +122,9 @@ impl SceneExt for Scene {
                             &transform,
                             render_mode,
                             hinting_options,
+                            clip_path,
+                            blend_mode,
+                            opacity,
                             paint_id)?;
         }
         Ok(())
@@ -113,10 +138,21 @@ impl SceneExt for Scene {
                  transform: &Transform2F,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
+                 clip_path: Option<ClipPathId>,
+                 blend_mode: BlendMode,
+                 opacity: u8,
                  paint_id: PaintId)
                  -> Result<(), GlyphLoadingError> {
         let layout = skribo::layout(style, collection, text);
-        self.push_layout(&layout, style, &transform, render_mode, hinting_options, paint_id)
+        self.push_layout(&layout,
+                         style,
+                         &transform,
+                         render_mode,
+                         hinting_options,
+                         clip_path,
+                         blend_mode,
+                         opacity,
+                         paint_id)
     }
 }
 
