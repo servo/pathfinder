@@ -10,20 +10,24 @@
 
 //! A simple API for Pathfinder that mirrors a subset of HTML canvas.
 
-use pathfinder_color::ColorU;
+pub use pathfinder_color::{ColorF, ColorU, rgbaf, rgbau, rgbf, rgbu};
+pub use pathfinder_color::{color_slice_to_u8_slice, u8_slice_to_color_slice, u8_vec_to_color_vec};
+pub use pathfinder_content::fill::FillRule;
+pub use pathfinder_content::stroke::LineCap;
+pub use pathfinder_content::outline::ArcDirection;
+pub use pathfinder_geometry::rect::{RectF, RectI};
+pub use pathfinder_geometry::transform2d::Transform2F;
+pub use pathfinder_geometry::vector::{IntoVector2F, Vector2F, Vector2I, vec2f, vec2i};
+
 use pathfinder_content::dash::OutlineDash;
 use pathfinder_content::effects::{BlendMode, BlurDirection, PatternFilter};
-use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
-use pathfinder_content::outline::{ArcDirection, Contour, Outline};
+use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::pattern::Pattern;
 use pathfinder_content::render_target::RenderTargetId;
-use pathfinder_content::stroke::{LineCap, LineJoin as StrokeLineJoin};
+use pathfinder_content::stroke::{LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{IntoVector2F, Vector2F, Vector2I, vec2f};
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
 use std::borrow::Cow;
