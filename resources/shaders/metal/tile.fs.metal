@@ -21,11 +21,9 @@ struct spvDescriptorSetBuffer0
     constant float4* uFilterParams0 [[id(10)]];
     constant float4* uFilterParams1 [[id(11)]];
     constant float4* uFilterParams2 [[id(12)]];
-    texture2d<float> uColorTexture1 [[id(13)]];
-    sampler uColorTexture1Smplr [[id(14)]];
-    texture2d<float> uDestTexture [[id(15)]];
-    sampler uDestTextureSmplr [[id(16)]];
-    constant int* uCtrl [[id(17)]];
+    texture2d<float> uDestTexture [[id(13)]];
+    sampler uDestTextureSmplr [[id(14)]];
+    constant int* uCtrl [[id(15)]];
 };
 
 constant float3 _1003 = {};
@@ -40,7 +38,7 @@ struct main0_in
     float3 vMaskTexCoord0 [[user(locn0)]];
     float3 vMaskTexCoord1 [[user(locn1)]];
     float2 vColorTexCoord0 [[user(locn2)]];
-    float2 vColorTexCoord1 [[user(locn3)]];
+    float vOpacity [[user(locn3)]];
 };
 
 // Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
@@ -534,7 +532,7 @@ float4 composite(thread const float4& srcColor, thread const texture2d<float> de
     return float4(((srcColor.xyz * (srcColor.w * (1.0 - destColor.w))) + (blendedRGB * (srcColor.w * destColor.w))) + (destColor.xyz * (1.0 - srcColor.w)), 1.0);
 }
 
-void calculateColor(thread const int& ctrl, thread texture2d<float> uMaskTexture0, thread const sampler uMaskTexture0Smplr, thread float3& vMaskTexCoord0, thread texture2d<float> uMaskTexture1, thread const sampler uMaskTexture1Smplr, thread float3& vMaskTexCoord1, thread float2& vColorTexCoord0, thread texture2d<float> uColorTexture0, thread const sampler uColorTexture0Smplr, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr, thread float2 uColorTexture0Size, thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread float4 uFilterParams0, thread float4 uFilterParams1, thread float4 uFilterParams2, thread texture2d<float> uColorTexture1, thread const sampler uColorTexture1Smplr, thread float2& vColorTexCoord1, thread texture2d<float> uDestTexture, thread const sampler uDestTextureSmplr, thread float4& oFragColor)
+void calculateColor(thread const int& ctrl, thread texture2d<float> uMaskTexture0, thread const sampler uMaskTexture0Smplr, thread float3& vMaskTexCoord0, thread texture2d<float> uMaskTexture1, thread const sampler uMaskTexture1Smplr, thread float3& vMaskTexCoord1, thread float2& vColorTexCoord0, thread texture2d<float> uColorTexture0, thread const sampler uColorTexture0Smplr, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr, thread float2 uColorTexture0Size, thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread float4 uFilterParams0, thread float4 uFilterParams1, thread float4 uFilterParams2, thread float& vOpacity, thread texture2d<float> uDestTexture, thread const sampler uDestTextureSmplr, thread float4& oFragColor)
 {
     int maskCtrl0 = (ctrl >> 0) & 3;
     int maskCtrl1 = (ctrl >> 2) & 3;
@@ -561,20 +559,15 @@ void calculateColor(thread const int& ctrl, thread texture2d<float> uMaskTexture
         int param_13 = color0Filter;
         color += filterColor(param_6, uColorTexture0, uColorTexture0Smplr, uGammaLUT, uGammaLUTSmplr, param_7, param_8, param_9, param_10, param_11, param_12, param_13);
     }
-    if (((ctrl >> 7) & 1) != 0)
-    {
-        float2 param_14 = vColorTexCoord1;
-        color *= sampleColor(uColorTexture1, uColorTexture1Smplr, param_14);
-    }
-    color.w *= maskAlpha;
+    color.w *= (maskAlpha * vOpacity);
     int compositeOp = (ctrl >> 8) & 15;
-    float4 param_15 = color;
-    float2 param_16 = uFramebufferSize;
-    float2 param_17 = gl_FragCoord.xy;
-    int param_18 = compositeOp;
-    color = composite(param_15, uDestTexture, uDestTextureSmplr, param_16, param_17, param_18);
-    float3 _1304 = color.xyz * color.w;
-    color = float4(_1304.x, _1304.y, _1304.z, color.w);
+    float4 param_14 = color;
+    float2 param_15 = uFramebufferSize;
+    float2 param_16 = gl_FragCoord.xy;
+    int param_17 = compositeOp;
+    color = composite(param_14, uDestTexture, uDestTextureSmplr, param_15, param_16, param_17);
+    float3 _1294 = color.xyz * color.w;
+    color = float4(_1294.x, _1294.y, _1294.z, color.w);
     oFragColor = color;
 }
 
@@ -582,7 +575,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
 {
     main0_out out = {};
     int param = (*spvDescriptorSet0.uCtrl);
-    calculateColor(param, spvDescriptorSet0.uMaskTexture0, spvDescriptorSet0.uMaskTexture0Smplr, in.vMaskTexCoord0, spvDescriptorSet0.uMaskTexture1, spvDescriptorSet0.uMaskTexture1Smplr, in.vMaskTexCoord1, in.vColorTexCoord0, spvDescriptorSet0.uColorTexture0, spvDescriptorSet0.uColorTexture0Smplr, spvDescriptorSet0.uGammaLUT, spvDescriptorSet0.uGammaLUTSmplr, (*spvDescriptorSet0.uColorTexture0Size), gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), (*spvDescriptorSet0.uFilterParams0), (*spvDescriptorSet0.uFilterParams1), (*spvDescriptorSet0.uFilterParams2), spvDescriptorSet0.uColorTexture1, spvDescriptorSet0.uColorTexture1Smplr, in.vColorTexCoord1, spvDescriptorSet0.uDestTexture, spvDescriptorSet0.uDestTextureSmplr, out.oFragColor);
+    calculateColor(param, spvDescriptorSet0.uMaskTexture0, spvDescriptorSet0.uMaskTexture0Smplr, in.vMaskTexCoord0, spvDescriptorSet0.uMaskTexture1, spvDescriptorSet0.uMaskTexture1Smplr, in.vMaskTexCoord1, in.vColorTexCoord0, spvDescriptorSet0.uColorTexture0, spvDescriptorSet0.uColorTexture0Smplr, spvDescriptorSet0.uGammaLUT, spvDescriptorSet0.uGammaLUTSmplr, (*spvDescriptorSet0.uColorTexture0Size), gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), (*spvDescriptorSet0.uFilterParams0), (*spvDescriptorSet0.uFilterParams1), (*spvDescriptorSet0.uFilterParams2), in.vOpacity, spvDescriptorSet0.uDestTexture, spvDescriptorSet0.uDestTextureSmplr, out.oFragColor);
     return out;
 }
 

@@ -35,7 +35,6 @@ pub trait SceneExt {
                      hinting_options: HintingOptions,
                      clip_path: Option<ClipPathId>,
                      blend_mode: BlendMode,
-                     opacity: u8,
                      paint_id: PaintId)
                      -> Result<(), GlyphLoadingError>
                      where F: Loader;
@@ -48,7 +47,6 @@ pub trait SceneExt {
                    hinting_options: HintingOptions,
                    clip_path: Option<ClipPathId>,
                    blend_mode: BlendMode,
-                   opacity: u8,
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError>;
 
@@ -61,7 +59,6 @@ pub trait SceneExt {
                  hinting_options: HintingOptions,
                  clip_path: Option<ClipPathId>,
                  blend_mode: BlendMode,
-                 opacity: u8,
                  paint_id: PaintId)
                  -> Result<(), GlyphLoadingError>;
 }
@@ -76,7 +73,6 @@ impl SceneExt for Scene {
                      hinting_options: HintingOptions,
                      clip_path: Option<ClipPathId>,
                      blend_mode: BlendMode,
-                     opacity: u8,
                      paint_id: PaintId)
                      -> Result<(), GlyphLoadingError>
                      where F: Loader {
@@ -93,7 +89,6 @@ impl SceneExt for Scene {
         let mut path = DrawPath::new(outline, paint_id);
         path.set_clip_path(clip_path);
         path.set_blend_mode(blend_mode);
-        path.set_opacity(opacity);
 
         self.push_path(path);
         Ok(())
@@ -107,7 +102,6 @@ impl SceneExt for Scene {
                    hinting_options: HintingOptions,
                    clip_path: Option<ClipPathId>,
                    blend_mode: BlendMode,
-                   opacity: u8,
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError> {
         for glyph in &layout.glyphs {
@@ -124,7 +118,6 @@ impl SceneExt for Scene {
                             hinting_options,
                             clip_path,
                             blend_mode,
-                            opacity,
                             paint_id)?;
         }
         Ok(())
@@ -140,7 +133,6 @@ impl SceneExt for Scene {
                  hinting_options: HintingOptions,
                  clip_path: Option<ClipPathId>,
                  blend_mode: BlendMode,
-                 opacity: u8,
                  paint_id: PaintId)
                  -> Result<(), GlyphLoadingError> {
         let layout = skribo::layout(style, collection, text);
@@ -151,7 +143,6 @@ impl SceneExt for Scene {
                          hinting_options,
                          clip_path,
                          blend_mode,
-                         opacity,
                          paint_id)
     }
 }

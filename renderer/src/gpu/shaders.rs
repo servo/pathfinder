@@ -15,7 +15,7 @@ use pathfinder_resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const TILE_VERTEX_SIZE: usize = 40;
+const TILE_INSTANCE_SIZE: usize = 12;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -155,83 +155,80 @@ impl<D> TileVertexArray<D> where D: Device {
     pub fn new(device: &D,
                tile_program: &TileProgram<D>,
                tile_vertex_buffer: &D::Buffer,
-               quads_vertex_indices_buffer: &D::Buffer)
+               quad_vertex_positions_buffer: &D::Buffer,
+               quad_vertex_indices_buffer: &D::Buffer)
                -> TileVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
-        let tile_position_attr =
-            device.get_vertex_attr(&tile_program.program, "TilePosition").unwrap();
-        let color_0_tex_coord_attr =
-            device.get_vertex_attr(&tile_program.program, "ColorTexCoord0").unwrap();
-        let color_1_tex_coord_attr =
-            device.get_vertex_attr(&tile_program.program, "ColorTexCoord1").unwrap();
+        let tile_offset_attr =
+            device.get_vertex_attr(&tile_program.program, "TileOffset").unwrap();
+        let tile_origin_attr =
+            device.get_vertex_attr(&tile_program.program, "TileOrigin").unwrap();
         let mask_0_tex_coord_attr =
             device.get_vertex_attr(&tile_program.program, "MaskTexCoord0").unwrap();
         let mask_1_tex_coord_attr =
             device.get_vertex_attr(&tile_program.program, "MaskTexCoord1").unwrap();
         let mask_backdrop_attr =
             device.get_vertex_attr(&tile_program.program, "MaskBackdrop").unwrap();
+        let color_attr = device.get_vertex_attr(&tile_program.program, "Color").unwrap();
 
-        device.bind_buffer(&vertex_array, tile_vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_offset_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
-            stride: TILE_VERTEX_SIZE,
+            stride: 4,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
         });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_0_tex_coord_attr,
-                                     &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, tile_vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::F32,
-            stride: TILE_VERTEX_SIZE,
-            offset: 4,
-            divisor: 0,
-            buffer_index: 0,
-        });
-        device.configure_vertex_attr(&vertex_array,
-                                     &color_1_tex_coord_attr,
-                                     &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::F32,
-            stride: TILE_VERTEX_SIZE,
-            offset: 12,
-            divisor: 0,
-            buffer_index: 0,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: TILE_INSTANCE_SIZE,
+            offset: 0,
+            divisor: 1,
+            buffer_index: 1,
         });
         device.configure_vertex_attr(&vertex_array, &mask_0_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::F32,
-            stride: TILE_VERTEX_SIZE,
-            offset: 20,
-            divisor: 0,
-            buffer_index: 0,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: TILE_INSTANCE_SIZE,
+            offset: 4,
+            divisor: 1,
+            buffer_index: 1,
         });
         device.configure_vertex_attr(&vertex_array, &mask_1_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::F32,
-            stride: TILE_VERTEX_SIZE,
-            offset: 28,
-            divisor: 0,
-            buffer_index: 0,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: TILE_INSTANCE_SIZE,
+            offset: 6,
+            divisor: 1,
+            buffer_index: 1,
         });
         device.configure_vertex_attr(&vertex_array, &mask_backdrop_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: TILE_VERTEX_SIZE,
-            offset: 36,
-            divisor: 0,
-            buffer_index: 0,
+            attr_type: VertexAttrType::I8,
+            stride: TILE_INSTANCE_SIZE,
+            offset: 8,
+            divisor: 1,
+            buffer_index: 1,
         });
-        device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
+        device.configure_vertex_attr(&vertex_array, &color_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: TILE_INSTANCE_SIZE,
+            offset: 10,
+            divisor: 1,
+            buffer_index: 1,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         TileVertexArray { vertex_array }
     }
@@ -258,7 +255,7 @@ impl<D> CopyTileVertexArray<D> where D: Device {
             size: 2,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
-            stride: TILE_VERTEX_SIZE,
+            stride: TILE_INSTANCE_SIZE,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
@@ -314,6 +311,8 @@ pub struct TileProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
+    pub texture_metadata_uniform: D::Uniform,
+    pub texture_metadata_size_uniform: D::Uniform,
     pub dest_texture_uniform: D::Uniform,
     pub color_texture_0_uniform: D::Uniform,
     pub color_texture_1_uniform: D::Uniform,
@@ -333,6 +332,8 @@ impl<D> TileProgram<D> where D: Device {
         let program = device.create_program(resources, "tile");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let texture_metadata_uniform = device.get_uniform(&program, "TextureMetadata");
+        let texture_metadata_size_uniform = device.get_uniform(&program, "TextureMetadataSize");
         let dest_texture_uniform = device.get_uniform(&program, "DestTexture");
         let color_texture_0_uniform = device.get_uniform(&program, "ColorTexture0");
         let color_texture_1_uniform = device.get_uniform(&program, "ColorTexture1");
@@ -349,6 +350,8 @@ impl<D> TileProgram<D> where D: Device {
             program,
             transform_uniform,
             tile_size_uniform,
+            texture_metadata_uniform,
+            texture_metadata_size_uniform,
             dest_texture_uniform,
             color_texture_0_uniform,
             color_texture_1_uniform,

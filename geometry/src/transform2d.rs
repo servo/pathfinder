@@ -228,6 +228,14 @@ impl Transform2F {
     pub fn m22(&self) -> f32 {
         self.matrix.m22()
     }
+    #[inline]
+    pub fn m31(&self) -> f32 {
+        self.vector.x()
+    }
+    #[inline]
+    pub fn m32(&self) -> f32 {
+        self.vector.y()
+    }
 
     #[inline]
     pub fn translate(&self, vector: Vector2F) -> Transform2F {

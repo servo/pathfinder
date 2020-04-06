@@ -20,7 +20,7 @@ use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_resources::ResourceLoader;
-use pathfinder_simd::default::{F32x2, F32x4};
+use pathfinder_simd::default::{F32x2, F32x4, I32x2};
 use std::os::raw::c_void;
 use std::time::Duration;
 
@@ -166,6 +166,7 @@ pub enum ShaderKind {
 #[derive(Clone, Copy)]
 pub enum UniformData {
     Float(f32),
+    IVec2(I32x2),
     IVec3([i32; 3]),
     Int(i32),
     Mat2(F32x4),

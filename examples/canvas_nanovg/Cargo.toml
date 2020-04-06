@@ -43,3 +43,6 @@ path = "../../resources"
 
 [dependencies.pathfinder_simd]
 path = "../../simd"
+
+[target.'cfg(not(windows))'.dependencies]
+jemallocator = "0.3"

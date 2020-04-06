@@ -144,26 +144,13 @@ where
         let mean_gpu_sample = self.gpu_samples.mean();
         self.ui_presenter.draw_text(
             device,
-            &format!(
-                "Stage 0 GPU: {:.3} ms",
-                duration_to_ms(mean_gpu_sample.time.stage_0)
-            ),
+            &format!("GPU: {:.3} ms", duration_to_ms(mean_gpu_sample.time.time)),
             origin + vec2i(0, LINE_HEIGHT * 1),
             false,
         );
-        self.ui_presenter.draw_text(
-            device,
-            &format!(
-                "Stage 1 GPU: {:.3} ms",
-                duration_to_ms(mean_gpu_sample.time.stage_1)
-            ),
-            origin + vec2i(0, LINE_HEIGHT * 2),
-            false,
-        );
 
-        let wallclock_time = f64::max(duration_to_ms(mean_gpu_sample.time.stage_0),
-                                      duration_to_ms(mean_cpu_sample.elapsed)) +
-            duration_to_ms(mean_gpu_sample.time.stage_1);
+        let wallclock_time = f64::max(duration_to_ms(mean_gpu_sample.time.time),
+                                      duration_to_ms(mean_cpu_sample.elapsed));
         self.ui_presenter.draw_text(
             device,
             &format!("Wallclock: {:.3} ms", wallclock_time),
@@ -255,12 +242,7 @@ impl Add<GPUSample> for GPUSample {
 impl Div<usize> for GPUSample {
     type Output = GPUSample;
     fn div(self, divisor: usize) -> GPUSample {
-        GPUSample {
-            time: RenderTime {
-                stage_0: self.time.stage_0 / (divisor as u32),
-                stage_1: self.time.stage_1 / (divisor as u32),
-            }
-        }
+        GPUSample { time: RenderTime { time: self.time.time / divisor as u32 } }
     }
 }
 

@@ -9,9 +9,9 @@
 // except according to those terms.
 
 use crate::allocator::{AllocationMode, TextureAllocator};
-use crate::gpu_data::{RenderCommand, TextureLocation, TexturePageDescriptor, TexturePageId};
+use crate::gpu_data::{RenderCommand, TextureLocation, TextureMetadataEntry};
+use crate::gpu_data::{TexturePageDescriptor, TexturePageId};
 use crate::scene::RenderTarget;
-use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{Filter, PatternFilter};
@@ -136,6 +136,27 @@ impl Paint {
             Paint::Pattern(ref mut pattern) => pattern.apply_transform(*transform),
         }
     }
+
+    fn opacity(&self) -> u8 {
+        match *self {
+            Paint::Color(_) | Paint::Gradient(_) => !0,
+            Paint::Pattern(ref pattern) => pattern.opacity(),
+        }
+    }
+
+    pub fn apply_opacity(&mut self, new_opacity: f32) {
+        match *self {
+            Paint::Color(ref mut color) => color.a = (color.a as f32 * new_opacity) as u8,
+            Paint::Gradient(ref mut gradient) => {
+                for stop in gradient.stops_mut() {
+                    stop.color.a = (stop.color.a as f32 * new_opacity) as u8
+                }
+            }
+            Paint::Pattern(ref mut pattern) => {
+                pattern.set_opacity((pattern.opacity() as f32 * new_opacity) as u8)
+            }
+        }
+    }
 }
 
 pub struct PaintInfo {
@@ -167,6 +188,8 @@ pub struct PaintMetadata {
     pub is_opaque: bool,
     /// The filter to be applied to this paint.
     pub filter: PaintFilter,
+    /// The paint opacity (global alpha, in canvas terminology).
+    pub opacity: u8,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -292,6 +315,7 @@ impl Palette {
                 sampling_flags,
                 is_opaque: paint.is_opaque(),
                 filter,
+                opacity: paint.opacity(),
             });
         }
 
@@ -300,8 +324,9 @@ impl Palette {
             let texture_scale = allocator.page_scale(metadata.location.page);
             metadata.texture_transform = match paint {
                 Paint::Color(_) => {
+                    let matrix = Matrix2x2F(F32x4::default());
                     let vector = rect_to_inset_uv(metadata.location.rect, texture_scale).origin();
-                    Transform2F { matrix: Matrix2x2F(F32x4::default()), vector } * render_transform.inverse()
+                    Transform2F { matrix, vector } * render_transform.inverse()
                 }
                 Paint::Gradient(Gradient { line: gradient_line, radii: None, .. }) => {
                     let v0 = metadata.location.rect.to_f32().center().y() * texture_scale.y();
@@ -333,7 +358,7 @@ impl Palette {
                         PatternSource::RenderTarget { .. } => {
                             // FIXME(pcwalton): Only do this in GL, not Metal!
                             let texture_origin_uv = rect_to_uv(metadata.location.rect,
-                                                            texture_scale).lower_left();
+                                                               texture_scale).lower_left();
                             Transform2F::from_translation(texture_origin_uv) *
                                 Transform2F::from_scale(texture_scale * vec2f(1.0, -1.0)) *
                                 pattern.transform().inverse() * render_transform
@@ -354,9 +379,18 @@ impl Palette {
         let opacity_tile_page = opacity_tile_builder.tile_location.page;
         let opacity_tile_transform = opacity_tile_builder.tile_transform(&allocator);
 
+        // Create texture metadata.
+        let texture_metadata = paint_metadata.iter().map(|paint_metadata| {
+            TextureMetadataEntry {
+                color_0_transform: paint_metadata.texture_transform,
+                opacity: paint_metadata.opacity as f32 / 255.0,
+            }
+        }).collect();
+
         // Create render commands.
         let mut render_commands = vec![
-            RenderCommand::AllocateTexturePages(texture_page_descriptors)
+            RenderCommand::UploadTextureMetadata(texture_metadata),
+            RenderCommand::AllocateTexturePages(texture_page_descriptors),
         ];
         for (index, metadata) in render_target_metadata.iter().enumerate() {
             let id = RenderTargetId(index as u32);
@@ -386,14 +420,6 @@ impl Palette {
 }
 
 impl PaintMetadata {
-    // TODO(pcwalton): Apply clamp/repeat to tile rect.
-    pub(crate) fn calculate_tex_coords(&self, tile_position: Vector2I) -> Vector2F {
-        let tile_size = vec2i(TILE_WIDTH as i32, TILE_HEIGHT as i32);
-        let position = (tile_position * tile_size).to_f32();
-        let tex_coords = self.texture_transform * position;
-        tex_coords
-    }
-
     pub(crate) fn filter(&self) -> Filter {
         match self.filter {
             PaintFilter::None => Filter::None,

@@ -7,6 +7,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 bitflags = "1.0"
 byteorder = "1.2"
+half = "1.5"
 hashbrown = "0.7"
 rayon = "1.0"
 serde = "1.0"

@@ -308,7 +308,6 @@ impl CanvasRenderingContext2D {
         let transform = self.current_state.transform;
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
-        let opacity = (self.current_state.global_alpha * 255.0) as u8;
 
         outline.transform(&transform);
 
@@ -334,7 +333,6 @@ impl CanvasRenderingContext2D {
             }
             path.set_fill_rule(fill_rule);
             path.set_blend_mode(blend_mode);
-            path.set_opacity(opacity);
             self.canvas.scene.push_path(path);
 
             self.composite_shadow_blur_render_targets_if_needed(shadow_blur_info, clip_path);
@@ -344,7 +342,6 @@ impl CanvasRenderingContext2D {
         path.set_clip_path(clip_path);
         path.set_fill_rule(fill_rule);
         path.set_blend_mode(blend_mode);
-        path.set_opacity(opacity);
         self.canvas.scene.push_path(path);
     }
 
@@ -587,7 +584,7 @@ impl State {
     }
 
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
-        let mut must_copy = !self.transform.is_identity();
+        let mut must_copy = !self.transform.is_identity() || self.global_alpha < 1.0;
         if !must_copy {
             if let Paint::Pattern(ref pattern) = *paint {
                 must_copy = self.image_smoothing_enabled != pattern.smoothing_enabled()
@@ -600,6 +597,7 @@ impl State {
 
         let mut paint = (*paint).clone();
         paint.apply_transform(&self.transform);
+        paint.apply_opacity(self.global_alpha);
         if let Paint::Pattern(ref mut pattern) = paint {
             pattern.set_smoothing_enabled(self.image_smoothing_enabled);
         }

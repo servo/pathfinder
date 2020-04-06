@@ -42,13 +42,20 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 use std::time::Instant;
 
+#[cfg(not(windows))]
+use jemallocator;
+
+#[cfg(not(windows))]
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 // TODO(pcwalton): See if we can reduce the amount of code by using the canvas shadow feature.
 
 const PI_2: f32 = PI * 2.0;
 const FRAC_PI_2_3: f32 = PI * 2.0 / 3.0;
 
 const WINDOW_WIDTH: i32 = 1024;
-const WINDOW_HEIGHT: i32 = 768;
+const WINDOW_HEIGHT: i32 = WINDOW_WIDTH * 3 / 4;
 
 static FONT_NAME_REGULAR: &'static str = "Roboto-Regular";
 static FONT_NAME_BOLD:    &'static str = "Roboto-Bold";

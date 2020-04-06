@@ -78,9 +78,7 @@ precision highp sampler2D;
 
 
 
-
 uniform sampler2D uColorTexture0;
-uniform sampler2D uColorTexture1;
 uniform sampler2D uMaskTexture0;
 uniform sampler2D uMaskTexture1;
 uniform sampler2D uDestTexture;
@@ -95,7 +93,7 @@ uniform int uCtrl;
 in vec3 vMaskTexCoord0;
 in vec3 vMaskTexCoord1;
 in vec2 vColorTexCoord0;
-in vec2 vColorTexCoord1;
+in float vOpacity;
 
 out vec4 oFragColor;
 
@@ -575,11 +573,9 @@ void calculateColor(int ctrl){
                              uFilterParams2,
                              color0Filter);
     }
-    if(((ctrl >> 7)& 0x1)!= 0)
-        color *= sampleColor(uColorTexture1, vColorTexCoord1);
 
 
-    color . a *= maskAlpha;
+    color . a *= maskAlpha * vOpacity;
 
 
     int compositeOp =(ctrl >> 8)& 0xf;

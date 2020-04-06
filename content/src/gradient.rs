@@ -120,6 +120,11 @@ impl Gradient {
         &self.stops.array
     }
 
+    #[inline]
+    pub fn stops_mut(&mut self) -> &mut [ColorStop] {
+        &mut self.stops.array
+    }
+
     pub fn sample(&self, mut t: f32) -> ColorU {
         if self.stops.is_empty() {
             return ColorU::transparent_black();

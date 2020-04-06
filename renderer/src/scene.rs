@@ -143,7 +143,6 @@ impl Scene {
                 }),
                 fill_rule: draw_path.fill_rule,
                 blend_mode: draw_path.blend_mode,
-                opacity: draw_path.opacity,
                 name: draw_path.name,
             });
         }
@@ -313,7 +312,6 @@ pub struct DrawPath {
     clip_path: Option<ClipPathId>,
     fill_rule: FillRule,
     blend_mode: BlendMode,
-    opacity: u8,
     name: String,
 }
 
@@ -355,7 +353,6 @@ impl DrawPath {
             clip_path: None,
             fill_rule: FillRule::Winding,
             blend_mode: BlendMode::SrcOver,
-            opacity: !0,
             name: String::new(),
         }
     }
@@ -398,16 +395,6 @@ impl DrawPath {
     #[inline]
     pub fn set_blend_mode(&mut self, new_blend_mode: BlendMode) {
         self.blend_mode = new_blend_mode
-    }
-
-    #[inline]
-    pub(crate) fn opacity(&self) -> u8 {
-        self.opacity
-    }
-
-    #[inline]
-    pub fn set_opacity(&mut self, new_opacity: u8) {
-        self.opacity = new_opacity
     }
 
     #[inline]

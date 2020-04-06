@@ -10,7 +10,7 @@
 
 use crate::builder::{BuiltPath, ObjectBuilder, Occluder, SceneBuilder, SolidTiles};
 use crate::gpu_data::TileObjectPrimitive;
-use crate::paint::PaintMetadata;
+use crate::paint::{PaintId, PaintMetadata};
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
@@ -18,7 +18,6 @@ use pathfinder_content::segment::Segment;
 use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use std::cmp::Ordering;
 use std::mem;
@@ -48,10 +47,9 @@ pub(crate) enum TilingPathInfo<'a> {
 
 #[derive(Clone, Copy)]
 pub(crate) struct DrawTilingPathInfo<'a> {
+    pub(crate) paint_id: PaintId,
     pub(crate) paint_metadata: &'a PaintMetadata,
-    pub(crate) opacity_tile_transform: Transform2F,
     pub(crate) blend_mode: BlendMode,
-    pub(crate) opacity: u8,
     pub(crate) built_clip_path: Option<&'a BuiltPath>,
 }
 

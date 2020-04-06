@@ -45,7 +45,6 @@ impl CanvasRenderingContext2D {
 
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
-        let opacity = (self.current_state.global_alpha * 255.0) as u8;
 
         drop(self.canvas.scene.push_layout(&layout,
                                            &TextStyle { size: self.current_state.font_size },
@@ -54,7 +53,6 @@ impl CanvasRenderingContext2D {
                                            HintingOptions::None,
                                            clip_path,
                                            blend_mode,
-                                           opacity,
                                            paint_id));
     }
 
@@ -67,7 +65,6 @@ impl CanvasRenderingContext2D {
 
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
-        let opacity = (self.current_state.global_alpha * 255.0) as u8;
 
         match self.current_state.text_align {
             TextAlign::Left => {},
@@ -96,7 +93,6 @@ impl CanvasRenderingContext2D {
                                            HintingOptions::None,
                                            clip_path,
                                            blend_mode,
-                                           opacity,
                                            paint_id));
     }
 

@@ -13,7 +13,7 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeExt, MASK_TILES_ACROSS, MASK_TILES_DOWN};
 use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TexturePageId, Tile, TileBatch};
-use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive, TileVertex};
+use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
@@ -125,8 +125,8 @@ impl<'a> SceneBuilder<'a> {
             render_commands,
             paint_metadata,
             opacity_tile_page,
-            opacity_tile_transform,
-            render_target_metadata: _
+            opacity_tile_transform: _,
+            render_target_metadata: _,
         } = self.scene.build_paint_info(render_transform);
         for render_command in render_commands {
             self.listener.send(render_command);
@@ -153,7 +153,6 @@ impl<'a> SceneBuilder<'a> {
                 },
                 paint_metadata: &paint_metadata,
                 opacity_tile_page,
-                opacity_tile_transform,
                 built_clip_paths: &built_clip_paths,
             })
         });
@@ -186,7 +185,6 @@ impl<'a> SceneBuilder<'a> {
             path_build_params: PathBuildParams { path_index, view_box, built_options, scene },
             paint_metadata,
             opacity_tile_page,
-            opacity_tile_transform,
             built_clip_paths,
         } = params;
 
@@ -204,10 +202,9 @@ impl<'a> SceneBuilder<'a> {
                                    path_object.fill_rule(),
                                    view_box,
                                    TilingPathInfo::Draw(DrawTilingPathInfo {
+            paint_id,
             paint_metadata,
-            opacity_tile_transform,
             blend_mode: path_object.blend_mode(),
-            opacity: path_object.opacity(),
             built_clip_path,
         }));
 
@@ -444,7 +441,7 @@ impl<'a> SceneBuilder<'a> {
         };
 
         for alpha_tile in alpha_tiles {
-            let alpha_tile_coords = alpha_tile.upper_left.tile_position();
+            let alpha_tile_coords = alpha_tile.tile_position();
             if layer_z_buffer.test(alpha_tile_coords, current_depth) {
                 culled_alpha_tiles.push(*alpha_tile);
             }
@@ -452,6 +449,7 @@ impl<'a> SceneBuilder<'a> {
     }
 
     fn pack_tiles(&mut self, culled_tiles: CulledTiles) {
+        self.listener.send(RenderCommand::BeginTileDrawing);
         for display_item in culled_tiles.display_list {
             match display_item {
                 CulledDisplayItem::DrawTiles(batch) => {
@@ -509,7 +507,6 @@ struct DrawPathBuildParams<'a> {
     path_build_params: PathBuildParams<'a>,
     paint_metadata: &'a [PaintMetadata],
     opacity_tile_page: TexturePageId,
-    opacity_tile_transform: Transform2F,
     built_clip_paths: &'a [BuiltPath],
 }
 
@@ -522,8 +519,7 @@ impl BuiltPath {
         let occludes = match *tiling_path_info {
             TilingPathInfo::Draw(ref draw_tiling_path_info) => {
                 draw_tiling_path_info.paint_metadata.is_opaque &&
-                    draw_tiling_path_info.blend_mode.occludes_backdrop() &&
-                    draw_tiling_path_info.opacity == !0
+                    draw_tiling_path_info.blend_mode.occludes_backdrop()
             }
             TilingPathInfo::Clip => true,
         };
@@ -769,74 +765,42 @@ impl<'a> PackedTile<'a> {
                          tiles: &mut Vec<Tile>,
                          draw_tiling_path_info: &DrawTilingPathInfo) {
         let fill_tile_index = self.draw_tile.alpha_tile_index as u16;
-        let fill_tile_backdrop = self.draw_tile.backdrop as i16;
+        let fill_tile_backdrop = self.draw_tile.backdrop as i8;
         let (clip_tile_index, clip_tile_backdrop) = match self.clip_tile {
             None => (0, 0),
-            Some(clip_tile) => (clip_tile.alpha_tile_index as u16, clip_tile.backdrop as i16),
+            Some(clip_tile) => (clip_tile.alpha_tile_index as u16, clip_tile.backdrop as i8),
         };
 
-        tiles.push(Tile {
-            upper_left: TileVertex::new_alpha(self.tile_coords,
-                                              fill_tile_index,
-                                              fill_tile_backdrop,
-                                              clip_tile_index,
-                                              clip_tile_backdrop,
-                                              Vector2I::zero(),
-                                              draw_tiling_path_info),
-            upper_right: TileVertex::new_alpha(self.tile_coords,
-                                               fill_tile_index,
-                                               fill_tile_backdrop,
-                                               clip_tile_index,
-                                               clip_tile_backdrop,
-                                               vec2i(1, 0),
-                                               draw_tiling_path_info),
-            lower_left: TileVertex::new_alpha(self.tile_coords,
-                                              fill_tile_index,
-                                              fill_tile_backdrop,
-                                              clip_tile_index,
-                                              clip_tile_backdrop,
-                                              vec2i(0, 1),
-                                              draw_tiling_path_info),
-            lower_right: TileVertex::new_alpha(self.tile_coords,
-                                               fill_tile_index,
-                                               fill_tile_backdrop,
-                                               clip_tile_index,
-                                               clip_tile_backdrop,
-                                               vec2i(1, 1),
-                                               draw_tiling_path_info),
-        });
+        tiles.push(Tile::new_alpha(self.tile_coords,
+                                   fill_tile_index,
+                                   fill_tile_backdrop,
+                                   clip_tile_index,
+                                   clip_tile_backdrop,
+                                   draw_tiling_path_info));
     }
 }
 
-impl TileVertex {
+impl Tile {
     #[inline]
     fn new_alpha(tile_origin: Vector2I,
                  draw_tile_index: u16,
-                 draw_tile_backdrop: i16,
+                 draw_tile_backdrop: i8,
                  clip_tile_index: u16,
-                 clip_tile_backdrop: i16,
-                 tile_offset: Vector2I,
+                 clip_tile_backdrop: i8,
                  draw_tiling_path_info: &DrawTilingPathInfo)
-                 -> TileVertex {
-        // TODO(pcwalton): Opacity.
-        let tile_position = tile_origin + tile_offset;
-        let color_0_uv = draw_tiling_path_info.paint_metadata.calculate_tex_coords(tile_position);
-        let color_1_uv = calculate_opacity_uv(draw_tiling_path_info);
-        let mask_0_uv = calculate_mask_uv(draw_tile_index, tile_offset);
-        let mask_1_uv = calculate_mask_uv(clip_tile_index, tile_offset);
-        TileVertex {
-            tile_x: tile_position.x() as i16,
-            tile_y: tile_position.y() as i16,
-            color_0_u: color_0_uv.x(),
-            color_0_v: color_0_uv.y(),
-            color_1_u: color_1_uv.x(),
-            color_1_v: color_1_uv.y(),
-            mask_0_u: mask_0_uv.x(),
-            mask_0_v: mask_0_uv.y(),
-            mask_1_u: mask_1_uv.x(),
-            mask_1_v: mask_1_uv.y(),
+                 -> Tile {
+        let mask_0_uv = calculate_mask_uv(draw_tile_index);
+        let mask_1_uv = calculate_mask_uv(clip_tile_index);
+        Tile {
+            tile_x: tile_origin.x() as i16,
+            tile_y: tile_origin.y() as i16,
+            mask_0_u: mask_0_uv.x() as u8,
+            mask_0_v: mask_0_uv.y() as u8,
+            mask_1_u: mask_1_uv.x() as u8,
+            mask_1_v: mask_1_uv.y() as u8,
             mask_0_backdrop: draw_tile_backdrop,
             mask_1_backdrop: clip_tile_backdrop,
+            color: draw_tiling_path_info.paint_id.0,
         }
     }
 
@@ -846,16 +810,9 @@ impl TileVertex {
     }
 }
 
-fn calculate_mask_uv(tile_index: u16, tile_offset: Vector2I) -> Vector2F {
+fn calculate_mask_uv(tile_index: u16) -> Vector2I {
+    debug_assert_eq!(MASK_TILES_ACROSS, MASK_TILES_DOWN);
     let mask_u = tile_index as i32 % MASK_TILES_ACROSS as i32;
     let mask_v = tile_index as i32 / MASK_TILES_ACROSS as i32;
-    let scale = vec2f(1.0 / MASK_TILES_ACROSS as f32, 1.0 / MASK_TILES_DOWN as f32);
-    (vec2i(mask_u, mask_v) + tile_offset).to_f32() * scale
-}
-
-fn calculate_opacity_uv(draw_tiling_path_info: &DrawTilingPathInfo) -> Vector2F {
-    let DrawTilingPathInfo { opacity_tile_transform, opacity, .. } = *draw_tiling_path_info;
-    let texel_coord = (vec2i((opacity % 16) as i32, (opacity / 16) as i32).to_f32() +
-                       vec2f(0.5, 0.5)) * (1.0 / 16.0);
-    opacity_tile_transform * texel_coord
+    vec2i(mask_u, mask_v)
 }

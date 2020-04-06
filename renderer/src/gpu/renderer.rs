@@ -14,10 +14,11 @@ use crate::gpu::shaders::{BlitProgram, BlitVertexArray, CopyTileProgram, CopyTil
 use crate::gpu::shaders::{FillProgram, FillVertexArray, MAX_FILLS_PER_BATCH, ReprojectionProgram};
 use crate::gpu::shaders::{ReprojectionVertexArray, StencilProgram, StencilVertexArray};
 use crate::gpu::shaders::{TileProgram, TileVertexArray};
-use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TextureLocation, TexturePageDescriptor};
-use crate::gpu_data::{TexturePageId, Tile, TileBatchTexture};
+use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TextureLocation, TextureMetadataEntry};
+use crate::gpu_data::{TexturePageDescriptor, TexturePageId, Tile, TileBatchTexture};
 use crate::options::BoundingQuad;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
+use half::f16;
 use pathfinder_color::{self as color, ColorF, ColorU};
 use pathfinder_content::effects::{BlendMode, BlurDirection, DefringingKernel};
 use pathfinder_content::effects::{Filter, PatternFilter};
@@ -26,13 +27,14 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
+use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
 use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_resources::ResourceLoader;
-use pathfinder_simd::default::{F32x2, F32x4};
+use pathfinder_simd::default::{F32x2, F32x4, I32x2};
 use std::cmp;
 use std::collections::VecDeque;
 use std::f32;
@@ -51,6 +53,11 @@ pub(crate) const MASK_TILES_DOWN: u32 = 256;
 const SQRT_2_PI_INV: f32 = 0.3989422804014327;
 
 const TEXTURE_CACHE_SIZE: usize = 8;
+const TIMER_QUERY_CACHE_SIZE: usize = 8;
+
+const TEXTURE_METADATA_ENTRIES_PER_ROW: i32 = 256;
+const TEXTURE_METADATA_TEXTURE_WIDTH:   i32 = TEXTURE_METADATA_ENTRIES_PER_ROW * 2;
+const TEXTURE_METADATA_TEXTURE_HEIGHT:  i32 = 65536 / TEXTURE_METADATA_ENTRIES_PER_ROW;
 
 // FIXME(pcwalton): Shrink this again!
 const MASK_FRAMEBUFFER_WIDTH:  i32 = TILE_WIDTH as i32  * MASK_TILES_ACROSS as i32;
@@ -106,7 +113,6 @@ where
     blit_vertex_array: BlitVertexArray<D>,
     tile_vertex_array: TileVertexArray<D>,
     tile_copy_vertex_array: CopyTileVertexArray<D>,
-    area_lut_texture: D::Texture,
     tile_vertex_buffer: D::Buffer,
     quad_vertex_positions_buffer: D::Buffer,
     quad_vertex_indices_buffer: D::Buffer,
@@ -119,7 +125,8 @@ where
     texture_pages: Vec<TexturePage<D>>,
     render_targets: Vec<RenderTargetInfo>,
     render_target_stack: Vec<RenderTargetId>,
-
+    texture_metadata_texture: D::Texture,
+    area_lut_texture: D::Texture,
     gamma_lut_texture: D::Texture,
 
     // Stencil shader
@@ -137,8 +144,8 @@ where
 
     // Debug
     pub stats: RenderStats,
-    current_timers: RenderTimers<D>,
-    pending_timers: VecDeque<RenderTimers<D>>,
+    current_timer: Option<D::TimerQuery>,
+    pending_timers: VecDeque<D::TimerQuery>,
     free_timer_queries: Vec<D::TimerQuery>,
     pub debug_ui_presenter: DebugUIPresenter<D>,
 
@@ -164,6 +171,10 @@ where
 
         let area_lut_texture = device.create_texture_from_png(resources, "area-lut");
         let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
+
+        let texture_metadata_texture = device.create_texture(
+            TextureFormat::RGBA16F,
+            Vector2I::new(TEXTURE_METADATA_TEXTURE_WIDTH, TEXTURE_METADATA_TEXTURE_HEIGHT));
 
         let quad_vertex_positions_buffer = device.create_buffer();
         device.allocate_buffer(
@@ -198,7 +209,8 @@ where
             &device,
             &tile_program,
             &tile_vertex_buffer,
-            &quads_vertex_indices_buffer,
+            &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
         let tile_copy_vertex_array = CopyTileVertexArray::new(
             &device,
@@ -225,6 +237,11 @@ where
         let intermediate_dest_texture = device.create_texture(TextureFormat::RGBA8, window_size);
         let intermediate_dest_framebuffer = device.create_framebuffer(intermediate_dest_texture);
 
+        let mut timer_queries = vec![];
+        for _ in 0..TIMER_QUERY_CACHE_SIZE {
+            timer_queries.push(device.create_timer_query());
+        }
+
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
         Renderer {
@@ -239,7 +256,6 @@ where
             blit_vertex_array,
             tile_vertex_array,
             tile_copy_vertex_array,
-            area_lut_texture,
             tile_vertex_buffer,
             quad_vertex_positions_buffer,
             quad_vertex_indices_buffer,
@@ -253,7 +269,9 @@ where
             render_targets: vec![],
             render_target_stack: vec![],
 
+            area_lut_texture,
             gamma_lut_texture,
+            texture_metadata_texture,
 
             stencil_program,
             stencil_vertex_array,
@@ -262,9 +280,9 @@ where
             reprojection_vertex_array,
 
             stats: RenderStats::default(),
-            current_timers: RenderTimers::new(),
+            current_timer: None,
             pending_timers: VecDeque::new(),
-            free_timer_queries: vec![],
+            free_timer_queries: timer_queries,
             debug_ui_presenter,
 
             framebuffer_flags: FramebufferFlags::empty(),
@@ -295,11 +313,12 @@ where
             RenderCommand::DeclareRenderTarget { id, location } => {
                 self.declare_render_target(id, location)
             }
-            RenderCommand::AddFills(ref fills) => self.add_fills(fills),
-            RenderCommand::FlushFills => {
-                self.draw_buffered_fills();
-                self.begin_composite_timer_query();
+            RenderCommand::UploadTextureMetadata(ref metadata) => {
+                self.upload_texture_metadata(metadata)
             }
+            RenderCommand::AddFills(ref fills) => self.add_fills(fills),
+            RenderCommand::FlushFills => self.draw_buffered_fills(),
+            RenderCommand::BeginTileDrawing => self.begin_tile_drawing(),
             RenderCommand::PushRenderTarget(render_target_id) => {
                 self.push_render_target(render_target_id)
             }
@@ -320,13 +339,22 @@ where
         }
     }
 
+    fn begin_tile_drawing(&mut self) {
+        if let Some(timer_query) = self.allocate_timer_query() {
+            self.device.begin_timer_query(&timer_query);
+            self.current_timer = Some(timer_query);
+        }
+    }
+
     pub fn end_scene(&mut self) {
         self.blit_intermediate_dest_framebuffer_if_necessary();
 
-        self.end_composite_timer_query();
-        self.pending_timers.push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
-
         self.device.end_commands();
+
+        if let Some(timer_query) = self.current_timer.take() {
+            self.device.end_timer_query(&timer_query);
+            self.pending_timers.push_back(timer_query);
+        }
     }
 
     fn start_rendering(&mut self,
@@ -351,32 +379,14 @@ where
     }
 
     pub fn shift_rendering_time(&mut self) -> Option<RenderTime> {
-        let timers = self.pending_timers.front()?;
-
-        // Accumulate stage-0 time.
-        let mut total_stage_0_time = Duration::new(0, 0);
-        for timer_query in &timers.stage_0 {
-            match self.device.try_recv_timer_query(timer_query) {
-                None => return None,
-                Some(stage_0_time) => total_stage_0_time += stage_0_time,
+        if let Some(query) = self.pending_timers.pop_front() {
+            if let Some(time) = self.device.try_recv_timer_query(&query) {
+                self.free_timer_queries.push(query);
+                return Some(RenderTime { time });
             }
+            self.pending_timers.push_front(query);
         }
-
-        // Get stage-1 time.
-        let stage_1_time = {
-            let stage_1_timer_query = timers.stage_1.as_ref().unwrap();
-            match self.device.try_recv_timer_query(stage_1_timer_query) {
-                None => return None,
-                Some(query) => query,
-            }
-        };
-
-        // Recycle all timer queries.
-        let timers = self.pending_timers.pop_front().unwrap();
-        self.free_timer_queries.extend(timers.stage_0.into_iter());
-        self.free_timer_queries.push(timers.stage_1.unwrap());
-
-        Some(RenderTime { stage_0: total_stage_0_time, stage_1: stage_1_time })
+        None
     }
 
     #[inline]
@@ -464,6 +474,34 @@ where
         render_target.location = location;
     }
 
+    fn upload_texture_metadata(&mut self, metadata: &[TextureMetadataEntry]) {
+        let padded_texel_size =
+            (util::alignup_i32(metadata.len() as i32, TEXTURE_METADATA_ENTRIES_PER_ROW) *
+             TEXTURE_METADATA_TEXTURE_WIDTH * 4) as usize;
+        let mut texels = Vec::with_capacity(padded_texel_size);
+        for entry in metadata {
+            texels.extend_from_slice(&[
+                f16::from_f32(entry.color_0_transform.m11()),
+                f16::from_f32(entry.color_0_transform.m21()),
+                f16::from_f32(entry.color_0_transform.m12()),
+                f16::from_f32(entry.color_0_transform.m22()),
+                f16::from_f32(entry.color_0_transform.m31()),
+                f16::from_f32(entry.color_0_transform.m32()),
+                f16::from_f32(entry.opacity),
+                f16::default(),
+            ]);
+        }
+        while texels.len() < padded_texel_size {
+            texels.push(f16::default())
+        }
+
+        let texture = &mut self.texture_metadata_texture;
+        let width = TEXTURE_METADATA_TEXTURE_WIDTH;
+        let height = texels.len() as i32 / (4 * TEXTURE_METADATA_TEXTURE_WIDTH);
+        let rect = RectI::new(Vector2I::zero(), Vector2I::new(width, height));
+        self.device.upload_to_texture(texture, rect, TextureDataRef::F16(&texels));
+    }
+
     fn upload_tiles(&mut self, tiles: &[Tile]) {
         self.device.allocate_buffer(&self.tile_vertex_buffer,
                                     BufferData::Memory(&tiles),
@@ -532,9 +570,6 @@ where
             clear_color = Some(ColorF::default());
         };
 
-        let timer_query = self.allocate_timer_query();
-        self.device.begin_timer_query(&timer_query);
-
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
             target: &RenderTarget::Framebuffer(&self.fill_framebuffer),
@@ -563,9 +598,6 @@ where
                 ..RenderOptions::default()
             },
         });
-
-        self.device.end_timer_query(&timer_query);
-        self.current_timers.stage_0.push(timer_query);
 
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS);
         self.buffered_fills.clear();
@@ -607,7 +639,7 @@ where
             }
         }
 
-        let mut textures = vec![];
+        let mut textures = vec![&self.texture_metadata_texture];
         let mut uniforms = vec![
             (&self.tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
@@ -615,6 +647,10 @@ where
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
             (&self.tile_program.framebuffer_size_uniform,
              UniformData::Vec2(draw_viewport.size().to_f32().0)),
+            (&self.tile_program.texture_metadata_uniform, UniformData::TextureUnit(0)),
+            (&self.tile_program.texture_metadata_size_uniform,
+             UniformData::IVec2(I32x2::new(TEXTURE_METADATA_TEXTURE_WIDTH,
+                                           TEXTURE_METADATA_TEXTURE_HEIGHT))),
         ];
 
         if needs_readable_framebuffer {
@@ -687,7 +723,7 @@ where
 
         uniforms.push((&self.tile_program.ctrl_uniform, UniformData::Int(ctrl)));
 
-        self.device.draw_elements(tile_count * 6, &RenderState {
+        self.device.draw_elements_instanced(6, tile_count, &RenderState {
             target: &self.draw_render_target(),
             program: &self.tile_program.program,
             vertex_array: &self.tile_vertex_array.vertex_array,
@@ -1036,23 +1072,8 @@ where
         self.device.framebuffer_texture(&self.texture_page_framebuffer(id))
     }
 
-    fn allocate_timer_query(&mut self) -> D::TimerQuery {
-        match self.free_timer_queries.pop() {
-            Some(query) => query,
-            None => self.device.create_timer_query(),
-        }
-    }
-
-    fn begin_composite_timer_query(&mut self) {
-        let timer_query = self.allocate_timer_query();
-        self.device.begin_timer_query(&timer_query);
-        self.current_timers.stage_1 = Some(timer_query);
-    }
-
-    fn end_composite_timer_query(&mut self) {
-        if let Some(ref query) = self.current_timers.stage_1 {
-            self.device.end_timer_query(query);
-        }
+    fn allocate_timer_query(&mut self) -> Option<D::TimerQuery> {
+        self.free_timer_queries.pop()
     }
 }
 
@@ -1090,27 +1111,15 @@ impl Div<usize> for RenderStats {
     }
 }
 
-struct RenderTimers<D> where D: Device {
-    stage_0: Vec<D::TimerQuery>,
-    stage_1: Option<D::TimerQuery>,
-}
-
-impl<D> RenderTimers<D> where D: Device {
-    fn new() -> RenderTimers<D> {
-        RenderTimers { stage_0: vec![], stage_1: None }
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct RenderTime {
-    pub stage_0: Duration,
-    pub stage_1: Duration,
+    pub time: Duration,
 }
 
 impl Default for RenderTime {
     #[inline]
     fn default() -> RenderTime {
-        RenderTime { stage_0: Duration::new(0, 0), stage_1: Duration::new(0, 0) }
+        RenderTime { time: Duration::new(0, 0) }
     }
 }
 
@@ -1119,10 +1128,7 @@ impl Add<RenderTime> for RenderTime {
 
     #[inline]
     fn add(self, other: RenderTime) -> RenderTime {
-        RenderTime {
-            stage_0: self.stage_0 + other.stage_0,
-            stage_1: self.stage_1 + other.stage_1,
-        }
+        RenderTime { time: self.time + other.time }
     }
 }
 

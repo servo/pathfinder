@@ -48,7 +48,7 @@ use pathfinder_gpu::{Device, Primitive, RenderState, RenderTarget, ShaderKind, S
 use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, TextureSamplingFlags};
 use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
-use pathfinder_simd::default::{F32x2, F32x4};
+use pathfinder_simd::default::{F32x2, F32x4, I32x2};
 use std::cell::{Cell, RefCell};
 use std::mem;
 use std::ptr;
@@ -621,19 +621,23 @@ impl Device for MetalDevice {
     }
 
     fn begin_timer_query(&self, query: &MetalTimerQuery) {
+        /*
         self.command_buffers
             .borrow_mut()
             .last()
             .unwrap()
             .encode_signal_event(&self.shared_event, query.0.event_value);
+            */
     }
 
     fn end_timer_query(&self, query: &MetalTimerQuery) {
+        /*
         self.command_buffers
             .borrow_mut()
             .last()
             .unwrap()
             .encode_signal_event(&self.shared_event, query.0.event_value + 1);
+            */
     }
 
     fn try_recv_timer_query(&self, query: &MetalTimerQuery) -> Option<Duration> {
@@ -907,6 +911,10 @@ impl MetalDevice {
             match uniform_data {
                 UniformData::Float(value) => {
                     uniform_buffer_data.write_f32::<NativeEndian>(value).unwrap()
+                }
+                UniformData::IVec2(vector) => {
+                    uniform_buffer_data.write_i32::<NativeEndian>(vector.x()).unwrap();
+                    uniform_buffer_data.write_i32::<NativeEndian>(vector.y()).unwrap();
                 }
                 UniformData::IVec3(values) => {
                     uniform_buffer_data.write_i32::<NativeEndian>(values[0]).unwrap();
@@ -1297,6 +1305,9 @@ impl UniformDataExt for UniformData {
                 UniformData::Float(ref data) => {
                     Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 1))
                 }
+                UniformData::IVec2(ref data) => {
+                    Some(slice::from_raw_parts(data as *const I32x2 as *const u8, 4 * 3))
+                }
                 UniformData::IVec3(ref data) => {
                     Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 3))
                 }
@@ -1337,6 +1348,8 @@ impl TextureFormatExt for TextureFormat {
                 // FIXME(pcwalton): This is wrong! But it prevents a crash for now.
                 Some(TextureFormat::RGBA8)
             }
+            MTLPixelFormat::RGBA16Float => Some(TextureFormat::RGBA16F),
+            MTLPixelFormat::RGBA32Float => Some(TextureFormat::RGBA32F),
             _ => None,
         }
     }

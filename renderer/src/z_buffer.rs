@@ -11,13 +11,13 @@
 //! Software occlusion culling.
 
 use crate::builder::Occluder;
-use crate::gpu_data::{Tile, TileBatch, TileBatchTexture, TileVertex};
+use crate::gpu_data::{Tile, TileBatch, TileBatchTexture};
 use crate::paint::{PaintId, PaintMetadata};
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_content::effects::{BlendMode, Filter};
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
+use pathfinder_geometry::vector::Vector2I;
 use vec_map::VecMap;
 
 pub(crate) struct ZBuffer {
@@ -71,7 +71,8 @@ impl ZBuffer {
             let tile_coords = self.buffer.index_to_coords(tile_index);
 
             let depth_metadata = self.depth_metadata[depth as usize];
-            let paint_metadata = &paint_metadata[depth_metadata.paint_id.0 as usize];
+            let paint_id = depth_metadata.paint_id;
+            let paint_metadata = &paint_metadata[paint_id.0 as usize];
 
             let tile_position = tile_coords + self.buffer.rect.origin();
 
@@ -103,7 +104,7 @@ impl ZBuffer {
             }
 
             let batch = solid_tiles.batches.last_mut().unwrap();
-            batch.tiles.push(Tile::new_solid_with_paint_metadata(tile_position, paint_metadata));
+            batch.tiles.push(Tile::new_solid_from_paint_id(tile_position, paint_id));
         }
 
         solid_tiles
@@ -111,42 +112,17 @@ impl ZBuffer {
 }
 
 impl Tile {
-    pub(crate) fn new_solid_with_paint_metadata(tile_position: Vector2I,
-                                                paint_metadata: &PaintMetadata)
-                                                -> Tile {
+    pub(crate) fn new_solid_from_paint_id(tile_origin: Vector2I, paint_id: PaintId) -> Tile {
         Tile {
-            upper_left: TileVertex::new_solid_from_paint_metadata(tile_position, paint_metadata),
-            upper_right: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(1, 0),
-                                                                   paint_metadata),
-            lower_left: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(0, 1),
-                                                                  paint_metadata),
-            lower_right: TileVertex::new_solid_from_paint_metadata(tile_position + vec2i(1, 1),
-                                                                   paint_metadata),
-        }
-    }
-}
-
-impl TileVertex {
-    fn new_solid_from_uv(tile_position: Vector2I, color_0_uv: Vector2F) -> TileVertex {
-        TileVertex {
-            tile_x: tile_position.x() as i16,
-            tile_y: tile_position.y() as i16,
-            color_0_u: color_0_uv.x(),
-            color_0_v: color_0_uv.y(),
-            color_1_u: 0.0,
-            color_1_v: 0.0,
-            mask_0_u: 0.0,
-            mask_0_v: 0.0,
-            mask_1_u: 0.0,
-            mask_1_v: 0.0,
+            tile_x: tile_origin.x() as i16,
+            tile_y: tile_origin.y() as i16,
             mask_0_backdrop: 0,
             mask_1_backdrop: 0,
+            mask_0_u: 0,
+            mask_0_v: 0,
+            mask_1_u: 0,
+            mask_1_v: 0,
+            color: paint_id.0,
         }
-    }
-
-    fn new_solid_from_paint_metadata(tile_position: Vector2I, paint_metadata: &PaintMetadata)
-                                     -> TileVertex {
-        let color_uv = paint_metadata.calculate_tex_coords(tile_position);
-        TileVertex::new_solid_from_uv(tile_position, color_uv)
     }
 }
