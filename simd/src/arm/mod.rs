@@ -13,7 +13,7 @@ use std::arch::aarch64::{uint32x2_t, uint32x4_t};
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, BitAnd, BitOr, Index, IndexMut, Mul, Shr, Sub};
+use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Shr, Sub};
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
