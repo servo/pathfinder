@@ -9,6 +9,7 @@ addons:
 script:
   - cargo build
   - cargo test
+  - cargo build --target  aarch64-unknown-linux-gnu
 env:
   global:
     - HARFBUZZ_SYS_NO_PKG_CONFIG=true
