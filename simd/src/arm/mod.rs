@@ -332,7 +332,7 @@ impl F32x4 {
     /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        unsafe { I32x4(round_v4f32(simd_cast(self.0))) }
+        unsafe { I32x4(simd_cast(round_v4f32(self.0))) }
     }
 }
 
