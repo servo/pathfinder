@@ -10,6 +10,7 @@ addons:
     - libsdl2-dev
     - cmake
 script:
+  - rustup target add aarch64-unknown-linux-gnu
   - cd simd
   - cargo build --target aarch64-unknown-linux-gnu
   - cd ../geometry
@@ -17,7 +18,6 @@ script:
   - cd ..
   - cargo build
   - cargo test
-  - rustup target add aarch64-unknown-linux-gnu
 env:
   global:
     - HARFBUZZ_SYS_NO_PKG_CONFIG=true
