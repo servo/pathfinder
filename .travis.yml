@@ -1,4 +1,7 @@
 language: rust
+rust:
+  - nightly
+  - stable
 addons:
   apt:
     packages:
@@ -7,13 +10,14 @@ addons:
     - libsdl2-dev
     - cmake
 script:
-  - cargo build
-  - cargo test
-  - rustup target add aarch64-unknown-linux-gnu
   - cd simd
   - cargo build --target aarch64-unknown-linux-gnu
   - cd ../geometry
   - cargo build --target  aarch64-unknown-linux-gnu
+  - cd ..
+  - cargo build
+  - cargo test
+  - rustup target add aarch64-unknown-linux-gnu
 env:
   global:
     - HARFBUZZ_SYS_NO_PKG_CONFIG=true
