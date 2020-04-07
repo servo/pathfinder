@@ -246,6 +246,14 @@ impl Div<Vector2F> for Vector2F {
     }
 }
 
+impl Div<f32> for Vector2F {
+    type Output = Vector2F;
+    #[inline]
+    fn div(self, other: f32) -> Vector2F {
+        self / Vector2F::splat(other)
+    }
+}
+
 impl Neg for Vector2F {
     type Output = Vector2F;
     #[inline]
