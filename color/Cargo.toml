@@ -1,12 +1,15 @@
 [package]
 name = "pathfinder_color"
 version = "0.1.0"
-authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+description = "A minimal SIMD-accelerated color handling library"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/servo/pathfinder"
+homepage = "https://github.com/servo/pathfinder"
 
 [dependencies]
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+version = "0.5"
