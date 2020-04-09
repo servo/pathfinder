@@ -278,9 +278,7 @@ fn render_multiline_text(context: &mut CanvasRenderingContext2D,
                          -> RectF {
     let mut bounds = RectF::new(first_line_box.origin(), vec2f(0.0, 0.0));
 
-    let mut cursor = first_line_box.origin();
-    next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
-
+    let mut cursor = first_line_box.lower_left();
     let space_width = context.measure_text("A B").width - context.measure_text("AB").width;
 
     for space_separated in text.split(' ') {
@@ -318,14 +316,15 @@ fn render_multiline_text(context: &mut CanvasRenderingContext2D,
                  first_line_box: RectF,
                  bg_color: ColorU,
                  bounds: &mut RectF) {
-        cursor.set_x(first_line_box.min_x());
-        let line_rect = RectF::new(*cursor, first_line_box.size());
+        let line_rect = RectF::from_points(vec2f(first_line_box.origin_x(),
+                                                 cursor.y() - first_line_box.height()),
+                                           *cursor);
         if !bg_color.is_fully_transparent() {
             context.set_fill_style(bg_color);
             context.fill_rect(line_rect);
         }
         *bounds = bounds.union_rect(line_rect);
-        *cursor += vec2f(0.0, first_line_box.height());
+        *cursor = vec2f(first_line_box.min_x(), cursor.y() + first_line_box.height());
     }
 }
 
