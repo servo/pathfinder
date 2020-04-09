@@ -154,7 +154,7 @@ impl Pattern {
 
     #[inline]
     pub fn is_opaque(&self) -> bool {
-        self.source.is_opaque()
+        self.source.is_opaque() && self.opacity == !0
     }
 
     #[inline]

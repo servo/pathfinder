@@ -989,11 +989,12 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
         }
 
         let image_path = create_rounded_rect_path(image_rect, 5.0);
-        let pattern_transform = Transform2F::from_translation(
-            image_rect.origin() - vec2i(
-                (image_index % IMAGES_ACROSS) as i32,
-                (image_index / IMAGES_ACROSS) as i32).to_f32() * THUMB_HEIGHT) *
-            Transform2F::from_scale(0.5);
+        let image_coord = vec2i((image_index % IMAGES_ACROSS) as i32,
+                                (image_index / IMAGES_ACROSS) as i32);
+        let pattern_transform = Transform2F::from_translation(image_rect.origin()) *
+            Transform2F::from_scale(0.5) *
+            Transform2F::from_translation(-image_coord.to_f32() * (THUMB_HEIGHT * 2.0 + 2.0) -
+                                          1.0);
         let mut pattern = Pattern::from_image((*image).clone());
         pattern.apply_transform(pattern_transform);
         context.set_fill_style(pattern);
