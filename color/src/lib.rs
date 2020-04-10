@@ -113,7 +113,12 @@ impl ColorF {
     pub fn from_hsla(mut h: f32, s: f32, l: f32, a: f32) -> ColorF {
         // https://en.wikipedia.org/wiki/HSL_and_HSV#HSL_to_RGB
 
+        // Make sure hue is always positive.
         h %= 2.0 * PI;
+        if h < 0.0 {
+            h += 2.0 * PI;
+        }
+
         h *= 3.0 / PI;
 
         // Calculate chroma.
