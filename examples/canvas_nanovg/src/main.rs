@@ -234,102 +234,139 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
     context.set_font(&[FONT_NAME_REGULAR, FONT_NAME_EMOJI][..]);
     context.set_font_size(18.0);
     context.set_fill_style(ColorU::white());
-    let main_first_line_box = RectF::new(origin, vec2f(line_width, 24.0));
-    let main_bounds = render_multiline_text(context,
-                                            PARAGRAPH_TEXT,
-                                            main_first_line_box,
-                                            rgbau(255, 255, 255, 16),
-                                            ColorU::white());
+    let main_text = MultilineTextBox::new(context,
+                                          PARAGRAPH_TEXT,
+                                          origin + vec2f(0.0, 24.0),
+                                          line_width,
+                                          24.0);
+    main_text.draw(context, rgbau(255, 255, 255, 16), ColorU::white());
 
     // Fade out the tooltip when close to it.
     context.set_font_size(11.0);
-    let tooltip_first_line_box = RectF::new(main_bounds.lower_left() + vec2f(0.0, 20.0),
-                                            vec2f(150.0, 18.0));
-    let tooltip_bounds = render_multiline_text(context,
-                                               HOVER_TEXT,
-                                               tooltip_first_line_box,
-                                               rgbau(0, 0, 0, 0),
-                                               rgbau(0, 0, 0, 0));
-    let mouse_vector = mouse_position.clamp(tooltip_bounds.origin(),
-                                            tooltip_bounds.lower_right()) - mouse_position;
+    let tooltip_origin = main_text.bounds.lower_left() + vec2f(0.0, 38.0);
+    let tooltip = MultilineTextBox::new(context, HOVER_TEXT, tooltip_origin, 150.0, 18.0);
+    let mouse_vector = mouse_position.clamp(tooltip.bounds.origin(),
+                                            tooltip.bounds.lower_right()) - mouse_position;
     context.set_global_alpha(util::clamp(mouse_vector.length() / 30.0, 0.0, 1.0));
 
     // Draw tooltip background.
     context.set_fill_style(rgbau(220, 220, 220, 255));
-    let mut path = create_rounded_rect_path(tooltip_bounds.dilate(2.0), 3.0);
-    path.move_to(vec2f(tooltip_bounds.center().x(), tooltip_bounds.origin_y() - 10.0));
-    path.line_to(vec2f(tooltip_bounds.center().x() + 7.0, tooltip_bounds.origin_y() + 1.0));
-    path.line_to(vec2f(tooltip_bounds.center().x() - 7.0, tooltip_bounds.origin_y() + 1.0));
+    let mut path = create_rounded_rect_path(tooltip.bounds.dilate(2.0), 3.0);
+    path.move_to(vec2f(tooltip.bounds.center().x(), tooltip.bounds.origin_y() - 10.0));
+    path.line_to(vec2f(tooltip.bounds.center().x() + 7.0, tooltip.bounds.origin_y() + 1.0));
+    path.line_to(vec2f(tooltip.bounds.center().x() - 7.0, tooltip.bounds.origin_y() + 1.0));
     context.fill_path(path, FillRule::Winding);
 
     // Draw tooltip.
     context.set_fill_style(rgbau(0, 0, 0, 220));
-    render_multiline_text(context,
-                          HOVER_TEXT,
-                          tooltip_first_line_box,
-                          rgbau(0, 0, 0, 0),
-                          rgbau(0, 0, 0, 220));
+    tooltip.draw(context, rgbau(0, 0, 0, 0), rgbau(0, 0, 0, 220));
 
     context.restore();
 }
 
 // This is nowhere near correct line layout, but it suffices to more or less match what NanoVG
 // does.
-fn render_multiline_text(context: &mut CanvasRenderingContext2D,
-                         text: &str,
-                         first_line_box: RectF,
-                         bg_color: ColorU,
-                         fg_color: ColorU)
-                         -> RectF {
-    let mut bounds = RectF::new(first_line_box.origin(), vec2f(0.0, 0.0));
 
-    let mut cursor = first_line_box.lower_left();
-    let space_width = context.measure_text("A B").width - context.measure_text("AB").width;
+struct MultilineTextBox {
+    lines: Vec<Line>,
+    bounds: RectF,
+}
 
-    for space_separated in text.split(' ') {
-        let mut first = true;
-        for word in space_separated.split('\n') {
-            if !first {
-                next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
+struct Line {
+    words: Vec<Word>,
+    origin: Vector2F,
+    ascent: f32,
+    descent: f32,
+    width: f32,
+    max_width: f32,
+}
+
+struct Word {
+    text: String,
+    origin_x: f32,
+}
+
+impl MultilineTextBox {
+    fn new(context: &mut CanvasRenderingContext2D,
+           text: &str,
+           mut origin: Vector2F,
+           max_width: f32,
+           line_height: f32)
+           -> MultilineTextBox {
+        let space_width = context.measure_text("A B").width - context.measure_text("AB").width;
+        let mut text: VecDeque<VecDeque<_>> = text.split('\n').map(|paragraph| {
+            paragraph.split(' ').map(|word| word.to_owned()).collect()
+        }).collect();
+        let mut lines = vec![];
+        let mut bounds = None;
+
+        while let Some(mut paragraph) = text.pop_front() {
+            while !paragraph.is_empty() {
+                let mut line = Line::new(origin, max_width, line_height);
+                line.layout(context, &mut paragraph, space_width);
+
+                origin += vec2f(0.0, line_height);
+                match bounds {
+                    None => bounds = Some(line.bounds()),
+                    Some(ref mut bounds) => *bounds = bounds.union_rect(line.bounds()),
+                }
+
+                lines.push(line);
             }
-            first = false;
+        }
 
-            let word_width = context.measure_text(word).width;
-            if cursor.x() + space_width + word_width > first_line_box.max_x() {
-                next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
-            } else if cursor.x() > first_line_box.min_x() {
-                cursor += vec2f(space_width, 0.0);
+        MultilineTextBox { bounds: bounds.unwrap_or_default(), lines }
+    }
+
+    fn draw(&self, context: &mut CanvasRenderingContext2D, bg_color: ColorU, fg_color: ColorU) {
+        for line in &self.lines {
+            line.draw(context, bg_color, fg_color);
+        }
+    }
+}
+
+impl Line {
+    fn new(origin: Vector2F, max_width: f32, line_height: f32) -> Line {
+        Line { words: vec![], origin, ascent: line_height, descent: 0.0, width: 0.0, max_width }
+    }
+
+    fn layout(&mut self,
+              context: &mut CanvasRenderingContext2D,
+              text: &mut VecDeque<String>,
+              space_width: f32) {
+        while let Some(word) = text.pop_front() {
+            let mut word_origin_x = self.width;
+            if self.width > 0.0 {
+                word_origin_x += space_width;
             }
 
-            if !fg_color.is_fully_transparent() {
-                context.set_fill_style(fg_color);
-                context.fill_text(word, cursor);
+            let word_width = context.measure_text(&word).width;
+            let new_line_width = word_origin_x + word_width;
+            if self.width != 0.0 && new_line_width > self.max_width {
+                text.push_front(word);
+                return;
             }
 
-            cursor += vec2f(word_width, 0.0);
+            self.words.push(Word { text: word, origin_x: word_origin_x });
+            self.width = new_line_width;
         }
     }
 
-    if cursor.x() > first_line_box.min_x() {
-        next_line(context, &mut cursor, first_line_box, bg_color, &mut bounds);
-    }
-
-    return bounds;
-
-    fn next_line(context: &mut CanvasRenderingContext2D,
-                 cursor: &mut Vector2F,
-                 first_line_box: RectF,
-                 bg_color: ColorU,
-                 bounds: &mut RectF) {
-        let line_rect = RectF::from_points(vec2f(first_line_box.origin_x(),
-                                                 cursor.y() - first_line_box.height()),
-                                           *cursor);
+    fn draw(&self, context: &mut CanvasRenderingContext2D, bg_color: ColorU, fg_color: ColorU) {
         if !bg_color.is_fully_transparent() {
             context.set_fill_style(bg_color);
-            context.fill_rect(line_rect);
+            context.fill_rect(self.bounds());
         }
-        *bounds = bounds.union_rect(line_rect);
-        *cursor = vec2f(first_line_box.min_x(), cursor.y() + first_line_box.height());
+
+        context.set_fill_style(fg_color);
+        for word in &self.words {
+            context.fill_text(&word.text, self.origin + vec2f(word.origin_x, 0.0));
+        }
+    }
+
+    fn bounds(&self) -> RectF {
+        RectF::new(self.origin - vec2f(0.0, self.ascent),
+                   vec2f(self.width, self.ascent + self.descent))
     }
 }
 
