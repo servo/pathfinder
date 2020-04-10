@@ -229,6 +229,8 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
                   origin: Vector2F,
                   line_width: f32,
                   mouse_position: Vector2F) {
+    const MAIN_LINE_HEIGHT: f32 = 24.0;
+
     context.save();
 
     context.set_font(&[FONT_NAME_REGULAR, FONT_NAME_EMOJI][..]);
@@ -238,8 +240,30 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
                                           PARAGRAPH_TEXT,
                                           origin + vec2f(0.0, 24.0),
                                           line_width,
-                                          24.0);
+                                          MAIN_LINE_HEIGHT);
     main_text.draw(context, rgbau(255, 255, 255, 16), ColorU::white());
+
+    if let Some(line_index) = main_text.hit_test(mouse_position) {
+        let line_bounds = main_text.lines[line_index].bounds();
+        let gutter_origin = line_bounds.origin() + vec2f(-10.0, MAIN_LINE_HEIGHT * 0.5);
+        context.set_font_size(12.0);
+
+        let gutter_text = format!("{}", line_index + 1);
+        let gutter_text_width = context.measure_text(&gutter_text).width;
+
+        context.set_text_align(TextAlign::Right);
+        context.set_text_baseline(TextBaseline::Middle);
+        context.set_fill_style(rgbau(255, 192, 0, 255));
+        let gutter_text_bounds = RectF::new(gutter_origin - vec2f(gutter_text_width, 6.0),
+                                            vec2f(gutter_text_width, 12.0));
+        let gutter_path_bounds = gutter_text_bounds.dilate(vec2f(4.0, 2.0));
+        let gutter_path_radius = gutter_path_bounds.width() * 0.5 - 1.0;
+        let path = create_rounded_rect_path(gutter_path_bounds, gutter_path_radius);
+        context.fill_path(path, FillRule::Winding);
+
+        context.set_fill_style(rgbau(32, 32, 32, 255));
+        context.fill_text(&gutter_text, gutter_origin);
+    }
 
     // Fade out the tooltip when close to it.
     context.set_font_size(11.0);
@@ -323,6 +347,15 @@ impl MultilineTextBox {
             line.draw(context, bg_color, fg_color);
         }
     }
+
+    fn hit_test(&self, mouse_position: Vector2F) -> Option<usize> {
+        for (line_index, line) in self.lines.iter().enumerate() {
+            if line.bounds().contains_point(mouse_position) {
+                return Some(line_index);
+            }
+        }
+        None
+    }
 }
 
 impl Line {
@@ -353,6 +386,9 @@ impl Line {
     }
 
     fn draw(&self, context: &mut CanvasRenderingContext2D, bg_color: ColorU, fg_color: ColorU) {
+        context.set_text_align(TextAlign::Left);
+        context.set_text_baseline(TextBaseline::Alphabetic);
+
         if !bg_color.is_fully_transparent() {
             context.set_fill_style(bg_color);
             context.fill_rect(self.bounds());
