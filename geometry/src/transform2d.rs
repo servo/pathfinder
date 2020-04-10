@@ -76,6 +76,13 @@ impl Matrix2x2F {
         Matrix2x2F(self.0 * F32x4::splat(factor))
     }
 
+    /// Extracts the scale from this matrix.
+    #[inline]
+    pub fn extract_scale(&self) -> Vector2F {
+        let squared = self.0 * self.0;
+        Vector2F((squared.xy() + squared.zw()).sqrt())
+    }
+
     #[inline]
     pub fn m11(&self) -> f32 {
         self.0[0]
@@ -210,6 +217,12 @@ impl Transform2F {
     #[inline]
     pub fn is_identity(&self) -> bool {
         *self == Transform2F::default()
+    }
+
+    /// Extracts the scale from this matrix.
+    #[inline]
+    pub fn extract_scale(&self) -> Vector2F {
+        self.matrix.extract_scale()
     }
 
     #[inline]

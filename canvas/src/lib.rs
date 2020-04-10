@@ -33,6 +33,7 @@ use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, S
 use std::borrow::Cow;
 use std::default::Default;
 use std::f32::consts::PI;
+use std::f32;
 use std::fmt::{Debug, Error as FmtError, Formatter};
 use std::mem;
 use std::sync::Arc;
@@ -274,8 +275,9 @@ impl CanvasRenderingContext2D {
 
         // The smaller scale is relevant here, as we multiply by it and want to ensure it is always
         // bigger than `HAIRLINE_STROKE_WIDTH`.
-        let transform_scale = f32::min(self.current_state.transform.m11(),
-                                       self.current_state.transform.m22());
+        let transform_scales = self.current_state.transform.extract_scale();
+        let transform_scale = f32::min(transform_scales.x(), transform_scales.y());
+
         // Avoid the division in the normal case of sufficient thickness.
         if stroke_style.line_width * transform_scale < HAIRLINE_STROKE_WIDTH {
             stroke_style.line_width = HAIRLINE_STROKE_WIDTH / transform_scale;
