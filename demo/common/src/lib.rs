@@ -102,7 +102,6 @@ pub struct DemoApp<W> where W: Window {
     last_mouse_position: Vector2I,
 
     current_frame: Option<Frame>,
-    build_time: Option<Duration>,
 
     ui_model: DemoUIModel,
     ui_presenter: DemoUIPresenter<DeviceImpl>,
@@ -202,7 +201,6 @@ impl<W> DemoApp<W> where W: Window {
             last_mouse_position: Vector2I::default(),
 
             current_frame: None,
-            build_time: None,
 
             ui_presenter,
             ui_model,
@@ -512,24 +510,14 @@ impl<W> DemoApp<W> where W: Window {
             return
         }
 
-        let build_time = self.build_time.unwrap();
-
         let zero = RenderStats::default();
         let aggregate_stats = frame.scene_stats.iter().fold(zero, |sum, item| sum + *item);
-        let total_rendering_time = if frame.scene_rendering_times.is_empty() {
-            None
-        } else {
-            Some(
-                frame
-                    .scene_rendering_times
-                    .iter()
-                    .fold(RenderTime::default(), |sum, item| sum + *item),
-            )
-        };
-
-        self.renderer.debug_ui_presenter.add_sample(aggregate_stats,
-                                                    build_time,
-                                                    total_rendering_time);
+        if !frame.scene_rendering_times.is_empty() {
+            let total_rendering_time = frame.scene_rendering_times
+                                            .iter()
+                                            .fold(RenderTime::default(), |sum, item| sum + *item);
+            self.renderer.debug_ui_presenter.add_sample(aggregate_stats, total_rendering_time);
+        }
     }
 
     fn maybe_take_screenshot(&mut self) {

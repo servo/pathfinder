@@ -144,8 +144,9 @@ where
 
     // Debug
     pub stats: RenderStats,
+    current_cpu_build_time: Option<Duration>,
     current_timer: Option<D::TimerQuery>,
-    pending_timers: VecDeque<D::TimerQuery>,
+    pending_timers: VecDeque<PendingTimer<D>>,
     free_timer_queries: Vec<D::TimerQuery>,
     pub debug_ui_presenter: DebugUIPresenter<D>,
 
@@ -280,6 +281,7 @@ where
             reprojection_vertex_array,
 
             stats: RenderStats::default(),
+            current_cpu_build_time: None,
             current_timer: None,
             pending_timers: VecDeque::new(),
             free_timer_queries: timer_queries,
@@ -335,7 +337,7 @@ where
                                 batch.blend_mode,
                                 batch.filter)
             }
-            RenderCommand::Finish { .. } => {}
+            RenderCommand::Finish { cpu_build_time } => self.stats.cpu_build_time = cpu_build_time,
         }
     }
 
@@ -353,8 +355,11 @@ where
 
         if let Some(timer_query) = self.current_timer.take() {
             self.device.end_timer_query(&timer_query);
-            self.pending_timers.push_back(timer_query);
+            self.pending_timers.push_back(PendingTimer {
+                gpu_timer_query: timer_query,
+            });
         }
+        self.current_cpu_build_time = None;
     }
 
     fn start_rendering(&mut self,
@@ -379,12 +384,13 @@ where
     }
 
     pub fn shift_rendering_time(&mut self) -> Option<RenderTime> {
-        if let Some(query) = self.pending_timers.pop_front() {
-            if let Some(time) = self.device.try_recv_timer_query(&query) {
-                self.free_timer_queries.push(query);
-                return Some(RenderTime { time });
+        if let Some(pending_timer) = self.pending_timers.pop_front() {
+            if let Some(gpu_time) =
+                    self.device.try_recv_timer_query(&pending_timer.gpu_timer_query) {
+                self.free_timer_queries.push(pending_timer.gpu_timer_query);
+                return Some(RenderTime { gpu_time });
             }
-            self.pending_timers.push_front(query);
+            self.pending_timers.push_front(pending_timer);
         }
         None
     }
@@ -1085,6 +1091,7 @@ pub struct RenderStats {
     pub fill_count: usize,
     pub alpha_tile_count: usize,
     pub solid_tile_count: usize,
+    pub cpu_build_time: Duration,
 }
 
 impl Add<RenderStats> for RenderStats {
@@ -1095,6 +1102,7 @@ impl Add<RenderStats> for RenderStats {
             solid_tile_count: self.solid_tile_count + other.solid_tile_count,
             alpha_tile_count: self.alpha_tile_count + other.alpha_tile_count,
             fill_count: self.fill_count + other.fill_count,
+            cpu_build_time: self.cpu_build_time + other.cpu_build_time,
         }
     }
 }
@@ -1107,19 +1115,25 @@ impl Div<usize> for RenderStats {
             solid_tile_count: self.solid_tile_count / divisor,
             alpha_tile_count: self.alpha_tile_count / divisor,
             fill_count: self.fill_count / divisor,
+            cpu_build_time: self.cpu_build_time / divisor as u32,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
+struct PendingTimer<D> where D: Device {
+    gpu_timer_query: D::TimerQuery,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct RenderTime {
-    pub time: Duration,
+    pub gpu_time: Duration,
 }
 
 impl Default for RenderTime {
     #[inline]
     fn default() -> RenderTime {
-        RenderTime { time: Duration::new(0, 0) }
+        RenderTime { gpu_time: Duration::new(0, 0) }
     }
 }
 
@@ -1128,7 +1142,16 @@ impl Add<RenderTime> for RenderTime {
 
     #[inline]
     fn add(self, other: RenderTime) -> RenderTime {
-        RenderTime { time: self.time + other.time }
+        RenderTime { gpu_time: self.gpu_time + other.gpu_time }
+    }
+}
+
+impl Div<usize> for RenderTime {
+    type Output = RenderTime;
+
+    #[inline]
+    fn div(self, divisor: usize) -> RenderTime {
+        RenderTime { gpu_time: self.gpu_time / divisor as u32 }
     }
 }
 

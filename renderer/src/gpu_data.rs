@@ -74,7 +74,7 @@ pub enum RenderCommand {
     DrawTiles(TileBatch),
 
     // Presents a rendered frame.
-    Finish { build_time: Duration },
+    Finish { cpu_build_time: Duration },
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -186,7 +186,9 @@ impl Debug for RenderCommand {
                        batch.mask_0_fill_rule,
                        batch.blend_mode)
             }
-            RenderCommand::Finish { .. } => write!(formatter, "Finish"),
+            RenderCommand::Finish { cpu_build_time } => {
+                write!(formatter, "Finish({} ms)", cpu_build_time.as_secs_f64() * 1000.0)
+            }
         }
     }
 }

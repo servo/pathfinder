@@ -38,6 +38,7 @@ use pathfinder_simd::default::F32x2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
+use std::collections::VecDeque;
 use std::f32::consts::PI;
 use std::sync::Arc;
 use std::time::Instant;
@@ -56,6 +57,10 @@ const FRAC_PI_2_3: f32 = PI * 2.0 / 3.0;
 
 const WINDOW_WIDTH: i32 = 1024;
 const WINDOW_HEIGHT: i32 = WINDOW_WIDTH * 3 / 4;
+
+const GRAPH_WIDTH: f32 = 200.0;
+const GRAPH_HEIGHT: f32 = 35.0;
+const GRAPH_HISTORY_COUNT: usize = 100;
 
 static FONT_NAME_REGULAR: &'static str = "Roboto-Regular";
 static FONT_NAME_BOLD:    &'static str = "Roboto-Bold";
@@ -1076,6 +1081,119 @@ fn draw_spinner(context: &mut CanvasRenderingContext2D, center: Vector2F, radius
     context.restore();
 }
 
+struct PerfGraph {
+    style: GraphStyle,
+    values: VecDeque<f32>,
+    name: &'static str,
+}
+
+impl PerfGraph {
+    fn new(style: GraphStyle, name: &'static str) -> PerfGraph {
+        PerfGraph { style, name, values: VecDeque::new() }
+    }
+
+    fn push(&mut self, frame_time: f32) {
+        if self.values.len() == GRAPH_HISTORY_COUNT {
+            self.values.pop_front();
+        }
+        self.values.push_back(frame_time);
+    }
+
+    fn render(&self, context: &mut CanvasRenderingContext2D, origin: Vector2F) {
+        let rect = RectF::new(origin, vec2f(GRAPH_WIDTH, GRAPH_HEIGHT));
+        context.set_fill_style(rgbau(0, 0, 0, 128));
+        context.fill_rect(rect);
+
+        let mut path = Path2D::new();
+        path.move_to(rect.lower_left());
+
+        let scale = vec2f(rect.width() / (GRAPH_HISTORY_COUNT as f32 - 1.0), rect.height());
+        for (index, value) in self.values.iter().enumerate() {
+            let mut value = *value;
+            if self.style == GraphStyle::FPS && value != 0.0 {
+                value = 1.0 / value;
+            }
+            value = (value * self.style.scale()).min(self.style.max());
+            let point = rect.lower_left() + vec2f(index as f32, -value / self.style.max()) * scale;
+            path.line_to(point);
+        }
+
+        path.line_to(rect.lower_left() + vec2f(self.values.len() as f32 - 1.0, 0.0) * scale);
+        context.set_fill_style(rgbau(255, 192, 0, 128));
+        context.fill_path(path, FillRule::Winding);
+
+        context.set_font(FONT_NAME_REGULAR);
+        context.set_text_baseline(TextBaseline::Top);
+
+        if !self.name.is_empty() {
+            context.set_font_size(12.0);
+            context.set_text_align(TextAlign::Left);
+            context.set_fill_style(rgbau(240, 240, 240, 192));
+            context.fill_text(self.name, origin + vec2f(3.0, 3.0));
+        }
+
+        context.set_font_size(15.0);
+        context.set_text_align(TextAlign::Right);
+        context.set_fill_style(rgbau(240, 240, 240, 255));
+        self.draw_label(context, self.style, rect.upper_right() + vec2f(-3.0, 3.0));
+
+        if self.style == GraphStyle::FPS {
+            context.set_text_baseline(TextBaseline::Alphabetic);
+            context.set_fill_style(rgbau(240, 240, 240, 160));
+            self.draw_label(context, GraphStyle::MS, rect.lower_right() + vec2f(-3.0, -3.0));
+        }
+    }
+
+    fn draw_label(&self,
+                  context: &mut CanvasRenderingContext2D,
+                  style: GraphStyle,
+                  origin: Vector2F) {
+        let mut average = self.average();
+        if style == GraphStyle::FPS && average != 0.0 {
+            average = 1.0 / average;
+        }
+        average *= style.scale();
+        context.fill_text(&format!("{}{}", average, style.label()), origin);
+    }
+
+    fn average(&self) -> f32 {
+        let mut sum: f32 = self.values.iter().sum();
+        if !self.values.is_empty() {
+            sum /= self.values.len() as f32;
+        }
+        sum
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum GraphStyle {
+    FPS,
+    MS,
+}
+
+impl GraphStyle {
+    fn scale(self) -> f32 {
+        match self {
+            GraphStyle::FPS => 1.0,
+            GraphStyle::MS => 1000.0,
+        }
+    }
+
+    fn max(self) -> f32 {
+        match self {
+            GraphStyle::MS => 20.0,
+            GraphStyle::FPS => 80.0,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            GraphStyle::FPS => " FPS",
+            GraphStyle::MS => " ms",
+        }
+    }
+}
+
 fn set_linear_gradient_fill_style(context: &mut CanvasRenderingContext2D,
                                   from_position: Vector2F,
                                   to_position: Vector2F,
@@ -1177,20 +1295,47 @@ fn main() {
     let mut mouse_position = Vector2F::zero();
     let start_time = Instant::now();
 
+    // Initialize performance graphs.
+    let mut fps_graph = PerfGraph::new(GraphStyle::FPS, "Frame Time");
+    let mut cpu_graph = PerfGraph::new(GraphStyle::MS, "CPU Time");
+    let mut gpu_graph = PerfGraph::new(GraphStyle::MS, "GPU Time");
+
     // Enter the main loop.
     loop {
         // Make a canvas.
         let mut context = Canvas::new(drawable_size.to_f32()).get_context_2d(font_context.clone());
 
+        // Start performance timing.
+        let frame_start_time = Instant::now();
+        let frame_start_elapsed_time = (frame_start_time - start_time).as_secs_f32();
+
         // Render the demo.
-        let time = (Instant::now() - start_time).as_secs_f32();
         context.scale(hidpi_factor);
-        render_demo(&mut context, mouse_position, window_size.to_f32(), time, &demo_data);
+        render_demo(&mut context,
+                    mouse_position,
+                    window_size.to_f32(),
+                    frame_start_elapsed_time,
+                    &demo_data);
+
+        // Render performance graphs.
+        let frame_elapsed_time = (Instant::now() - frame_start_time).as_secs_f32();
+        fps_graph.render(&mut context, vec2f(5.0, 5.0));
+        cpu_graph.render(&mut context, vec2f(210.0, 5.0));
+        gpu_graph.render(&mut context, vec2f(415.0, 5.0));
 
         // Render the canvas to screen.
         let scene = SceneProxy::from_scene(context.into_canvas().into_scene(), RayonExecutor);
         scene.build_and_render(&mut renderer, BuildOptions::default());
         window.gl_swap_window();
+
+        // Add stats to performance graphs.
+        if let Some(gpu_time) = renderer.shift_rendering_time() {
+            let cpu_time = renderer.stats.cpu_build_time.as_secs_f32() + frame_elapsed_time;
+            let gpu_time = gpu_time.gpu_time.as_secs_f32();
+            fps_graph.push(cpu_time.max(gpu_time));
+            cpu_graph.push(cpu_time);
+            gpu_graph.push(gpu_time);
+        }
 
         for event in event_pump.poll_iter() {
             match event {

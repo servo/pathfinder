@@ -159,8 +159,8 @@ impl<'a> SceneBuilder<'a> {
 
         self.finish_building(&paint_metadata, built_draw_paths);
 
-        let build_time = Instant::now() - start_time;
-        self.listener.send(RenderCommand::Finish { build_time });
+        let cpu_build_time = Instant::now() - start_time;
+        self.listener.send(RenderCommand::Finish { cpu_build_time });
     }
 
     fn build_clip_path(&self, params: PathBuildParams) -> BuiltPath {

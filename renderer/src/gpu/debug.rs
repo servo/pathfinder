@@ -38,9 +38,8 @@ where
     D: Device,
 {
     pub ui_presenter: UIPresenter<D>,
-
-    cpu_samples: SampleBuffer<CPUSample>,
-    gpu_samples: SampleBuffer<GPUSample>,
+    cpu_samples: SampleBuffer<RenderStats>,
+    gpu_samples: SampleBuffer<RenderTime>,
 }
 
 impl<D> DebugUIPresenter<D>
@@ -60,28 +59,17 @@ where
         }
     }
 
-    pub fn add_sample(
-        &mut self,
-        stats: RenderStats,
-        tile_time: Duration,
-        rendering_time: Option<RenderTime>,
-    ) {
-        self.cpu_samples.push(CPUSample {
-            stats,
-            elapsed: tile_time,
-        });
-        if let Some(time) = rendering_time {
-            self.gpu_samples.push(GPUSample { time })
-        }
+    pub fn add_sample(&mut self, stats: RenderStats, rendering_time: RenderTime) {
+        self.cpu_samples.push(stats);
+        self.gpu_samples.push(rendering_time);
     }
 
     pub fn draw(&self, device: &D) {
-        let mean_cpu_sample = self.cpu_samples.mean();
-        self.draw_stats_window(device, &mean_cpu_sample);
-        self.draw_performance_window(device, &mean_cpu_sample);
+        self.draw_stats_window(device);
+        self.draw_performance_window(device);
     }
 
-    fn draw_stats_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
+    fn draw_stats_window(&self, device: &D) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI::new(
@@ -92,34 +80,35 @@ where
 
         self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
 
+        let mean_cpu_sample = self.cpu_samples.mean();
         let origin = window_rect.origin() + vec2i(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
-            &format!("Paths: {}", mean_cpu_sample.stats.path_count),
+            &format!("Paths: {}", mean_cpu_sample.path_count),
             origin,
             false,
         );
         self.ui_presenter.draw_text(
             device,
-            &format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
+            &format!("Solid Tiles: {}", mean_cpu_sample.solid_tile_count),
             origin + vec2i(0, LINE_HEIGHT * 1),
             false,
         );
         self.ui_presenter.draw_text(
             device,
-            &format!("Alpha Tiles: {}", mean_cpu_sample.stats.alpha_tile_count),
+            &format!("Alpha Tiles: {}", mean_cpu_sample.alpha_tile_count),
             origin + vec2i(0, LINE_HEIGHT * 2),
             false,
         );
         self.ui_presenter.draw_text(
             device,
-            &format!("Fills: {}", mean_cpu_sample.stats.fill_count),
+            &format!("Fills: {}", mean_cpu_sample.fill_count),
             origin + vec2i(0, LINE_HEIGHT * 3),
             false,
         );
     }
 
-    fn draw_performance_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
+    fn draw_performance_window(&self, device: &D) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI::new(
@@ -130,13 +119,11 @@ where
 
         self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
 
+        let mean_cpu_sample = self.cpu_samples.mean();
         let origin = window_rect.origin() + vec2i(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
-            &format!(
-                "Stage 0 CPU: {:.3} ms",
-                duration_to_ms(mean_cpu_sample.elapsed)
-            ),
+            &format!("CPU: {:.3} ms", duration_to_ms(mean_cpu_sample.cpu_build_time)),
             origin,
             false,
         );
@@ -144,13 +131,13 @@ where
         let mean_gpu_sample = self.gpu_samples.mean();
         self.ui_presenter.draw_text(
             device,
-            &format!("GPU: {:.3} ms", duration_to_ms(mean_gpu_sample.time.time)),
+            &format!("GPU: {:.3} ms", duration_to_ms(mean_gpu_sample.gpu_time)),
             origin + vec2i(0, LINE_HEIGHT * 1),
             false,
         );
 
-        let wallclock_time = f64::max(duration_to_ms(mean_gpu_sample.time.time),
-                                      duration_to_ms(mean_cpu_sample.elapsed));
+        let wallclock_time = f64::max(duration_to_ms(mean_gpu_sample.gpu_time),
+                                      duration_to_ms(mean_cpu_sample.cpu_build_time));
         self.ui_presenter.draw_text(
             device,
             &format!("Wallclock: {:.3} ms", wallclock_time),
@@ -222,27 +209,6 @@ impl Div<usize> for CPUSample {
             elapsed: self.elapsed / (divisor as u32),
             stats: self.stats / divisor,
         }
-    }
-}
-
-#[derive(Clone, Default)]
-struct GPUSample {
-    time: RenderTime,
-}
-
-impl Add<GPUSample> for GPUSample {
-    type Output = GPUSample;
-    fn add(self, other: GPUSample) -> GPUSample {
-        GPUSample {
-            time: self.time + other.time,
-        }
-    }
-}
-
-impl Div<usize> for GPUSample {
-    type Output = GPUSample;
-    fn div(self, divisor: usize) -> GPUSample {
-        GPUSample { time: RenderTime { time: self.time.time / divisor as u32 } }
     }
 }
 

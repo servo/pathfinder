@@ -21,7 +21,6 @@ use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
-use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
 use std::path::PathBuf;
 
@@ -260,10 +259,6 @@ impl<W> DemoApp<W> where W: Window {
         // Issue render commands!
         for command in self.render_command_stream.as_mut().unwrap() {
             self.renderer.render_command(&command);
-
-            if let RenderCommand::Finish { build_time } = command {
-                self.build_time = Some(build_time);
-            }
         }
 
         self.current_frame
