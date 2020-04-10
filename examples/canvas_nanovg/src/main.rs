@@ -1318,7 +1318,7 @@ fn main() {
                     &demo_data);
 
         // Render performance graphs.
-        let frame_elapsed_time = (Instant::now() - frame_start_time).as_secs_f32();
+        let cpu_frame_elapsed_time = (Instant::now() - frame_start_time).as_secs_f32();
         fps_graph.render(&mut context, vec2f(5.0, 5.0));
         cpu_graph.render(&mut context, vec2f(210.0, 5.0));
         gpu_graph.render(&mut context, vec2f(415.0, 5.0));
@@ -1330,10 +1330,10 @@ fn main() {
 
         // Add stats to performance graphs.
         if let Some(gpu_time) = renderer.shift_rendering_time() {
-            let cpu_time = renderer.stats.cpu_build_time.as_secs_f32() + frame_elapsed_time;
+            let cpu_build_time = renderer.stats.cpu_build_time.as_secs_f32();
             let gpu_time = gpu_time.gpu_time.as_secs_f32();
-            fps_graph.push(cpu_time.max(gpu_time));
-            cpu_graph.push(cpu_time);
+            fps_graph.push(cpu_frame_elapsed_time + cpu_build_time.max(gpu_time));
+            cpu_graph.push(cpu_frame_elapsed_time + cpu_build_time);
             gpu_graph.push(gpu_time);
         }
 
