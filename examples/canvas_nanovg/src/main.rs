@@ -404,7 +404,7 @@ fn draw_graph(context: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
 }
 
 fn draw_color_wheel(context: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
-    let hue = time * 0.12;
+    let hue = (time * 0.12).sin() * PI_2;
 
     context.save();
 
