@@ -40,6 +40,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use std::collections::VecDeque;
 use std::f32::consts::PI;
+use std::iter;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -243,12 +244,16 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
                                           MAIN_LINE_HEIGHT);
     main_text.draw(context, rgbau(255, 255, 255, 16), ColorU::white());
 
-    if let Some(line_index) = main_text.hit_test(mouse_position) {
-        let line_bounds = main_text.lines[line_index].bounds();
+    if let Some(text_location) = main_text.hit_test(context, mouse_position) {
+        let caret_position = main_text.char_position(context, text_location);
+        context.set_fill_style(rgbau(255, 192, 0, 255));
+        context.fill_rect(RectF::new(caret_position, vec2f(1.0, MAIN_LINE_HEIGHT)));
+
+        let line_bounds = main_text.lines[text_location.line_index as usize].bounds();
         let gutter_origin = line_bounds.origin() + vec2f(-10.0, MAIN_LINE_HEIGHT * 0.5);
         context.set_font_size(12.0);
 
-        let gutter_text = format!("{}", line_index + 1);
+        let gutter_text = format!("{}", text_location.line_index + 1);
         let gutter_text_width = context.measure_text(&gutter_text).width;
 
         context.set_text_align(TextAlign::Right);
@@ -310,6 +315,18 @@ struct Word {
     origin_x: f32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TextLocation {
+    line_index: u32,
+    line_location: LineLocation,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LineLocation {
+    word_index: u32,
+    char_index: u32,
+}
+
 impl MultilineTextBox {
     fn new(context: &mut CanvasRenderingContext2D,
            text: &str,
@@ -348,13 +365,23 @@ impl MultilineTextBox {
         }
     }
 
-    fn hit_test(&self, mouse_position: Vector2F) -> Option<usize> {
+    fn hit_test(&self, context: &CanvasRenderingContext2D, mouse_position: Vector2F)
+                -> Option<TextLocation> {
         for (line_index, line) in self.lines.iter().enumerate() {
             if line.bounds().contains_point(mouse_position) {
-                return Some(line_index);
+                if let Some(line_location) = line.hit_test(context, mouse_position) {
+                    return Some(TextLocation { line_index: line_index as u32, line_location });
+                }
             }
         }
         None
+    }
+
+    fn char_position(&self, context: &CanvasRenderingContext2D, text_location: TextLocation)
+                     -> Vector2F {
+        let line = &self.lines[text_location.line_index as usize];
+        line.bounds().origin() + vec2f(line.char_position(context, text_location.line_location),
+                                       0.0)
     }
 }
 
@@ -403,6 +430,56 @@ impl Line {
     fn bounds(&self) -> RectF {
         RectF::new(self.origin - vec2f(0.0, self.ascent),
                    vec2f(self.width, self.ascent + self.descent))
+    }
+
+    fn hit_test(&self, context: &CanvasRenderingContext2D, mut mouse_position: Vector2F)
+                -> Option<LineLocation> {
+        let bounds = self.bounds();
+        mouse_position -= bounds.origin();
+        if mouse_position.y() < 0.0 || mouse_position.y() > bounds.height() {
+            return None;
+        }
+
+        // FIXME(pcwalton): This doesn't quite handle spaces correctly.
+        for (word_index, word) in self.words.iter().enumerate().rev() {
+            if word.origin_x <= mouse_position.x() {
+                return Some(LineLocation {
+                    word_index: word_index as u32,
+                    char_index: word.hit_test(context, mouse_position.x()),
+                });
+            }
+        }
+
+        None
+    }
+
+    fn char_position(&self, context: &CanvasRenderingContext2D, line_location: LineLocation)
+                     -> f32 {
+        let word = &self.words[line_location.word_index as usize];
+        word.origin_x + word.char_position(context, line_location.char_index)
+    }
+}
+
+impl Word {
+    fn hit_test(&self, context: &CanvasRenderingContext2D, position_x: f32) -> u32 {
+        let (mut char_start_x, mut prev_char_index) = (self.origin_x, 0);
+        for char_index in self.text
+                              .char_indices()
+                              .map(|(index, _)| index)
+                              .skip(1)
+                              .chain(iter::once(self.text.len())) {
+            let char_end_x = self.origin_x + context.measure_text(&self.text[0..char_index]).width;
+            if position_x <= (char_start_x + char_end_x) * 0.5 {
+                return prev_char_index;
+            }
+            char_start_x = char_end_x;
+            prev_char_index = char_index as u32;
+        }
+        return self.text.len() as u32;
+    }
+
+    fn char_position(&self, context: &CanvasRenderingContext2D, char_index: u32) -> f32 {
+        context.measure_text(&self.text[0..(char_index as usize)]).width
     }
 }
 
