@@ -51,8 +51,6 @@ use jemallocator;
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-// TODO(pcwalton): See if we can reduce the amount of code by using the canvas shadow feature.
-
 const PI_2: f32 = PI * 2.0;
 const FRAC_PI_2_3: f32 = PI * 2.0 / 3.0;
 
@@ -994,7 +992,6 @@ fn draw_button(context: &mut CanvasRenderingContext2D,
     context.set_stroke_style(rgbau(0, 0, 0, 48));
     context.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 
-    // TODO(pcwalton): Icon.
     context.set_font(FONT_NAME_BOLD);
     context.set_font_size(17.0);
     let text_width = context.measure_text(text).width;
