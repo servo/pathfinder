@@ -751,9 +751,10 @@ fn draw_clip(context: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32
         Transform2F::from_rotation(angle::angle_from_degrees(5.0)).translate(origin);
     context.set_transform(&transform_a);
     context.set_fill_style(rgbu(255, 0, 0));
-    let mut clip_path = Path2D::new();
-    clip_path.rect(RectF::new(vec2f(-20.0, -20.0), vec2f(60.0, 40.0)));
-    context.fill_path(clip_path.clone(), FillRule::Winding);
+    let mut clip_path_a = Path2D::new();
+    let clip_rect_a = RectF::new(vec2f(-20.0, -20.0), vec2f(60.0, 40.0));
+    clip_path_a.rect(clip_rect_a);
+    context.fill_path(clip_path_a, FillRule::Winding);
 
     // Draw second rectangle with no clip.
     let transform_b = transform_a * Transform2F::from_rotation(time).translate(vec2f(40.0, 0.0));
@@ -763,9 +764,11 @@ fn draw_clip(context: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32
     context.fill_rect(fill_rect);
 
     // Draw second rectangle with clip.
-    context.set_transform(&transform_a);
-    context.clip_path(clip_path, FillRule::Winding);
-    context.set_transform(&transform_b);
+    let mut clip_path_b = Path2D::new();
+    let clip_rect_b = (transform_b.inverse() * transform_a * clip_rect_a).intersection(fill_rect)
+                                                                         .unwrap_or_default();
+    clip_path_b.rect(clip_rect_b);
+    context.clip_path(clip_path_b, FillRule::Winding);
     context.set_fill_style(rgbu(255, 128, 0));
     context.fill_rect(fill_rect);
 
