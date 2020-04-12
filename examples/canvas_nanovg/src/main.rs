@@ -596,12 +596,15 @@ fn draw_color_wheel(context: &mut CanvasRenderingContext2D, rect: RectF, time: f
     context.translate(center);
     context.rotate(hue);
 
+    // Draw marker.
+    context.set_shadow_blur(4.0);
+    context.set_shadow_color(rgbau(0, 0, 0, 128));
+    context.set_shadow_offset(vec2f(0.0, 0.0));
     context.set_stroke_style(rgbau(255, 255, 255, 192));
     context.set_line_width(2.0);
     context.stroke_rect(RectF::new(vec2f(inner_radius - 1.0, -3.0),
                                    vec2f(outer_radius - inner_radius + 2.0, 6.0)));
-
-    // TODO(pcwalton): Marker fill with box gradient
+    context.set_shadow_color(ColorU::transparent_black());
 
     // Draw center triangle.
     let triangle_radius = inner_radius - 6.0;
