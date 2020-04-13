@@ -17,6 +17,7 @@ use crate::gpu::shaders::{TileProgram, TileVertexArray};
 use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TextureLocation, TextureMetadataEntry};
 use crate::gpu_data::{TexturePageDescriptor, TexturePageId, Tile, TileBatchTexture};
 use crate::options::BoundingQuad;
+use crate::paint::PaintCompositeOp;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use half::f16;
 use pathfinder_color::{self as color, ColorF, ColorU};
@@ -55,46 +56,46 @@ const SQRT_2_PI_INV: f32 = 0.3989422804014327;
 const TEXTURE_CACHE_SIZE: usize = 8;
 const TIMER_QUERY_CACHE_SIZE: usize = 8;
 
-const TEXTURE_METADATA_ENTRIES_PER_ROW: i32 = 256;
-const TEXTURE_METADATA_TEXTURE_WIDTH:   i32 = TEXTURE_METADATA_ENTRIES_PER_ROW * 2;
+const TEXTURE_METADATA_ENTRIES_PER_ROW: i32 = 128;
+const TEXTURE_METADATA_TEXTURE_WIDTH:   i32 = TEXTURE_METADATA_ENTRIES_PER_ROW * 4;
 const TEXTURE_METADATA_TEXTURE_HEIGHT:  i32 = 65536 / TEXTURE_METADATA_ENTRIES_PER_ROW;
 
 // FIXME(pcwalton): Shrink this again!
 const MASK_FRAMEBUFFER_WIDTH:  i32 = TILE_WIDTH as i32  * MASK_TILES_ACROSS as i32;
 const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * MASK_TILES_DOWN as i32;
 
-const COMBINER_CTRL_MASK_WINDING: i32 =            0x1;
-const COMBINER_CTRL_MASK_EVEN_ODD: i32 =           0x2;
+const COMBINER_CTRL_MASK_WINDING: i32 =             0x1;
+const COMBINER_CTRL_MASK_EVEN_ODD: i32 =            0x2;
 
-const COMBINER_CTRL_COLOR_ENABLE_MASK: i32 =       0x1;
+const COMBINER_CTRL_COLOR_COMBINE_SRC_IN: i32 =     0x1;
+const COMBINER_CTRL_COLOR_COMBINE_DEST_IN: i32 =    0x2;
 
-const COMBINER_CTRL_FILTER_RADIAL_GRADIENT: i32 =  0x1;
-const COMBINER_CTRL_FILTER_TEXT: i32 =             0x2;
-const COMBINER_CTRL_FILTER_BLUR: i32 =             0x3;
+const COMBINER_CTRL_FILTER_RADIAL_GRADIENT: i32 =   0x1;
+const COMBINER_CTRL_FILTER_TEXT: i32 =              0x2;
+const COMBINER_CTRL_FILTER_BLUR: i32 =              0x3;
 
-const COMBINER_CTRL_COMPOSITE_NORMAL: i32 =       0x0;
-const COMBINER_CTRL_COMPOSITE_MULTIPLY: i32 =     0x1;
-const COMBINER_CTRL_COMPOSITE_SCREEN: i32 =       0x2;
-const COMBINER_CTRL_COMPOSITE_OVERLAY: i32 =      0x3;
-const COMBINER_CTRL_COMPOSITE_DARKEN: i32 =       0x4;
-const COMBINER_CTRL_COMPOSITE_LIGHTEN: i32 =      0x5;
-const COMBINER_CTRL_COMPOSITE_COLOR_DODGE: i32 =  0x6;
-const COMBINER_CTRL_COMPOSITE_COLOR_BURN: i32 =   0x7;
-const COMBINER_CTRL_COMPOSITE_HARD_LIGHT: i32 =   0x8;
-const COMBINER_CTRL_COMPOSITE_SOFT_LIGHT: i32 =   0x9;
-const COMBINER_CTRL_COMPOSITE_DIFFERENCE: i32 =   0xa;
-const COMBINER_CTRL_COMPOSITE_EXCLUSION: i32 =    0xb;
-const COMBINER_CTRL_COMPOSITE_HUE: i32 =          0xc;
-const COMBINER_CTRL_COMPOSITE_SATURATION: i32 =   0xd;
-const COMBINER_CTRL_COMPOSITE_COLOR: i32 =        0xe;
-const COMBINER_CTRL_COMPOSITE_LUMINOSITY: i32 =   0xf;
+const COMBINER_CTRL_COMPOSITE_NORMAL: i32 =         0x0;
+const COMBINER_CTRL_COMPOSITE_MULTIPLY: i32 =       0x1;
+const COMBINER_CTRL_COMPOSITE_SCREEN: i32 =         0x2;
+const COMBINER_CTRL_COMPOSITE_OVERLAY: i32 =        0x3;
+const COMBINER_CTRL_COMPOSITE_DARKEN: i32 =         0x4;
+const COMBINER_CTRL_COMPOSITE_LIGHTEN: i32 =        0x5;
+const COMBINER_CTRL_COMPOSITE_COLOR_DODGE: i32 =    0x6;
+const COMBINER_CTRL_COMPOSITE_COLOR_BURN: i32 =     0x7;
+const COMBINER_CTRL_COMPOSITE_HARD_LIGHT: i32 =     0x8;
+const COMBINER_CTRL_COMPOSITE_SOFT_LIGHT: i32 =     0x9;
+const COMBINER_CTRL_COMPOSITE_DIFFERENCE: i32 =     0xa;
+const COMBINER_CTRL_COMPOSITE_EXCLUSION: i32 =      0xb;
+const COMBINER_CTRL_COMPOSITE_HUE: i32 =            0xc;
+const COMBINER_CTRL_COMPOSITE_SATURATION: i32 =     0xd;
+const COMBINER_CTRL_COMPOSITE_COLOR: i32 =          0xe;
+const COMBINER_CTRL_COMPOSITE_LUMINOSITY: i32 =     0xf;
 
-const COMBINER_CTRL_MASK_0_SHIFT: i32 =              0;
-const COMBINER_CTRL_MASK_1_SHIFT: i32 =              2;
-const COMBINER_CTRL_COLOR_0_FILTER_SHIFT: i32 =      4;
-const COMBINER_CTRL_COLOR_0_ENABLE_SHIFT: i32 =      6;
-const COMBINER_CTRL_COLOR_1_ENABLE_SHIFT: i32 =      7;
-const COMBINER_CTRL_COMPOSITE_SHIFT: i32 =           8;
+const COMBINER_CTRL_MASK_0_SHIFT: i32 =             0;
+const COMBINER_CTRL_MASK_1_SHIFT: i32 =             2;
+const COMBINER_CTRL_COLOR_FILTER_SHIFT: i32 =       4;
+const COMBINER_CTRL_COLOR_COMBINE_SHIFT: i32 =      6;
+const COMBINER_CTRL_COMPOSITE_SHIFT: i32 =          8;
 
 pub struct Renderer<D>
 where
@@ -330,8 +331,7 @@ where
                 self.stats.alpha_tile_count += count;
                 self.upload_tiles(&batch.tiles);
                 self.draw_tiles(count as u32,
-                                batch.color_texture_0,
-                                batch.color_texture_1,
+                                batch.color_texture,
                                 batch.mask_0_fill_rule,
                                 batch.mask_1_fill_rule,
                                 batch.blend_mode,
@@ -486,6 +486,7 @@ where
              TEXTURE_METADATA_TEXTURE_WIDTH * 4) as usize;
         let mut texels = Vec::with_capacity(padded_texel_size);
         for entry in metadata {
+            let base_color = entry.base_color.to_f32();
             texels.extend_from_slice(&[
                 f16::from_f32(entry.color_0_transform.m11()),
                 f16::from_f32(entry.color_0_transform.m21()),
@@ -493,7 +494,15 @@ where
                 f16::from_f32(entry.color_0_transform.m22()),
                 f16::from_f32(entry.color_0_transform.m31()),
                 f16::from_f32(entry.color_0_transform.m32()),
-                f16::from_f32(entry.opacity),
+                f16::default(),
+                f16::default(),
+                f16::from_f32(base_color.r()),
+                f16::from_f32(base_color.g()),
+                f16::from_f32(base_color.b()),
+                f16::from_f32(base_color.a()),
+                f16::default(),
+                f16::default(),
+                f16::default(),
                 f16::default(),
             ]);
         }
@@ -618,7 +627,6 @@ where
     fn draw_tiles(&mut self,
                   tile_count: u32,
                   color_texture_0: Option<TileBatchTexture>,
-                  color_texture_1: Option<TileBatchTexture>,
                   mask_0_fill_rule: Option<FillRule>,
                   mask_1_fill_rule: Option<FillRule>,
                   blend_mode: BlendMode,
@@ -687,16 +695,9 @@ where
             uniforms.push((&self.tile_program.color_texture_0_size_uniform,
                            UniformData::Vec2(color_texture_size.0)));
             textures.push(color_texture_page);
-            ctrl |= COMBINER_CTRL_COLOR_ENABLE_MASK << COMBINER_CTRL_COLOR_0_ENABLE_SHIFT;
-        }
-        if let Some(color_texture) = color_texture_1 {
-            let color_texture_page = self.texture_page(color_texture.page);
-            self.device.set_texture_sampling_mode(color_texture_page,
-                                                  color_texture.sampling_flags);
-            uniforms.push((&self.tile_program.color_texture_1_uniform,
-                           UniformData::TextureUnit(textures.len() as u32)));
-            textures.push(color_texture_page);
-            ctrl |= COMBINER_CTRL_COLOR_ENABLE_MASK << COMBINER_CTRL_COLOR_1_ENABLE_SHIFT;
+
+            ctrl |= color_texture.composite_op.to_combine_mode() <<
+                COMBINER_CTRL_COLOR_COMBINE_SHIFT;
         }
 
         ctrl |= blend_mode.to_composite_ctrl() << COMBINER_CTRL_COMPOSITE_SHIFT;
@@ -704,7 +705,7 @@ where
         match filter {
             Filter::None => {}
             Filter::RadialGradient { line, radii, uv_origin } => {
-                ctrl |= COMBINER_CTRL_FILTER_RADIAL_GRADIENT << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
+                ctrl |= COMBINER_CTRL_FILTER_RADIAL_GRADIENT << COMBINER_CTRL_COLOR_FILTER_SHIFT;
                 self.set_uniforms_for_radial_gradient_filter(&mut uniforms, line, radii, uv_origin)
             }
             Filter::PatternFilter(PatternFilter::Text {
@@ -713,7 +714,7 @@ where
                 defringing_kernel,
                 gamma_correction,
             }) => {
-                ctrl |= COMBINER_CTRL_FILTER_TEXT << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
+                ctrl |= COMBINER_CTRL_FILTER_TEXT << COMBINER_CTRL_COLOR_FILTER_SHIFT;
                 self.set_uniforms_for_text_filter(&mut textures,
                                                   &mut uniforms,
                                                   fg_color,
@@ -722,7 +723,7 @@ where
                                                   gamma_correction);
             }
             Filter::PatternFilter(PatternFilter::Blur { direction, sigma }) => {
-                ctrl |= COMBINER_CTRL_FILTER_BLUR << COMBINER_CTRL_COLOR_0_FILTER_SHIFT;
+                ctrl |= COMBINER_CTRL_FILTER_BLUR << COMBINER_CTRL_COLOR_FILTER_SHIFT;
                 self.set_uniforms_for_blur_filter(&mut uniforms, direction, sigma);
             }
         }
@@ -1414,6 +1415,19 @@ impl ToCompositeCtrl for BlendMode {
             BlendMode::Saturation => COMBINER_CTRL_COMPOSITE_SATURATION,
             BlendMode::Color => COMBINER_CTRL_COMPOSITE_COLOR,
             BlendMode::Luminosity => COMBINER_CTRL_COMPOSITE_LUMINOSITY,
+        }
+    }
+}
+
+trait ToCombineMode {
+    fn to_combine_mode(self) -> i32;
+}
+
+impl ToCombineMode for PaintCompositeOp {
+    fn to_combine_mode(self) -> i32 {
+        match self {
+            PaintCompositeOp::DestIn => COMBINER_CTRL_COLOR_COMBINE_DEST_IN,
+            PaintCompositeOp::SrcIn => COMBINER_CTRL_COLOR_COMBINE_SRC_IN,
         }
     }
 }

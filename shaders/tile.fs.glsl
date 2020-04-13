@@ -45,7 +45,9 @@ precision highp sampler2D;
 #define COMBINER_CTRL_MASK_WINDING              0x1
 #define COMBINER_CTRL_MASK_EVEN_ODD             0x2
 
-#define COMBINER_CTRL_COLOR_ENABLE_MASK         0x1
+#define COMBINER_CTRL_COLOR_COMBINE_MASK        0x3
+#define COMBINER_CTRL_COLOR_COMBINE_SRC_IN      0x1
+#define COMBINER_CTRL_COLOR_COMBINE_DEST_IN     0x2
 
 #define COMBINER_CTRL_FILTER_MASK               0x3
 #define COMBINER_CTRL_FILTER_RADIAL_GRADIENT    0x1
@@ -72,8 +74,8 @@ precision highp sampler2D;
 
 #define COMBINER_CTRL_MASK_0_SHIFT              0
 #define COMBINER_CTRL_MASK_1_SHIFT              2
-#define COMBINER_CTRL_COLOR_0_FILTER_SHIFT      4
-#define COMBINER_CTRL_COLOR_0_ENABLE_SHIFT      6
+#define COMBINER_CTRL_COLOR_FILTER_SHIFT        4
+#define COMBINER_CTRL_COLOR_COMBINE_SHIFT       6
 #define COMBINER_CTRL_COMPOSITE_SHIFT           8
 
 uniform sampler2D uColorTexture0;
@@ -91,7 +93,7 @@ uniform int uCtrl;
 in vec3 vMaskTexCoord0;
 in vec3 vMaskTexCoord1;
 in vec2 vColorTexCoord0;
-in float vOpacity;
+in vec4 vBaseColor;
 
 out vec4 oFragColor;
 
@@ -99,6 +101,18 @@ out vec4 oFragColor;
 
 vec4 sampleColor(sampler2D colorTexture, vec2 colorTexCoord) {
     return texture(colorTexture, colorTexCoord);
+}
+
+// Color combining
+
+vec4 combineColor0(vec4 destColor, vec4 srcColor, int op) {
+    switch (op) {
+    case COMBINER_CTRL_COLOR_COMBINE_SRC_IN:
+        return vec4(srcColor.rgb, srcColor.a * destColor.a);
+    case COMBINER_CTRL_COLOR_COMBINE_DEST_IN:
+        return vec4(destColor.rgb, srcColor.a * destColor.a);
+    }
+    return destColor;
 }
 
 // Text filter
@@ -556,24 +570,26 @@ void calculateColor(int ctrl) {
     maskAlpha = sampleMask(maskAlpha, uMaskTexture1, vMaskTexCoord1, maskCtrl1);
 
     // Sample color.
-    vec4 color = vec4(0.0);
-    if (((ctrl >> COMBINER_CTRL_COLOR_0_ENABLE_SHIFT) & COMBINER_CTRL_COLOR_ENABLE_MASK) != 0) {
-        int color0Filter = (ctrl >> COMBINER_CTRL_COLOR_0_FILTER_SHIFT) &
-            COMBINER_CTRL_FILTER_MASK;
-        color += filterColor(vColorTexCoord0,
-                             uColorTexture0,
-                             uGammaLUT,
-                             uColorTexture0Size,
-                             gl_FragCoord.xy,
-                             uFramebufferSize,
-                             uFilterParams0,
-                             uFilterParams1,
-                             uFilterParams2,
-                             color0Filter);
+    vec4 color = vBaseColor;
+    int color0Combine = (ctrl >> COMBINER_CTRL_COLOR_COMBINE_SHIFT) &
+        COMBINER_CTRL_COLOR_COMBINE_MASK;
+    if (color0Combine != 0) {
+        int color0Filter = (ctrl >> COMBINER_CTRL_COLOR_FILTER_SHIFT) & COMBINER_CTRL_FILTER_MASK;
+        vec4 color0 = filterColor(vColorTexCoord0,
+                                  uColorTexture0,
+                                  uGammaLUT,
+                                  uColorTexture0Size,
+                                  gl_FragCoord.xy,
+                                  uFramebufferSize,
+                                  uFilterParams0,
+                                  uFilterParams1,
+                                  uFilterParams2,
+                                  color0Filter);
+        color = combineColor0(color, color0, color0Combine);
     }
 
-    // Apply mask and opacity.
-    color.a *= maskAlpha * vOpacity;
+    // Apply mask.
+    color.a *= maskAlpha;
 
     // Apply composite.
     int compositeOp = (ctrl >> COMBINER_CTRL_COMPOSITE_SHIFT) & COMBINER_CTRL_COMPOSITE_MASK;

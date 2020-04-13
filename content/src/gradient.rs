@@ -150,6 +150,16 @@ impl Gradient {
                   .lerp(upper_stop.color.to_f32(), (t - lower_stop.offset) / denom)
                   .to_u8()
     }
+
+    #[inline]
+    pub fn is_opaque(&self) -> bool {
+        self.stops.array.iter().all(|stop| stop.color.is_opaque())
+    }
+
+    #[inline]
+    pub fn is_fully_transparent(&self) -> bool {
+        self.stops.array.iter().all(|stop| stop.color.is_fully_transparent())
+    }
 }
 
 impl ColorStop {

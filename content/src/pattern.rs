@@ -31,7 +31,6 @@ pub struct Pattern {
     transform: Transform2F,
     filter: Option<PatternFilter>,
     flags: PatternFlags,
-    opacity: u8,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -70,7 +69,6 @@ impl Pattern {
             transform: Transform2F::default(),
             filter: None,
             flags: PatternFlags::empty(),
-            opacity: !0,
         }
     }
 
@@ -143,18 +141,8 @@ impl Pattern {
     }
 
     #[inline]
-    pub fn opacity(&self) -> u8 {
-        self.opacity
-    }
-
-    #[inline]
-    pub fn set_opacity(&mut self, opacity: u8) {
-        self.opacity = opacity
-    }
-
-    #[inline]
     pub fn is_opaque(&self) -> bool {
-        self.source.is_opaque() && self.opacity == !0
+        self.source.is_opaque()
     }
 
     #[inline]

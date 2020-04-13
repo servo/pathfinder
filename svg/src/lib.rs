@@ -302,7 +302,7 @@ impl PaintExt for Paint {
                       result_flags: &mut BuildResultFlags)
                       -> Paint {
         // TODO(pcwalton): Support gradients.
-        let mut paint = Paint::Color(match *svg_paint {
+        let mut paint = Paint::from_color(match *svg_paint {
             UsvgPaint::Color(color) => ColorU::from_svg_color(color),
             UsvgPaint::Link(_) => {
                 // TODO(pcwalton)
@@ -311,7 +311,11 @@ impl PaintExt for Paint {
             }
         });
         paint.apply_transform(transform);
-        paint.apply_opacity(opacity.value() as f32);
+
+        let mut base_color = paint.base_color().to_f32();
+        base_color.set_a(base_color.a() * opacity.value() as f32);
+        paint.set_base_color(base_color.to_u8());
+
         paint
     }
 }

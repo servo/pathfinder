@@ -78,6 +78,8 @@ precision highp sampler2D;
 
 
 
+
+
 uniform sampler2D uColorTexture0;
 uniform sampler2D uMaskTexture0;
 uniform sampler2D uMaskTexture1;
@@ -93,7 +95,7 @@ uniform int uCtrl;
 in vec3 vMaskTexCoord0;
 in vec3 vMaskTexCoord1;
 in vec2 vColorTexCoord0;
-in float vOpacity;
+in vec4 vBaseColor;
 
 out vec4 oFragColor;
 
@@ -101,6 +103,18 @@ out vec4 oFragColor;
 
 vec4 sampleColor(sampler2D colorTexture, vec2 colorTexCoord){
     return texture(colorTexture, colorTexCoord);
+}
+
+
+
+vec4 combineColor0(vec4 destColor, vec4 srcColor, int op){
+    switch(op){
+    case 0x1 :
+        return vec4(srcColor . rgb, srcColor . a * destColor . a);
+    case 0x2 :
+        return vec4(destColor . rgb, srcColor . a * destColor . a);
+    }
+    return destColor;
 }
 
 
@@ -558,24 +572,26 @@ void calculateColor(int ctrl){
     maskAlpha = sampleMask(maskAlpha, uMaskTexture1, vMaskTexCoord1, maskCtrl1);
 
 
-    vec4 color = vec4(0.0);
-    if(((ctrl >> 6)& 0x1)!= 0){
-        int color0Filter =(ctrl >> 4)&
-                                    0x3;
-        color += filterColor(vColorTexCoord0,
-                             uColorTexture0,
-                             uGammaLUT,
-                             uColorTexture0Size,
-                             gl_FragCoord . xy,
-                             uFramebufferSize,
-                             uFilterParams0,
-                             uFilterParams1,
-                             uFilterParams2,
-                             color0Filter);
+    vec4 color = vBaseColor;
+    int color0Combine =(ctrl >> 6)&
+                                       0x3;
+    if(color0Combine != 0){
+        int color0Filter =(ctrl >> 4)& 0x3;
+        vec4 color0 = filterColor(vColorTexCoord0,
+                                  uColorTexture0,
+                                  uGammaLUT,
+                                  uColorTexture0Size,
+                                  gl_FragCoord . xy,
+                                  uFramebufferSize,
+                                  uFilterParams0,
+                                  uFilterParams1,
+                                  uFilterParams2,
+                                  color0Filter);
+        color = combineColor0(color, color0, color0Combine);
     }
 
 
-    color . a *= maskAlpha * vOpacity;
+    color . a *= maskAlpha;
 
 
     int compositeOp =(ctrl >> 8)& 0xf;

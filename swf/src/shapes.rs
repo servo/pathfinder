@@ -253,7 +253,9 @@ fn get_new_styles<'a>(
                         a
                     }
                 }
-            ) => Some(PaintOrLine::Paint(Paint::Color(ColorU { r: *r, g: *g, b: *b, a: *a }))),
+            ) => {
+                Some(PaintOrLine::Paint(Paint::from_color(ColorU { r: *r, g: *g, b: *b, a: *a })))
+            }
             _ => unimplemented!("Unimplemented fill style")
         }
     }).chain(
@@ -286,7 +288,7 @@ fn get_new_styles<'a>(
                 // assert_eq!(start_cap, end_cap);
                 Some(PaintOrLine::Line(SwfLineStyle {
                     width: Twips(*width as i32),
-                    color: Paint::Color(ColorU { r: *r, g: *g, b: *b, a: *a }),
+                    color: Paint::from_color(ColorU { r: *r, g: *g, b: *b, a: *a }),
                     join: match join {
                         JoinStyle::Bevel => LineJoin::Bevel,
                         JoinStyle::Round => LineJoin::Round,

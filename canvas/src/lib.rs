@@ -28,7 +28,7 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_geometry::line_segment::LineSegment2F;
-use pathfinder_renderer::paint::{Paint, PaintId};
+use pathfinder_renderer::paint::{Paint, PaintCompositeOp};
 use pathfinder_renderer::scene::{ClipPath, ClipPathId, DrawPath, RenderTarget, Scene};
 use std::borrow::Cow;
 use std::default::Default;
@@ -236,15 +236,12 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn shadow_color(&self) -> ColorU {
-        match self.current_state.shadow_paint {
-            Paint::Color(color) => color,
-            _ => panic!("Unexpected shadow paint!"),
-        }
+        self.current_state.shadow_color
     }
 
     #[inline]
     pub fn set_shadow_color(&mut self, new_shadow_color: ColorU) {
-        self.current_state.shadow_paint = Paint::Color(new_shadow_color);
+        self.current_state.shadow_color = new_shadow_color;
     }
 
     #[inline]
@@ -261,16 +258,11 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D, fill_rule: FillRule) {
-        let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
-        let paint_id = self.canvas.scene.push_paint(&paint);
-        self.push_path(path.into_outline(), paint_id, fill_rule);
+        self.push_path(path.into_outline(), PathOp::Fill, fill_rule);
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint = self.current_state.resolve_paint(&self.current_state.stroke_paint);
-        let paint_id = self.canvas.scene.push_paint(&paint);
-
         let mut stroke_style = self.current_state.resolve_stroke_style();
 
         // The smaller scale is relevant here, as we multiply by it and want to ensure it is always
@@ -296,7 +288,7 @@ impl CanvasRenderingContext2D {
         stroke_to_fill.offset();
         outline = stroke_to_fill.into_outline();
 
-        self.push_path(outline, paint_id, FillRule::Winding);
+        self.push_path(outline, PathOp::Stroke, FillRule::Winding);
     }
 
     pub fn clip_path(&mut self, path: Path2D, fill_rule: FillRule) {
@@ -310,19 +302,27 @@ impl CanvasRenderingContext2D {
         self.current_state.clip_path = Some(clip_path_id);
     }
 
-    fn push_path(&mut self, mut outline: Outline, paint_id: PaintId, fill_rule: FillRule) {
+    fn push_path(&mut self, mut outline: Outline, path_op: PathOp, fill_rule: FillRule) {
+        let paint = self.current_state.resolve_paint(match path_op {
+            PathOp::Fill => &self.current_state.fill_paint,
+            PathOp::Stroke => &self.current_state.stroke_paint,
+        });
+        let paint_id = self.canvas.scene.push_paint(&paint);
+
         let transform = self.current_state.transform;
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
 
         outline.transform(&transform);
 
-        if !self.current_state.shadow_paint.is_fully_transparent() {
+        if !self.current_state.shadow_color.is_fully_transparent() {
             let mut outline = outline.clone();
             outline.transform(&Transform2F::from_translation(self.current_state.shadow_offset));
 
             let shadow_blur_info =
-                self.push_shadow_blur_render_targets_if_needed(outline.bounds());
+                push_shadow_blur_render_targets_if_needed(&mut self.canvas.scene,
+                                                          &self.current_state,
+                                                          outline.bounds());
 
             if let Some(ref shadow_blur_info) = shadow_blur_info {
                 outline.transform(&Transform2F::from_translation(-shadow_blur_info.bounds
@@ -330,10 +330,19 @@ impl CanvasRenderingContext2D {
                                                                                   .to_f32()));
             }
 
-            let paint = self.current_state.resolve_paint(&self.current_state.shadow_paint);
-            let paint_id = self.canvas.scene.push_paint(&paint);
+            // Per spec the shadow must respect the alpha of the shadowed path, but otherwise have
+            // the color of the shadow paint.
+            let mut shadow_paint = (*paint).clone();
+            let shadow_base_alpha = shadow_paint.base_color().a;
+            let mut shadow_color = self.current_state.shadow_color.to_f32();
+            shadow_color.set_a(shadow_color.a() * shadow_base_alpha as f32 / 255.0);
+            shadow_paint.set_base_color(shadow_color.to_u8());
+            if let &mut Some(ref mut shadow_paint_overlay) = shadow_paint.overlay_mut() {
+                shadow_paint_overlay.set_composite_op(PaintCompositeOp::DestIn);
+            }
+            let shadow_paint_id = self.canvas.scene.push_paint(&shadow_paint);
 
-            let mut path = DrawPath::new(outline, paint_id);
+            let mut path = DrawPath::new(outline, shadow_paint_id);
             if shadow_blur_info.is_none() {
                 path.set_clip_path(clip_path);
             }
@@ -341,7 +350,9 @@ impl CanvasRenderingContext2D {
             path.set_blend_mode(blend_mode);
             self.canvas.scene.push_path(path);
 
-            self.composite_shadow_blur_render_targets_if_needed(shadow_blur_info, clip_path);
+            composite_shadow_blur_render_targets_if_needed(&mut self.canvas.scene,
+                                                           shadow_blur_info,
+                                                           clip_path);
         }
 
         let mut path = DrawPath::new(outline, paint_id);
@@ -349,61 +360,64 @@ impl CanvasRenderingContext2D {
         path.set_fill_rule(fill_rule);
         path.set_blend_mode(blend_mode);
         self.canvas.scene.push_path(path);
-    }
 
-    fn push_shadow_blur_render_targets_if_needed(&mut self, outline_bounds: RectF)
-                                                 -> Option<ShadowBlurRenderTargetInfo> {
-        if self.current_state.shadow_blur == 0.0 {
-            return None;
+        fn push_shadow_blur_render_targets_if_needed(scene: &mut Scene,
+                                                     current_state: &State,
+                                                     outline_bounds: RectF)
+                                                    -> Option<ShadowBlurRenderTargetInfo> {
+            if current_state.shadow_blur == 0.0 {
+                return None;
+            }
+
+            let sigma = current_state.shadow_blur * 0.5;
+            let bounds = outline_bounds.dilate(sigma * 3.0).round_out().to_i32();
+
+            let render_target_y = RenderTarget::new(bounds.size(), String::new());
+            let render_target_id_y = scene.push_render_target(render_target_y);
+            let render_target_x = RenderTarget::new(bounds.size(), String::new());
+            let render_target_id_x = scene.push_render_target(render_target_x);
+
+            Some(ShadowBlurRenderTargetInfo {
+                id_x: render_target_id_x,
+                id_y: render_target_id_y,
+                bounds,
+                sigma,
+            })
         }
 
-        let sigma = self.current_state.shadow_blur * 0.5;
-        let bounds = outline_bounds.dilate(sigma * 3.0).round_out().to_i32();
+        fn composite_shadow_blur_render_targets_if_needed(scene: &mut Scene,
+                                                          info: Option<ShadowBlurRenderTargetInfo>,
+                                                          clip_path: Option<ClipPathId>) {
+            let info = match info {
+                None => return,
+                Some(info) => info,
+            };
 
-        let render_target_y = RenderTarget::new(bounds.size(), String::new());
-        let render_target_id_y = self.canvas.scene.push_render_target(render_target_y);
-        let render_target_x = RenderTarget::new(bounds.size(), String::new());
-        let render_target_id_x = self.canvas.scene.push_render_target(render_target_x);
+            let mut paint_x = Pattern::from_render_target(info.id_x, info.bounds.size());
+            let mut paint_y = Pattern::from_render_target(info.id_y, info.bounds.size());
+            paint_y.apply_transform(Transform2F::from_translation(info.bounds.origin().to_f32()));
 
-        Some(ShadowBlurRenderTargetInfo {
-            id_x: render_target_id_x,
-            id_y: render_target_id_y,
-            bounds,
-            sigma,
-        })
-    }
+            let sigma = info.sigma;
+            paint_x.set_filter(Some(PatternFilter::Blur { direction: BlurDirection::X, sigma }));
+            paint_y.set_filter(Some(PatternFilter::Blur { direction: BlurDirection::Y, sigma }));
 
-    fn composite_shadow_blur_render_targets_if_needed(&mut self,
-                                                      info: Option<ShadowBlurRenderTargetInfo>,
-                                                      clip_path: Option<ClipPathId>) {
-        let info = match info {
-            None => return,
-            Some(info) => info,
-        };
+            let paint_id_x = scene.push_paint(&Paint::from_pattern(paint_x));
+            let paint_id_y = scene.push_paint(&Paint::from_pattern(paint_y));
 
-        let mut paint_x = Pattern::from_render_target(info.id_x, info.bounds.size());
-        let mut paint_y = Pattern::from_render_target(info.id_y, info.bounds.size());
-        paint_y.apply_transform(Transform2F::from_translation(info.bounds.origin().to_f32()));
+            // TODO(pcwalton): Apply clip as necessary.
+            let outline_x = Outline::from_rect(RectF::new(vec2f(0.0, 0.0),
+                                                        info.bounds.size().to_f32()));
+            let path_x = DrawPath::new(outline_x, paint_id_x);
+            let outline_y = Outline::from_rect(info.bounds.to_f32());
+            let mut path_y = DrawPath::new(outline_y, paint_id_y);
+            path_y.set_clip_path(clip_path);
 
-        let sigma = info.sigma;
-        paint_x.set_filter(Some(PatternFilter::Blur { direction: BlurDirection::X, sigma }));
-        paint_y.set_filter(Some(PatternFilter::Blur { direction: BlurDirection::Y, sigma }));
+            scene.pop_render_target();
+            scene.push_path(path_x);
+            scene.pop_render_target();
+            scene.push_path(path_y);
+        }
 
-        let paint_id_x = self.canvas.scene.push_paint(&Paint::Pattern(paint_x));
-        let paint_id_y = self.canvas.scene.push_paint(&Paint::Pattern(paint_y));
-
-        // TODO(pcwalton): Apply clip as necessary.
-        let outline_x = Outline::from_rect(RectF::new(vec2f(0.0, 0.0),
-                                                      info.bounds.size().to_f32()));
-        let path_x = DrawPath::new(outline_x, paint_id_x);
-        let outline_y = Outline::from_rect(info.bounds.to_f32());
-        let mut path_y = DrawPath::new(outline_y, paint_id_y);
-        path_y.set_clip_path(clip_path);
-
-        self.canvas.scene.pop_render_target();
-        self.canvas.scene.push_path(path_x);
-        self.canvas.scene.pop_render_target();
-        self.canvas.scene.push_path(path_y);
     }
 
     // Transformations
@@ -550,7 +564,7 @@ struct State {
     line_dash_offset: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
-    shadow_paint: Paint,
+    shadow_color: ColorU,
     shadow_blur: f32,
     shadow_offset: Vector2F,
     text_align: TextAlign,
@@ -576,7 +590,7 @@ impl State {
             line_dash_offset: 0.0,
             fill_paint: Paint::black(),
             stroke_paint: Paint::black(),
-            shadow_paint: Paint::transparent_black(),
+            shadow_color: ColorU::transparent_black(),
             shadow_blur: 0.0,
             shadow_offset: Vector2F::zero(),
             text_align: TextAlign::Left,
@@ -592,7 +606,7 @@ impl State {
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
         let mut must_copy = !self.transform.is_identity() || self.global_alpha < 1.0;
         if !must_copy {
-            if let Paint::Pattern(ref pattern) = *paint {
+            if let Some(ref pattern) = paint.pattern() {
                 must_copy = self.image_smoothing_enabled != pattern.smoothing_enabled()
             }
         }
@@ -603,8 +617,12 @@ impl State {
 
         let mut paint = (*paint).clone();
         paint.apply_transform(&self.transform);
-        paint.apply_opacity(self.global_alpha);
-        if let Paint::Pattern(ref mut pattern) = paint {
+
+        let mut base_color = paint.base_color().to_f32();
+        base_color.set_a(base_color.a() * self.global_alpha);
+        paint.set_base_color(base_color.to_u8());
+
+        if let Some(ref mut pattern) = paint.pattern_mut() {
             pattern.set_smoothing_enabled(self.image_smoothing_enabled);
         }
         Cow::Owned(paint)
@@ -750,9 +768,9 @@ pub enum FillStyle {
 impl FillStyle {
     fn into_paint(self) -> Paint {
         match self {
-            FillStyle::Color(color) => Paint::Color(color),
-            FillStyle::Gradient(gradient) => Paint::Gradient(gradient),
-            FillStyle::Pattern(pattern) => Paint::Pattern(pattern),
+            FillStyle::Color(color) => Paint::from_color(color),
+            FillStyle::Gradient(gradient) => Paint::from_gradient(gradient),
+            FillStyle::Pattern(pattern) => Paint::from_pattern(pattern),
         }
     }
 }
@@ -936,4 +954,9 @@ struct ShadowBlurRenderTargetInfo {
     id_y: RenderTargetId,
     bounds: RectI,
     sigma: f32,
+}
+
+enum PathOp {
+    Fill,
+    Stroke,
 }

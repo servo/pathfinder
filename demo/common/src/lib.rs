@@ -766,9 +766,9 @@ fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, filter: Option<PatternFi
 
     let mut built_svg = BuiltSVG::from_tree_and_scene(&tree, scene);
     if let Some(FilterInfo { filter, render_target_id, render_target_size }) = filter_info {
-        let mut paint = Pattern::from_render_target(render_target_id, render_target_size);
-        paint.set_filter(Some(filter));
-        let paint_id = built_svg.scene.push_paint(&Paint::Pattern(paint));
+        let mut pattern = Pattern::from_render_target(render_target_id, render_target_size);
+        pattern.set_filter(Some(filter));
+        let paint_id = built_svg.scene.push_paint(&Paint::from_pattern(pattern));
 
         let outline = Outline::from_rect(RectI::new(vec2i(0, 0), viewport_size).to_f32());
         let path = DrawPath::new(outline, paint_id);

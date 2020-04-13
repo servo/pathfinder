@@ -18,7 +18,7 @@ struct main0_out
     float3 vMaskTexCoord0 [[user(locn0)]];
     float3 vMaskTexCoord1 [[user(locn1)]];
     float2 vColorTexCoord0 [[user(locn2)]];
-    float vOpacity [[user(locn3)]];
+    float4 vBaseColor [[user(locn3)]];
     float4 gl_Position [[position]];
 };
 
@@ -41,15 +41,17 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     float2 maskTexCoord0 = (float2(in.aMaskTexCoord0) + tileOffset) / float2(256.0);
     float2 maskTexCoord1 = (float2(in.aMaskTexCoord1) + tileOffset) / float2(256.0);
     float2 textureMetadataScale = float2(1.0) / float2((*spvDescriptorSet0.uTextureMetadataSize));
-    float2 metadataEntryCoord = float2(int2((in.aColor % 256) * 2, in.aColor / 256));
+    float2 metadataEntryCoord = float2(int2((in.aColor % 128) * 4, in.aColor / 128));
     float2 colorTexMatrix0Coord = (metadataEntryCoord + float2(0.5)) * textureMetadataScale;
     float2 colorTexOffsetsCoord = (metadataEntryCoord + float2(1.5, 0.5)) * textureMetadataScale;
+    float2 baseColorCoord = (metadataEntryCoord + float2(2.5, 0.5)) * textureMetadataScale;
     float4 colorTexMatrix0 = spvDescriptorSet0.uTextureMetadata.sample(spvDescriptorSet0.uTextureMetadataSmplr, colorTexMatrix0Coord, level(0.0));
     float4 colorTexOffsets = spvDescriptorSet0.uTextureMetadata.sample(spvDescriptorSet0.uTextureMetadataSmplr, colorTexOffsetsCoord, level(0.0));
+    float4 baseColor = spvDescriptorSet0.uTextureMetadata.sample(spvDescriptorSet0.uTextureMetadataSmplr, baseColorCoord, level(0.0));
     out.vColorTexCoord0 = (float2x2(float2(colorTexMatrix0.xy), float2(colorTexMatrix0.zw)) * position) + colorTexOffsets.xy;
-    out.vOpacity = colorTexOffsets.z;
     out.vMaskTexCoord0 = float3(maskTexCoord0, float(in.aMaskBackdrop.x));
     out.vMaskTexCoord1 = float3(maskTexCoord1, float(in.aMaskBackdrop.y));
+    out.vBaseColor = baseColor;
     out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(position, 0.0, 1.0);
     return out;
 }

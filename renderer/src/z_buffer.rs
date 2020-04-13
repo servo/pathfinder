@@ -11,7 +11,7 @@
 //! Software occlusion culling.
 
 use crate::builder::Occluder;
-use crate::gpu_data::{Tile, TileBatch, TileBatchTexture};
+use crate::gpu_data::{Tile, TileBatch};
 use crate::paint::{PaintId, PaintMetadata};
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
@@ -77,23 +77,17 @@ impl ZBuffer {
             let tile_position = tile_coords + self.buffer.rect.origin();
 
             // Create a batch if necessary.
+            let paint_tile_batch_texture = paint_metadata.tile_batch_texture();
             match solid_tiles.batches.last() {
-                Some(TileBatch {
-                    color_texture_0: Some(TileBatchTexture { page, sampling_flags }),
-                    ..
-                }) if *page == paint_metadata.location.page &&
-                    *sampling_flags == paint_metadata.sampling_flags => {}
+                Some(TileBatch { color_texture: tile_batch_texture, .. }) if
+                        *tile_batch_texture == paint_tile_batch_texture => {}
                 _ => {
                     // Batch break.
                     //
                     // TODO(pcwalton): We could be more aggressive with batching here, since we
                     // know there are no overlaps.
                     solid_tiles.batches.push(TileBatch {
-                        color_texture_0: Some(TileBatchTexture {
-                            page: paint_metadata.location.page,
-                            sampling_flags: paint_metadata.sampling_flags,
-                        }),
-                        color_texture_1: None,
+                        color_texture: paint_tile_batch_texture,
                         tiles: vec![],
                         filter: Filter::None,
                         blend_mode: BlendMode::default(),

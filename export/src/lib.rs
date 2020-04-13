@@ -10,7 +10,6 @@
 
 use pathfinder_content::outline::ContourIterFlags;
 use pathfinder_content::segment::SegmentKind;
-use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
 use std::fmt;
@@ -77,14 +76,9 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     };
 
     for (paint, outline, _) in scene.paths() {
-        match paint {
-            Paint::Color(color) => pdf.set_fill_color(*color),
-            Paint::Gradient(_) => {
-                // TODO(pcwalton): Gradients.
-            }
-            Paint::Pattern(_) => {
-                // TODO(pcwalton): Patterns.
-            }
+        // TODO(pcwalton): Gradients and patterns.
+        if paint.is_color() {
+            pdf.set_fill_color(paint.base_color());
         }
 
         for contour in outline.contours() {
@@ -185,16 +179,10 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
             }
         }
 
-        match paint {
-            Paint::Color(color) => {
-                writeln!(writer, "{} {} {} setrgbcolor", color.r, color.g, color.b)?;
-            }
-            Paint::Gradient(_) => {
-                // TODO(pcwalton): Gradients.
-            }
-            Paint::Pattern(_) => {
-                // TODO(pcwalton): Patterns.
-            }
+        // TODO(pcwalton): Gradients and patterns.
+        if paint.is_color() {
+            let color = paint.base_color();
+            writeln!(writer, "{} {} {} setrgbcolor", color.r, color.g, color.b)?;
         }
 
         writeln!(writer, "fill")?;

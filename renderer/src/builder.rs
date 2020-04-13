@@ -12,7 +12,7 @@
 
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeExt, MASK_TILES_ACROSS, MASK_TILES_DOWN};
-use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TexturePageId, Tile, TileBatch};
+use crate::gpu_data::{FillBatchPrimitive, RenderCommand, Tile, TileBatch};
 use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
@@ -54,9 +54,7 @@ struct BuiltDrawPath {
     path: BuiltPath,
     blend_mode: BlendMode,
     filter: Filter,
-    color_texture_page_0: TexturePageId,
-    color_texture_page_1: TexturePageId,
-    sampling_flags_0: TextureSamplingFlags,
+    color_texture: Option<TileBatchTexture>,
     sampling_flags_1: TextureSamplingFlags,
     mask_0_fill_rule: FillRule,
     mask_1_fill_rule: Option<FillRule>,
@@ -124,8 +122,6 @@ impl<'a> SceneBuilder<'a> {
         let PaintInfo {
             render_commands,
             paint_metadata,
-            opacity_tile_page,
-            opacity_tile_transform: _,
             render_target_metadata: _,
         } = self.scene.build_paint_info(render_transform);
         for render_command in render_commands {
@@ -152,7 +148,6 @@ impl<'a> SceneBuilder<'a> {
                     scene: &self.scene,
                 },
                 paint_metadata: &paint_metadata,
-                opacity_tile_page,
                 built_clip_paths: &built_clip_paths,
             })
         });
@@ -184,7 +179,6 @@ impl<'a> SceneBuilder<'a> {
         let DrawPathBuildParams {
             path_build_params: PathBuildParams { path_index, view_box, built_options, scene },
             paint_metadata,
-            opacity_tile_page,
             built_clip_paths,
         } = params;
 
@@ -216,9 +210,7 @@ impl<'a> SceneBuilder<'a> {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
             filter: paint_metadata.filter(),
-            color_texture_page_0: paint_metadata.location.page,
-            sampling_flags_0: paint_metadata.sampling_flags,
-            color_texture_page_1: opacity_tile_page,
+            color_texture: paint_metadata.tile_batch_texture(),
             sampling_flags_1: TextureSamplingFlags::empty(),
             mask_0_fill_rule: path_object.fill_rule(),
             mask_1_fill_rule: built_clip_path.map(|_| FillRule::Winding),
@@ -268,14 +260,7 @@ impl<'a> SceneBuilder<'a> {
                     for draw_path_index in start_draw_path_index..end_draw_path_index {
                         let built_draw_path = &built_draw_paths[draw_path_index as usize];
                         let layer_z_buffer = layer_z_buffers_stack.last().unwrap();
-                        let color_texture_0 = Some(TileBatchTexture {
-                            page: built_draw_path.color_texture_page_0,
-                            sampling_flags: built_draw_path.sampling_flags_0,
-                        });
-                        let color_texture_1 = Some(TileBatchTexture {
-                            page: built_draw_path.color_texture_page_1,
-                            sampling_flags: built_draw_path.sampling_flags_1,
-                        });
+                        let color_texture = built_draw_path.color_texture;
 
                         debug_assert!(built_draw_path.path.empty_tiles.is_empty() ||
                                       built_draw_path.blend_mode.is_destructive());
@@ -283,7 +268,6 @@ impl<'a> SceneBuilder<'a> {
                                              layer_z_buffer,
                                              &built_draw_path.path.empty_tiles,
                                              current_depth,
-                                             None,
                                              None,
                                              built_draw_path.blend_mode,
                                              built_draw_path.filter,
@@ -294,8 +278,7 @@ impl<'a> SceneBuilder<'a> {
                                              layer_z_buffer,
                                              &built_draw_path.path.single_mask_tiles,
                                              current_depth,
-                                             color_texture_0,
-                                             color_texture_1,
+                                             color_texture,
                                              built_draw_path.blend_mode,
                                              built_draw_path.filter,
                                              Some(built_draw_path.mask_0_fill_rule),
@@ -306,8 +289,7 @@ impl<'a> SceneBuilder<'a> {
                                                  layer_z_buffer,
                                                  &built_draw_path.path.dual_mask_tiles,
                                                  current_depth,
-                                                 color_texture_0,
-                                                 color_texture_1,
+                                                 color_texture,
                                                  built_draw_path.blend_mode,
                                                  built_draw_path.filter,
                                                  Some(built_draw_path.mask_0_fill_rule),
@@ -320,8 +302,7 @@ impl<'a> SceneBuilder<'a> {
                                                      layer_z_buffer,
                                                      tiles,
                                                      current_depth,
-                                                     color_texture_0,
-                                                     color_texture_1,
+                                                     color_texture,
                                                      built_draw_path.blend_mode,
                                                      built_draw_path.filter,
                                                      None,
@@ -386,8 +367,7 @@ impl<'a> SceneBuilder<'a> {
                        layer_z_buffer: &ZBuffer,
                        alpha_tiles: &[Tile],
                        current_depth: u32,
-                       color_texture_0: Option<TileBatchTexture>,
-                       color_texture_1: Option<TileBatchTexture>,
+                       color_texture: Option<TileBatchTexture>,
                        blend_mode: BlendMode,
                        filter: Filter,
                        mask_0_fill_rule: Option<FillRule>,
@@ -405,14 +385,12 @@ impl<'a> SceneBuilder<'a> {
         match culled_tiles.display_list.last() {
             Some(&CulledDisplayItem::DrawTiles(TileBatch {
                 tiles: _,
-                color_texture_0: ref batch_color_texture_0,
-                color_texture_1: ref batch_color_texture_1,
+                color_texture: ref batch_color_texture,
                 blend_mode: batch_blend_mode,
                 filter: batch_filter,
                 mask_0_fill_rule: batch_mask_0_fill_rule,
                 mask_1_fill_rule: batch_mask_1_fill_rule,
-            })) if *batch_color_texture_0 == color_texture_0 &&
-                *batch_color_texture_1 == color_texture_1 &&
+            })) if *batch_color_texture == color_texture &&
                 batch_blend_mode == blend_mode &&
                 batch_filter == filter &&
                 batch_mask_0_fill_rule == mask_0_fill_rule &&
@@ -421,8 +399,7 @@ impl<'a> SceneBuilder<'a> {
             _ => {
                 let batch = TileBatch {
                     tiles: vec![],
-                    color_texture_0,
-                    color_texture_1,
+                    color_texture,
                     blend_mode,
                     filter,
                     mask_0_fill_rule,
@@ -506,7 +483,6 @@ struct PathBuildParams<'a> {
 struct DrawPathBuildParams<'a> {
     path_build_params: PathBuildParams<'a>,
     paint_metadata: &'a [PaintMetadata],
-    opacity_tile_page: TexturePageId,
     built_clip_paths: &'a [BuiltPath],
 }
 

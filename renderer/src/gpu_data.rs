@@ -11,6 +11,7 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::options::BoundingQuad;
+use crate::paint::PaintCompositeOp;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{BlendMode, Filter};
 use pathfinder_content::fill::FillRule;
@@ -77,7 +78,7 @@ pub enum RenderCommand {
     Finish { cpu_build_time: Duration },
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct TexturePageId(pub u32);
 
 #[derive(Clone, Debug)]
@@ -85,7 +86,7 @@ pub struct TexturePageDescriptor {
     pub size: Vector2I,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct TextureLocation {
     pub page: TexturePageId,
     pub rect: RectI,
@@ -94,8 +95,7 @@ pub struct TextureLocation {
 #[derive(Clone, Debug)]
 pub struct TileBatch {
     pub tiles: Vec<Tile>,
-    pub color_texture_0: Option<TileBatchTexture>,
-    pub color_texture_1: Option<TileBatchTexture>,
+    pub color_texture: Option<TileBatchTexture>,
     pub mask_0_fill_rule: Option<FillRule>,
     pub mask_1_fill_rule: Option<FillRule>,
     pub filter: Filter,
@@ -106,6 +106,7 @@ pub struct TileBatch {
 pub struct TileBatchTexture {
     pub page: TexturePageId,
     pub sampling_flags: TextureSamplingFlags,
+    pub composite_op: PaintCompositeOp,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -128,7 +129,7 @@ pub struct TileObjectPrimitive {
 #[repr(C)]
 pub struct TextureMetadataEntry {
     pub color_0_transform: Transform2F,
-    pub opacity: f32,
+    pub base_color: ColorU,
 }
 
 // FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
@@ -179,10 +180,9 @@ impl Debug for RenderCommand {
             RenderCommand::BeginTileDrawing => write!(formatter, "BeginTileDrawing"),
             RenderCommand::DrawTiles(ref batch) => {
                 write!(formatter,
-                       "DrawTiles(x{}, C0 {:?}, C1 {:?}, M0 {:?}, {:?})",
+                       "DrawTiles(x{}, C0 {:?}, M0 {:?}, {:?})",
                        batch.tiles.len(),
-                       batch.color_texture_0,
-                       batch.color_texture_1,
+                       batch.color_texture,
                        batch.mask_0_fill_rule,
                        batch.blend_mode)
             }

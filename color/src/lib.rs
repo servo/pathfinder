@@ -187,6 +187,26 @@ impl ColorF {
     pub fn a(&self) -> f32 {
         self.0[3]
     }
+
+    #[inline]
+    pub fn set_r(&mut self, r: f32) {
+        self.0[0] = r;
+    }
+
+    #[inline]
+    pub fn set_g(&mut self, g: f32) {
+        self.0[1] = g;
+    }
+
+    #[inline]
+    pub fn set_b(&mut self, b: f32) {
+        self.0[2] = b;
+    }
+
+    #[inline]
+    pub fn set_a(&mut self, a: f32) {
+        self.0[3] = a;
+    }
 }
 
 impl Debug for ColorF {

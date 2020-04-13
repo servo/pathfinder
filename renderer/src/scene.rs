@@ -14,7 +14,7 @@ use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
-use crate::paint::{Paint, PaintId, PaintInfo, Palette};
+use crate::paint::{Paint, PaintContents, PaintId, PaintInfo, Palette};
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
@@ -103,23 +103,28 @@ impl Scene {
         let mut paint_mapping = HashMap::new();
         for (old_paint_index, old_paint) in scene.palette.paints.iter().enumerate() {
             let old_paint_id = PaintId(old_paint_index as u16);
-            let new_paint_id = match old_paint {
-                Paint::Pattern(pattern) => {
-                    match pattern.source() {
-                        PatternSource::RenderTarget { id: old_render_target_id, size } => {
-                            let mut new_pattern =
-                                Pattern::from_render_target(*old_render_target_id, *size);
-                            new_pattern.set_filter(pattern.filter());
-                            new_pattern.apply_transform(pattern.transform());
-                            new_pattern.set_repeat_x(pattern.repeat_x());
-                            new_pattern.set_repeat_y(pattern.repeat_y());
-                            new_pattern.set_smoothing_enabled(pattern.smoothing_enabled());
-                            self.palette.push_paint(&Paint::Pattern(new_pattern))
+            let new_paint_id = match *old_paint.overlay() {
+                None => self.palette.push_paint(old_paint),
+                Some(ref overlay) => {
+                    match *overlay.contents() {
+                        PaintContents::Pattern(ref pattern) => {
+                            match pattern.source() {
+                                PatternSource::RenderTarget { id: old_render_target_id, size } => {
+                                    let mut new_pattern =
+                                        Pattern::from_render_target(*old_render_target_id, *size);
+                                    new_pattern.set_filter(pattern.filter());
+                                    new_pattern.apply_transform(pattern.transform());
+                                    new_pattern.set_repeat_x(pattern.repeat_x());
+                                    new_pattern.set_repeat_y(pattern.repeat_y());
+                                    new_pattern.set_smoothing_enabled(pattern.smoothing_enabled());
+                                    self.palette.push_paint(&Paint::from_pattern(new_pattern))
+                                }
+                                _ => self.palette.push_paint(old_paint),
+                            }
                         }
                         _ => self.palette.push_paint(old_paint),
                     }
                 }
-                paint => self.palette.push_paint(paint),
             };
             paint_mapping.insert(old_paint_id, new_paint_id);
         }
