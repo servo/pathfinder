@@ -240,11 +240,21 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
     let main_text = MultilineTextBox::new(context,
                                           PARAGRAPH_TEXT,
                                           origin + vec2f(0.0, 24.0),
-                                          line_width,
-                                          MAIN_LINE_HEIGHT);
-    main_text.draw(context, rgbau(255, 255, 255, 16), ColorU::white());
+                                          line_width);
+    let main_text_hit_location = main_text.hit_test(context, mouse_position);
 
-    if let Some(text_location) = main_text.hit_test(context, mouse_position) {
+    for (main_text_line_index, main_text_line) in main_text.lines.iter().enumerate() {
+        let bg_alpha = match main_text_hit_location {
+            Some(ref main_text_hit_location) if
+                    main_text_hit_location.line_index == main_text_line_index as u32 => {
+                64
+            }
+            _ => 16,
+        };
+        main_text_line.draw(context, rgbau(255, 255, 255, bg_alpha), ColorU::white());
+    }
+
+    if let Some(text_location) = main_text_hit_location {
         let caret_position = main_text.char_position(context, text_location);
         context.set_fill_style(rgbau(255, 192, 0, 255));
         context.fill_rect(RectF::new(caret_position, vec2f(1.0, MAIN_LINE_HEIGHT)));
@@ -275,7 +285,7 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
     context.set_text_align(TextAlign::Left);
     context.set_text_baseline(TextBaseline::Alphabetic);
     let tooltip_origin = main_text.bounds.lower_left() + vec2f(0.0, 38.0);
-    let tooltip = MultilineTextBox::new(context, HOVER_TEXT, tooltip_origin, 150.0, 18.0);
+    let tooltip = MultilineTextBox::new(context, HOVER_TEXT, tooltip_origin, 150.0);
     let mouse_vector = mouse_position.clamp(tooltip.bounds.origin(),
                                             tooltip.bounds.lower_right()) - mouse_position;
     context.set_global_alpha(util::clamp(mouse_vector.length() / 30.0, 0.0, 1.0));
@@ -333,10 +343,15 @@ impl MultilineTextBox {
     fn new(context: &mut CanvasRenderingContext2D,
            text: &str,
            mut origin: Vector2F,
-           max_width: f32,
-           line_height: f32)
+           max_width: f32)
            -> MultilineTextBox {
-        let space_width = context.measure_text("A B").width - context.measure_text("AB").width;
+        const LINE_SPACING: f32 = 3.0;
+
+        let a_b_measure = context.measure_text("A B");
+        let space_width = a_b_measure.width - context.measure_text("AB").width;
+        let line_height = a_b_measure.em_height_ascent - a_b_measure.em_height_descent +
+            LINE_SPACING;
+
         let mut text: VecDeque<VecDeque<_>> = text.split('\n').map(|paragraph| {
             paragraph.split(' ').map(|word| word.to_owned()).collect()
         }).collect();
