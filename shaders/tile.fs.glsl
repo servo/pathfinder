@@ -323,10 +323,10 @@ vec4 filterRadialGradient(vec2 colorTexCoord,
     vec4 color = vec4(0.0);
     if (abs(discrim) >= EPSILON) {
         vec2 ts = vec2(sqrt(discrim) * vec2(1.0, -1.0) + vec2(b)) / vec2(a);
-        float tMax = max(ts.x, ts.y);
-        float t = tMax <= 1.0 ? tMax : min(ts.x, ts.y);
-        if (t >= 0.0)
-            color = texture(colorTexture, uvOrigin + vec2(t, 0.0));
+        if (ts.x > ts.y)
+            ts = ts.yx;
+        float t = ts.x >= 0.0 ? ts.x : ts.y;
+        color = texture(colorTexture, uvOrigin + vec2(clamp(t, 0.0, 1.0), 0.0));
     }
 
     return color;
