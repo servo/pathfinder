@@ -18,6 +18,7 @@ use font_kit::properties::Properties;
 use font_kit::source::{Source, SystemSource};
 use font_kit::sources::mem::MemSource;
 use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::util;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::PaintId;
 use pathfinder_text::{SceneExt, TextRenderMode};
@@ -75,7 +76,9 @@ impl CanvasRenderingContext2D {
         match self.current_state.text_baseline {
             TextBaseline::Alphabetic => {}
             TextBaseline::Top => position.set_y(position.y() + layout.ascent()),
-            TextBaseline::Middle => position.set_y(position.y() + layout.ascent() * 0.5),
+            TextBaseline::Middle => {
+                position.set_y(position.y() + util::lerp(layout.ascent(), layout.descent(), 0.5))
+            }
             TextBaseline::Bottom => position.set_y(position.y() + layout.descent()),
             TextBaseline::Ideographic => {
                 position.set_y(position.y() + layout.ideographic_baseline())
