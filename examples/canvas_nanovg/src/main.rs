@@ -77,6 +77,7 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
                mouse_position: Vector2F,
                window_size: Vector2F,
                time: f32,
+               hidpi_factor: f32,
                data: &DemoData) {
     draw_eyes(context,
               RectF::new(vec2f(window_size.x() - 250.0, 50.0), vec2f(150.0, 100.0)),
@@ -88,7 +89,8 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
                time);
     draw_color_wheel(context,
                      RectF::new(window_size - vec2f(300.0, 300.0), vec2f(250.0, 250.0)),
-                     time);
+                     time,
+                     hidpi_factor);
     draw_lines(context,
                RectF::new(vec2f(120.0, window_size.y() - 50.0), vec2f(600.0, 50.0)),
                time);
@@ -99,9 +101,12 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
     context.save();
 
     // Draw widgets.
-    draw_window(context, "Widgets & Stuff", RectF::new(vec2f(50.0, 50.0), vec2f(300.0, 400.0)));
+    draw_window(context,
+                "Widgets & Stuff",
+                RectF::new(vec2f(50.0, 50.0), vec2f(300.0, 400.0)),
+                hidpi_factor);
     let mut position = vec2f(60.0, 95.0);
-    draw_search_box(context, "Search", RectF::new(position, vec2f(280.0, 25.0)));
+    draw_search_box(context, "Search", RectF::new(position, vec2f(280.0, 25.0)), hidpi_factor);
     position += vec2f(0.0, 40.0);
     draw_dropdown(context, "Effects", RectF::new(position, vec2f(280.0, 28.0)));
     let popup_position = position + vec2f(0.0, 14.0);
@@ -110,11 +115,17 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
     // Draw login form.
     draw_label(context, "Login", RectF::new(position, vec2f(280.0, 20.0)));
     position += vec2f(0.0, 25.0);
-    draw_text_edit_box(context, "E-mail address", RectF::new(position, vec2f(280.0, 28.0)));
+    draw_text_edit_box(context,
+                       "E-mail address",
+                       RectF::new(position, vec2f(280.0, 28.0)),
+                       hidpi_factor);
     position += vec2f(0.0, 35.0);
-    draw_text_edit_box(context, "Password", RectF::new(position, vec2f(280.0, 28.0)));
+    draw_text_edit_box(context,
+                       "Password",
+                       RectF::new(position, vec2f(280.0, 28.0)),
+                       hidpi_factor);
     position += vec2f(0.0, 38.0);
-    draw_check_box(context, "Remember me", RectF::new(position, vec2f(140.0, 28.0)));
+    draw_check_box(context, "Remember me", RectF::new(position, vec2f(140.0, 28.0)), hidpi_factor);
     draw_button(context,
                 Some("🚪"),
                 "Sign In",
@@ -125,9 +136,12 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
     // Draw slider form.
     draw_label(context, "Diameter", RectF::new(position, vec2f(280.0, 20.0)));
     position += vec2f(0.0, 25.0);
-    draw_numeric_edit_box(context, "123.00", "px", RectF::new(position + vec2f(180.0, 0.0),
-                                                             vec2f(100.0, 28.0)));
-    draw_slider(context, 0.4, RectF::new(position, vec2f(170.0, 28.0)));
+    draw_numeric_edit_box(context,
+                          "123.00",
+                          "px",
+                          RectF::new(position + vec2f(180.0, 0.0), vec2f(100.0, 28.0)),
+                          hidpi_factor);
+    draw_slider(context, 0.4, RectF::new(position, vec2f(170.0, 28.0)), hidpi_factor);
     position += vec2f(0.0, 55.0);
 
     // Draw dialog box buttons.
@@ -146,6 +160,7 @@ fn render_demo(context: &mut CanvasRenderingContext2D,
     draw_thumbnails(context,
                     RectF::new(vec2f(365.0, popup_position.y() - 30.0), vec2f(160.0, 300.0)),
                     time,
+                    hidpi_factor,
                     12,
                     &data.image);
 
@@ -572,7 +587,10 @@ fn draw_graph(context: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
     context.set_line_width(1.0);
 }
 
-fn draw_color_wheel(context: &mut CanvasRenderingContext2D, rect: RectF, time: f32) {
+fn draw_color_wheel(context: &mut CanvasRenderingContext2D,
+                    rect: RectF,
+                    time: f32,
+                    hidpi_factor: f32) {
     let hue = (time * 0.12).sin() * PI_2;
 
     context.save();
@@ -618,8 +636,8 @@ fn draw_color_wheel(context: &mut CanvasRenderingContext2D, rect: RectF, time: f
     context.rotate(hue);
 
     // Draw marker.
-    context.set_shadow_blur(4.0);
-    context.set_shadow_color(rgbau(0, 0, 0, 128));
+    context.set_shadow_blur(4.0 * hidpi_factor);
+    context.set_shadow_color(rgbu(0, 0, 0));
     context.set_shadow_offset(vec2f(0.0, 0.0));
     context.set_stroke_style(rgbau(255, 255, 255, 192));
     context.set_line_width(2.0);
@@ -796,14 +814,17 @@ fn draw_clip(context: &mut CanvasRenderingContext2D, origin: Vector2F, time: f32
     context.restore();
 }
 
-fn draw_window(context: &mut CanvasRenderingContext2D, title: &str, rect: RectF) {
+fn draw_window(context: &mut CanvasRenderingContext2D,  
+               title: &str,
+               rect: RectF,
+               hidpi_factor: f32) {
     const CORNER_RADIUS: f32 = 3.0;
 
     context.save();
 
     // Draw window with shadow.
-    context.set_fill_style(rgbau(28, 30, 34, 192));
-    context.set_shadow_blur(10.0);
+    context.set_fill_style(rgbau(28, 30, 34, 160));
+    context.set_shadow_blur(10.0 * hidpi_factor);
     context.set_shadow_offset(vec2f(0.0, 2.0));
     context.set_shadow_color(rgbau(0, 0, 0, 128));
     context.fill_path(create_rounded_rect_path(rect, CORNER_RADIUS), FillRule::Winding);
@@ -812,8 +833,8 @@ fn draw_window(context: &mut CanvasRenderingContext2D, title: &str, rect: RectF)
     // Header.
     let mut header_gradient =
         Gradient::linear(LineSegment2F::new(Vector2F::zero(), vec2f(0.0, 15.0)) + rect.origin());
-    header_gradient.add_color_stop(rgbau(0, 0, 0, 128), 0.0);
-    header_gradient.add_color_stop(rgbau(0, 0, 0, 0),   1.0);
+    header_gradient.add_color_stop(rgbau(255, 255, 255, 8),  0.0);
+    header_gradient.add_color_stop(rgbau(0,   0,   0,   16), 1.0);
     context.set_fill_style(header_gradient);
     context.fill_path(create_rounded_rect_path(RectF::new(rect.origin() + vec2f(1.0, 1.0),
                                                           vec2f(rect.width() - 2.0, 30.0)),
@@ -830,22 +851,25 @@ fn draw_window(context: &mut CanvasRenderingContext2D, title: &str, rect: RectF)
     context.set_text_align(TextAlign::Center);
     context.set_text_baseline(TextBaseline::Middle);
     context.set_fill_style(rgbau(220, 220, 220, 160));
-    context.set_shadow_blur(2.0);
+    context.set_shadow_blur(2.0 * hidpi_factor);
     context.set_shadow_offset(vec2f(0.0, 1.0));
-    context.set_shadow_color(rgbau(0, 0, 0, 128));
+    context.set_shadow_color(rgbu(0, 0, 0));
     context.fill_text(title, rect.origin() + vec2f(rect.width() * 0.5, 16.0));
 
     context.restore();
 }
 
-fn draw_search_box(context: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+fn draw_search_box(context: &mut CanvasRenderingContext2D,
+                   text: &str,
+                   rect: RectF,
+                   hidpi_factor: f32) {
     let corner_radius = rect.height() * 0.5 - 1.0;
 
     let path = create_rounded_rect_path(rect, corner_radius);
     context.save();
     context.clip_path(path.clone(), FillRule::Winding);
     context.set_shadow_offset(vec2f(0.0, 1.5));
-    context.set_shadow_blur(5.0);
+    context.set_shadow_blur(5.0 * hidpi_factor);
     context.set_shadow_color(rgbau(0, 0, 0, 92));
     context.set_fill_style(rgbau(0, 0, 0, 16));
     context.fill_path(path, FillRule::Winding);
@@ -918,14 +942,14 @@ fn draw_label(context: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
     context.fill_text(text, rect.origin() + vec2f(0.0, rect.height() * 0.5));
 }
 
-fn draw_edit_box(context: &mut CanvasRenderingContext2D, rect: RectF) {
+fn draw_edit_box(context: &mut CanvasRenderingContext2D, rect: RectF, hidpi_factor: f32) {
     const CORNER_RADIUS: f32 = 4.0;
 
     context.save();
     let path = create_rounded_rect_path(rect.contract(1.0), CORNER_RADIUS - 1.0);
     context.set_shadow_color(rgbau(255, 255, 255, 32));
     context.set_shadow_offset(vec2f(0.0, 1.5));
-    context.set_shadow_blur(4.0);
+    context.set_shadow_blur(4.0 * hidpi_factor);
     context.set_fill_style(rgbau(32, 32, 32, 32));
     context.fill_path(path, FillRule::Winding);
     context.restore();
@@ -934,8 +958,11 @@ fn draw_edit_box(context: &mut CanvasRenderingContext2D, rect: RectF) {
     context.stroke_path(create_rounded_rect_path(rect.contract(0.5), CORNER_RADIUS - 0.5));
 }
 
-fn draw_text_edit_box(context: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
-    draw_edit_box(context, rect);
+fn draw_text_edit_box(context: &mut CanvasRenderingContext2D,
+                      text: &str,
+                      rect: RectF,
+                      hidpi_factor: f32) {
+    draw_edit_box(context, rect, hidpi_factor);
 
     context.set_font(FONT_NAME_REGULAR);
     context.set_font_size(17.0);
@@ -948,8 +975,9 @@ fn draw_text_edit_box(context: &mut CanvasRenderingContext2D, text: &str, rect: 
 fn draw_numeric_edit_box(context: &mut CanvasRenderingContext2D,
                          value: &str,
                          unit: &str,
-                         rect: RectF) {
-    draw_edit_box(context, rect);
+                         rect: RectF,
+                         hidpi_factor: f32) {
+    draw_edit_box(context, rect, hidpi_factor);
 
     context.set_font(FONT_NAME_REGULAR);
     context.set_font_size(15.0);
@@ -968,7 +996,10 @@ fn draw_numeric_edit_box(context: &mut CanvasRenderingContext2D,
                                                         rect.height() * 0.5));
 }
 
-fn draw_check_box(context: &mut CanvasRenderingContext2D, text: &str, rect: RectF) {
+fn draw_check_box(context: &mut CanvasRenderingContext2D,
+                  text: &str,
+                  rect: RectF,
+                  hidpi_factor: f32) {
     const CORNER_RADIUS: f32 = 3.0;
 
     context.set_font(FONT_NAME_REGULAR);
@@ -984,7 +1015,7 @@ fn draw_check_box(context: &mut CanvasRenderingContext2D, text: &str, rect: Rect
     context.save();
     context.clip_path(check_box_path.clone(), FillRule::Winding);
     context.set_shadow_offset(vec2f(0.0, 1.0));
-    context.set_shadow_blur(3.0);
+    context.set_shadow_blur(3.0 * hidpi_factor);
     context.set_shadow_color(rgbau(0, 0, 0, 32));
     context.set_fill_style(rgbau(0, 0, 0, 92));
     context.fill_path(check_box_path, FillRule::Winding);
@@ -1051,7 +1082,10 @@ fn draw_button(context: &mut CanvasRenderingContext2D,
     context.set_shadow_color(ColorU::transparent_black());
 }
 
-fn draw_slider(context: &mut CanvasRenderingContext2D, value: f32, rect: RectF) {
+fn draw_slider(context: &mut CanvasRenderingContext2D,
+               value: f32,
+               rect: RectF,
+               hidpi_factor: f32) {
     let (center_y, knob_radius) = (rect.center().y().floor(), (rect.height() * 0.25).floor());
 
     context.save();
@@ -1061,7 +1095,7 @@ fn draw_slider(context: &mut CanvasRenderingContext2D, value: f32, rect: RectF) 
     let track_rect = RectF::new(vec2f(rect.origin_x(), center_y - 2.0), vec2f(rect.width(), 4.0));
     let track_path = create_rounded_rect_path(track_rect, 2.0);
     context.clip_path(track_path.clone(), FillRule::Winding);
-    context.set_shadow_blur(2.0);
+    context.set_shadow_blur(2.0 * hidpi_factor);
     context.set_shadow_color(rgbau(0, 0, 0, 32));
     context.set_shadow_offset(vec2f(0.0, 1.0));
     context.set_fill_style(rgbau(0, 0, 0, 32));
@@ -1106,6 +1140,7 @@ fn draw_slider(context: &mut CanvasRenderingContext2D, value: f32, rect: RectF) 
 fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
                    rect: RectF,
                    time: f32,
+                   hidpi_factor: f32,
                    image_count: usize,
                    image: &Image) {
     const CORNER_RADIUS: f32 = 3.0;
@@ -1124,7 +1159,7 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
     // Draw drop shadow.
     let shadow_path = create_rounded_rect_path(rect, CORNER_RADIUS * 2.0);
     context.set_fill_style(rgbau(0, 0, 0, 0));
-    context.set_shadow_blur(20.0);
+    context.set_shadow_blur(20.0 * hidpi_factor);
     context.set_shadow_color(rgbau(0, 0, 0, 128));
     context.set_shadow_offset(vec2f(0.0, 4.0));
     context.fill_path(shadow_path, FillRule::Winding);
@@ -1154,9 +1189,9 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
         // Draw shadow.
         let shadow_path = create_rounded_rect_path(image_rect.dilate(1.0) + vec2f(0.0, 1.0), 5.0);
         context.set_fill_style(rgbu(200, 200, 200));
-        context.set_shadow_blur(3.0);
+        context.set_shadow_blur(3.0 * hidpi_factor);
         context.set_shadow_offset(vec2f(0.0, 0.0));
-        context.set_shadow_color(rgbau(0, 0, 0, 128));
+        context.set_shadow_color(rgbau(0, 0, 0, 255));
         context.fill_path(shadow_path, FillRule::Winding);
         context.set_shadow_color(rgbau(0, 0, 0, 0));
 
@@ -1208,7 +1243,7 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
     let scroll_bar_rect = RectF::new(rect.upper_right() + vec2f(-12.0, 4.0),
                                      vec2f(8.0, rect.height() - 8.0));
     context.save();
-    context.set_shadow_blur(4.0);
+    context.set_shadow_blur(4.0 * hidpi_factor);
     context.set_shadow_offset(vec2f(0.0, 0.0));
     context.set_shadow_color(rgbau(0, 0, 0, 92));
     context.set_fill_style(rgbau(0, 0, 0, 32));
@@ -1221,7 +1256,7 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
     let knob_rect = RectF::new(
         rect.upper_right() + vec2f(-11.0, 5.0 + (rect.height() - 8.0 - scroll_height) * scroll_y),
         vec2f(6.0, scroll_height - 2.0));
-    context.set_shadow_blur(4.0);
+    context.set_shadow_blur(4.0 * hidpi_factor);
     context.set_shadow_offset(vec2f(0.0, 1.0));
     context.set_shadow_color(rgbu(220, 220, 220));
     context.set_fill_style(rgbau(0, 0, 0, 32));
@@ -1441,7 +1476,7 @@ fn main() {
     // Get the real window size (for HiDPI).
     let (drawable_width, drawable_height) = window.drawable_size();
     let drawable_size = vec2i(drawable_width as i32, drawable_height as i32);
-    let hidpi_factor = drawable_size.to_f32() / window_size.to_f32();
+    let hidpi_factor = drawable_size.x() as f32 / window_size.x() as f32;
 
     // Load demo data.
     let resources = FilesystemResourceLoader::locate();
@@ -1489,6 +1524,7 @@ fn main() {
                     mouse_position,
                     window_size.to_f32(),
                     frame_start_elapsed_time,
+                    hidpi_factor,
                     &demo_data);
 
         // Render performance graphs.
