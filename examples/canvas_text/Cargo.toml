@@ -5,7 +5,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-font-kit = "0.5"
+font-kit = "0.6"
 gl = "0.14"
 sdl2 = "0.33"
 sdl2-sys = "0.33"

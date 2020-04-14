@@ -8,7 +8,7 @@ edition = "2018"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-font-kit = { version = "0.5", optional = true }
+font-kit = { version = "0.6", optional = true }
 
 [dependencies.pathfinder_color]
 path = "../color"
@@ -28,7 +28,7 @@ optional = true
 
 [dependencies.skribo]
 git = "https://github.com/pcwalton/skribo.git"
-rev = "7386321f763cecbce9c4ece3401c81de62305036"
+rev = "fe9c968521b4a6ed98c9166a6e620028fea285c1"
 optional = true
 
 [features]

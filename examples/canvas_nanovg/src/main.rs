@@ -235,6 +235,8 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
     context.set_font(&[FONT_NAME_REGULAR, FONT_NAME_EMOJI][..]);
     context.set_font_size(18.0);
     context.set_fill_style(ColorU::white());
+    context.set_text_align(TextAlign::Left);
+    context.set_text_baseline(TextBaseline::Alphabetic);
     let main_text = MultilineTextBox::new(context,
                                           PARAGRAPH_TEXT,
                                           origin + vec2f(0.0, 24.0),
@@ -270,6 +272,8 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
 
     // Fade out the tooltip when close to it.
     context.set_font_size(11.0);
+    context.set_text_align(TextAlign::Left);
+    context.set_text_baseline(TextBaseline::Alphabetic);
     let tooltip_origin = main_text.bounds.lower_left() + vec2f(0.0, 38.0);
     let tooltip = MultilineTextBox::new(context, HOVER_TEXT, tooltip_origin, 150.0, 18.0);
     let mouse_vector = mouse_position.clamp(tooltip.bounds.origin(),
@@ -341,7 +345,7 @@ impl MultilineTextBox {
 
         while let Some(mut paragraph) = text.pop_front() {
             while !paragraph.is_empty() {
-                let mut line = Line::new(origin, max_width, line_height);
+                let mut line = Line::new(origin, max_width);
                 line.layout(context, &mut paragraph, space_width);
 
                 origin += vec2f(0.0, line_height);
@@ -384,8 +388,8 @@ impl MultilineTextBox {
 }
 
 impl Line {
-    fn new(origin: Vector2F, max_width: f32, line_height: f32) -> Line {
-        Line { words: vec![], origin, ascent: line_height, descent: 0.0, width: 0.0, max_width }
+    fn new(origin: Vector2F, max_width: f32) -> Line {
+        Line { words: vec![], origin, ascent: 0.0, descent: 0.0, width: 0.0, max_width }
     }
 
     fn layout(&mut self,
@@ -398,8 +402,8 @@ impl Line {
                 word_origin_x += space_width;
             }
 
-            let word_width = context.measure_text(&word).width;
-            let new_line_width = word_origin_x + word_width;
+            let word_metrics = context.measure_text(&word);
+            let new_line_width = word_origin_x + word_metrics.width;
             if self.width != 0.0 && new_line_width > self.max_width {
                 text.push_front(word);
                 return;
@@ -407,6 +411,8 @@ impl Line {
 
             self.words.push(Word { text: word, origin_x: word_origin_x });
             self.width = new_line_width;
+            self.ascent = self.ascent.max(word_metrics.em_height_ascent);
+            self.descent = self.descent.min(word_metrics.em_height_descent);
         }
     }
 
@@ -427,7 +433,7 @@ impl Line {
 
     fn bounds(&self) -> RectF {
         RectF::new(self.origin - vec2f(0.0, self.ascent),
-                   vec2f(self.width, self.ascent + self.descent))
+                   vec2f(self.width, self.ascent - self.descent))
     }
 
     fn hit_test(&self, context: &CanvasRenderingContext2D, mut mouse_position: Vector2F)

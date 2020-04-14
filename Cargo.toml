@@ -64,3 +64,7 @@ default-members = [
     "utils/svg-to-skia",
     "utils/convert",
 ]
+
+[patch.crates-io]
+pathfinder_geometry = { path = "geometry" }
+pathfinder_simd = { path = "simd" }

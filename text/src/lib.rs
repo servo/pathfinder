@@ -8,15 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use euclid::Angle;
-use euclid::default::{Point2D, Vector2D};
 use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
-use lyon_path::builder::{FlatPathBuilder, PathBuilder, Build};
+use font_kit::outline::OutlineSink;
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::outline::{Contour, Outline};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::PaintId;
@@ -105,7 +104,7 @@ impl SceneExt for Scene {
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError> {
         for glyph in &layout.glyphs {
-            let offset = Vector2F::new(glyph.offset.x, glyph.offset.y);
+            let offset = glyph.offset;
             let font = &*glyph.font.font;
             // FIXME(pcwalton): Cache this!
             let scale = style.size / (font.metrics().units_per_em as f32);
@@ -174,75 +173,33 @@ impl OutlinePathBuilder {
         }
     }
 
-    fn convert_point(&self, point: Point2D<f32>) -> Vector2F {
-        self.transform * Vector2F::new(point.x, point.y)
-    }
-}
-
-impl PathBuilder for OutlinePathBuilder {
-    fn quadratic_bezier_to(&mut self, ctrl: Point2D<f32>, to: Point2D<f32>) {
-        let (ctrl, to) = (self.convert_point(ctrl), self.convert_point(to));
-        self.current_contour.push_quadratic(ctrl, to);
-    }
-
-    fn cubic_bezier_to(&mut self, ctrl0: Point2D<f32>, ctrl1: Point2D<f32>, to: Point2D<f32>) {
-        let (ctrl0, ctrl1) = (self.convert_point(ctrl0), self.convert_point(ctrl1));
-        let to = self.convert_point(to);
-        self.current_contour.push_cubic(ctrl0, ctrl1, to);
-    }
-
-    fn arc(&mut self,
-           _center: Point2D<f32>,
-           _radii: Vector2D<f32>,
-           _sweep_angle: Angle<f32>,
-           _x_rotation: Angle<f32>) {
-        // TODO(pcwalton): Arcs.
-    }
-}
-
-impl Build for OutlinePathBuilder {
-    type PathType = Outline;
     fn build(mut self) -> Outline {
         self.flush_current_contour();
         self.outline
     }
-
-    fn build_and_reset(&mut self) -> Outline {
-        self.flush_current_contour();
-        mem::replace(&mut self.outline, Outline::new())
-    }
-
 }
 
-impl FlatPathBuilder for OutlinePathBuilder {
-
-    fn move_to(&mut self, to: Point2D<f32>) {
+impl OutlineSink for OutlinePathBuilder {
+    fn move_to(&mut self, to: Vector2F) {
         self.flush_current_contour();
-        let to = self.convert_point(to);
-        self.current_contour.push_endpoint(to);
+        self.current_contour.push_endpoint(self.transform * to);
     }
 
-    fn line_to(&mut self, to: Point2D<f32>) {
-        let to = self.convert_point(to);
-        self.current_contour.push_endpoint(to);
+    fn line_to(&mut self, to: Vector2F) {
+        self.current_contour.push_endpoint(self.transform * to);
+    }
+
+    fn quadratic_curve_to(&mut self, ctrl: Vector2F, to: Vector2F) {
+        self.current_contour.push_quadratic(self.transform * ctrl, self.transform * to);
+    }
+
+    fn cubic_curve_to(&mut self, ctrl: LineSegment2F, to: Vector2F) {
+        self.current_contour.push_cubic(self.transform * ctrl.from(),
+                                        self.transform * ctrl.to(),
+                                        self.transform * to);
     }
 
     fn close(&mut self) {
         self.current_contour.close();
-    }
-
-    fn current_position(&self) -> Point2D<f32> {
-        if self.current_contour.is_empty() {
-            return Point2D::new(0.0, 0.0)
-        }
-
-        let point_index = if self.current_contour.is_closed() {
-            0
-        } else {
-            self.current_contour.len() - 1
-        };
-
-        let point = self.current_contour.position_of(point_index);
-        Point2D::new(point.x(), point.y())
     }
 }

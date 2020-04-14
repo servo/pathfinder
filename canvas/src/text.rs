@@ -8,18 +8,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::{CanvasRenderingContext2D, TextAlign, TextBaseline};
+use crate::{CanvasRenderingContext2D, State, TextAlign, TextBaseline};
+use font_kit::canvas::RasterizationOptions;
 use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
 use font_kit::hinting::HintingOptions;
 use font_kit::loaders::default::Font;
-use font_kit::metrics::Metrics;
 use font_kit::properties::Properties;
 use font_kit::source::{Source, SystemSource};
 use font_kit::sources::mem::MemSource;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::util;
-use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_renderer::paint::PaintId;
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, FontRef, Layout, TextStyle};
@@ -40,7 +40,9 @@ impl CanvasRenderingContext2D {
     }
 
     pub fn measure_text(&self, string: &str) -> TextMetrics {
-        TextMetrics { width: self.layout_text(string).width() }
+        let mut metrics = self.layout_text(string).metrics();
+        metrics.make_origin_relative(&self.current_state);
+        metrics
     }
 
     pub fn fill_layout(&mut self, layout: &Layout, transform: Transform2F) {
@@ -69,25 +71,7 @@ impl CanvasRenderingContext2D {
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
 
-        match self.current_state.text_align {
-            TextAlign::Left => {},
-            TextAlign::Right => position.set_x(position.x() - layout.width()),
-            TextAlign::Center => position.set_x(position.x() - layout.width() * 0.5),
-        }
-
-        match self.current_state.text_baseline {
-            TextBaseline::Alphabetic => {}
-            TextBaseline::Top => position.set_y(position.y() + layout.ascent()),
-            TextBaseline::Middle => {
-                position.set_y(position.y() + util::lerp(layout.ascent(), layout.descent(), 0.5))
-            }
-            TextBaseline::Bottom => position.set_y(position.y() + layout.descent()),
-            TextBaseline::Ideographic => {
-                position.set_y(position.y() + layout.ideographic_baseline())
-            }
-            TextBaseline::Hanging => position.set_y(position.y() + layout.hanging_baseline()),
-        }
-
+        position += layout.metrics().text_origin(&self.current_state);
         let transform = self.current_state.transform * Transform2F::from_translation(position);
 
         // TODO(pcwalton): Report errors.
@@ -151,10 +135,46 @@ impl CanvasRenderingContext2D {
     }
 }
 
-// TODO(pcwalton): Support other fields.
+/// Represents the dimensions of a piece of text in the canvas.
 #[derive(Clone, Copy, Debug)]
 pub struct TextMetrics {
+    /// The calculated width of a segment of inline text in pixels.
     pub width: f32,
+    /// The distance from the alignment point given by the `text_align` state to the left side of
+    /// the bounding rectangle of the given text, in pixels. The distance is measured parallel to
+    /// the baseline.
+    pub actual_bounding_box_left: f32,
+    /// The distance from the alignment point given by the `text_align` state to the right side of
+    /// the bounding rectangle of the given text, in pixels. The distance is measured parallel to
+    /// the baseline.
+    pub actual_bounding_box_right: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the top of
+    /// the highest bounding rectangle of all the fonts used to render the text, in pixels.
+    pub font_bounding_box_ascent: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the bottom
+    /// of the highest bounding rectangle of all the fonts used to render the text, in pixels.
+    pub font_bounding_box_descent: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the top of
+    /// the bounding rectangle used to render the text, in pixels.
+    pub actual_bounding_box_ascent: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the bottom
+    /// of the bounding rectangle used to render the text, in pixels.
+    pub actual_bounding_box_descent: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the top of
+    /// the em square in the line box, in pixels.
+    pub em_height_ascent: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the bottom
+    /// of the em square in the line box, in pixels.
+    pub em_height_descent: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the hanging
+    /// baseline of the line box, in pixels.
+    pub hanging_baseline: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the
+    /// alphabetic baseline of the line box, in pixels.
+    pub alphabetic_baseline: f32,
+    /// The distance from the horizontal line indicated by the `text_baseline` state to the
+    /// ideographic baseline of the line box, in pixels.
+    pub ideographic_baseline: f32,
 }
 
 #[cfg(feature = "pf-text")]
@@ -196,17 +216,108 @@ impl CanvasFontContext {
 
 // Text layout utilities
 
+impl TextMetrics {
+    fn text_origin(&self, state: &State) -> Vector2F {
+        let x = match state.text_align {
+            TextAlign::Left => 0.0,
+            TextAlign::Right => -self.width,
+            TextAlign::Center => -0.5 * self.width,
+        };
+
+        let y = match state.text_baseline {
+            TextBaseline::Alphabetic => 0.0,
+            TextBaseline::Top => self.em_height_ascent,
+            TextBaseline::Middle => util::lerp(self.em_height_ascent, self.em_height_descent, 0.5),
+            TextBaseline::Bottom => self.em_height_descent,
+            TextBaseline::Ideographic => self.ideographic_baseline,
+            TextBaseline::Hanging => self.hanging_baseline,
+        };
+
+        vec2f(x, y)
+    }
+
+    fn make_origin_relative(&mut self, state: &State) {
+        let text_origin = self.text_origin(state);
+        self.actual_bounding_box_left += text_origin.x();
+        self.actual_bounding_box_right += text_origin.x();
+        self.font_bounding_box_ascent -= text_origin.y();
+        self.font_bounding_box_descent -= text_origin.y();
+        self.actual_bounding_box_ascent -= text_origin.y();
+        self.actual_bounding_box_descent -= text_origin.y();
+        self.em_height_ascent -= text_origin.y();
+        self.em_height_descent -= text_origin.y();
+        self.hanging_baseline -= text_origin.y();
+        self.alphabetic_baseline -= text_origin.y();
+        self.ideographic_baseline -= text_origin.y();
+    }
+}
+
 pub trait LayoutExt {
+    fn metrics(&self) -> TextMetrics;
     fn width(&self) -> f32;
-    fn fold_metric<G, F>(&self, get: G, fold: F) -> f32 where G: FnMut(&Metrics) -> f32,
-                                                              F: FnMut(f32, f32) -> f32;
-    fn ascent(&self) -> f32;
-    fn descent(&self) -> f32;
+    fn actual_bounding_box_left(&self) -> f32;
+    fn actual_bounding_box_right(&self) -> f32;
     fn hanging_baseline(&self) -> f32;
     fn ideographic_baseline(&self) -> f32;
 }
 
 impl LayoutExt for Layout {
+    // NB: This does not return origin-relative values. To get those, call `make_origin_relative()`
+    // afterward.
+    fn metrics(&self) -> TextMetrics {
+        let (mut em_height_ascent, mut em_height_descent) = (0.0, 0.0);
+        let (mut font_bounding_box_ascent, mut font_bounding_box_descent) = (0.0, 0.0);
+        let (mut actual_bounding_box_ascent, mut actual_bounding_box_descent) = (0.0, 0.0);
+
+        let mut last_font: Option<Arc<Font>> = None;
+        for glyph in &self.glyphs {
+            match last_font {
+                Some(ref last_font) if Arc::ptr_eq(&last_font, &glyph.font.font) => {}
+                _ => {
+                    let font = glyph.font.font.clone();
+
+                    let font_metrics = font.metrics();
+                    let scale_factor = self.size / font_metrics.units_per_em as f32;
+                    em_height_ascent = (font_metrics.ascent * scale_factor).max(em_height_ascent);
+                    em_height_descent =
+                        (font_metrics.descent * scale_factor).min(em_height_descent);
+                    font_bounding_box_ascent = (font_metrics.bounding_box.max_y() *
+                                                scale_factor).max(font_bounding_box_ascent);
+                    font_bounding_box_descent = (font_metrics.bounding_box.min_y() *
+                                                 scale_factor).min(font_bounding_box_descent);
+
+                    last_font = Some(font);
+                }
+            }
+
+            let font = last_font.as_ref().unwrap();
+            let glyph_rect = font.raster_bounds(glyph.glyph_id,
+                                                self.size,
+                                                Transform2F::default(),
+                                                HintingOptions::None,
+                                                RasterizationOptions::GrayscaleAa).unwrap();
+            actual_bounding_box_ascent =
+                (glyph_rect.max_y() as f32).max(actual_bounding_box_ascent);
+            actual_bounding_box_descent =
+                (glyph_rect.min_y() as f32).min(actual_bounding_box_descent);
+        }
+
+        TextMetrics {
+            width: self.width(),
+            actual_bounding_box_left: self.actual_bounding_box_left(),
+            actual_bounding_box_right: self.actual_bounding_box_right(),
+            font_bounding_box_ascent,
+            font_bounding_box_descent,
+            actual_bounding_box_ascent,
+            actual_bounding_box_descent,
+            em_height_ascent,
+            em_height_descent,
+            alphabetic_baseline: 0.0,
+            hanging_baseline: self.hanging_baseline(),
+            ideographic_baseline: self.ideographic_baseline(),
+        }
+    }
+
     fn width(&self) -> f32 {
         let last_glyph = match self.glyphs.last() {
             None => return 0.0,
@@ -217,32 +328,41 @@ impl LayoutExt for Layout {
         let font_metrics = last_glyph.font.font.metrics();
         let glyph_rect = last_glyph.font.font.typographic_bounds(glyph_id).unwrap();
         let scale_factor = self.size / font_metrics.units_per_em as f32;
-        last_glyph.offset.x + glyph_rect.max_x() * scale_factor
+        last_glyph.offset.x() + glyph_rect.max_x() * scale_factor
     }
 
-    fn fold_metric<G, F>(&self, mut get: G, mut fold: F) -> f32 where G: FnMut(&Metrics) -> f32,
-                                                                      F: FnMut(f32, f32) -> f32 {
-        let (mut last_font_seen, mut value) = (None, 0.0);
-        for glyph in &self.glyphs {
-            if let Some(ref last_font_seen) = last_font_seen {
-                if Arc::ptr_eq(last_font_seen, &glyph.font.font) {
-                    continue;
-                }
-            }
-            let font_metrics = glyph.font.font.metrics();
-            let scale_factor = self.size / font_metrics.units_per_em as f32;
-            value = fold(value, get(&font_metrics) * scale_factor);
-            last_font_seen = Some(glyph.font.font.clone());
-        }
-        value
+    fn actual_bounding_box_left(&self) -> f32 {
+        let first_glyph = match self.glyphs.get(0) {
+            None => return 0.0,
+            Some(first_glyph) => first_glyph,
+        };
+
+        let glyph_id = first_glyph.glyph_id;
+        let glyph_rect = first_glyph.font
+                                    .font
+                                    .raster_bounds(glyph_id,
+                                                   self.size,
+                                                   Transform2F::default(),
+                                                   HintingOptions::None,
+                                                   RasterizationOptions::GrayscaleAa).unwrap();
+        first_glyph.offset.x() + glyph_rect.min_x() as f32
     }
 
-    fn ascent(&self) -> f32 {
-        self.fold_metric(|metrics| metrics.ascent, f32::max)
-    }
+    fn actual_bounding_box_right(&self) -> f32 {
+        let last_glyph = match self.glyphs.last() {
+            None => return 0.0,
+            Some(last_glyph) => last_glyph,
+        };
 
-    fn descent(&self) -> f32 {
-        self.fold_metric(|metrics| metrics.descent, f32::min)
+        let glyph_id = last_glyph.glyph_id;
+        let glyph_rect = last_glyph.font
+                                   .font
+                                   .raster_bounds(glyph_id,
+                                                  self.size,
+                                                  Transform2F::default(),
+                                                  HintingOptions::None,
+                                                  RasterizationOptions::GrayscaleAa).unwrap();
+        last_glyph.offset.x() + glyph_rect.max_x() as f32
     }
 
     fn hanging_baseline(&self) -> f32 {

@@ -6,8 +6,7 @@ edition = "2018"
 
 [dependencies]
 euclid = "0.20"
-font-kit = "0.5"
-lyon_path = "0.14"
+font-kit = "0.6"
 
 [dependencies.pathfinder_content]
 path = "../content"
@@ -20,4 +19,4 @@ path = "../renderer"
 
 [dependencies.skribo]
 git = "https://github.com/pcwalton/skribo.git"
-rev = "7386321f763cecbce9c4ece3401c81de62305036"
+rev = "fe9c968521b4a6ed98c9166a6e620028fea285c1"

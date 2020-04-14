@@ -9,7 +9,7 @@ build = "build.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-font-kit = "0.5"
+font-kit = "0.6"
 foreign-types = "0.3"
 gl = "0.14"
 libc = "0.2"
