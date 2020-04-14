@@ -27,12 +27,14 @@ use std::sync::Arc;
 
 impl CanvasRenderingContext2D {
     pub fn fill_text(&mut self, string: &str, position: Vector2F) {
-        let paint_id = self.canvas.scene.push_paint(&self.current_state.fill_paint);
+        let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
+        let paint_id = self.canvas.scene.push_paint(&paint);
         self.fill_or_stroke_text(string, position, paint_id, TextRenderMode::Fill);
     }
 
     pub fn stroke_text(&mut self, string: &str, position: Vector2F) {
-        let paint_id = self.canvas.scene.push_paint(&self.current_state.stroke_paint);
+        let paint = self.current_state.resolve_paint(&self.current_state.stroke_paint);
+        let paint_id = self.canvas.scene.push_paint(&paint);
         let render_mode = TextRenderMode::Stroke(self.current_state.resolve_stroke_style());
         self.fill_or_stroke_text(string, position, paint_id, render_mode);
     }
