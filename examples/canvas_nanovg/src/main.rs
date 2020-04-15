@@ -276,19 +276,24 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
 
         let line_bounds = main_text.lines[text_location.line_index as usize].bounds();
         let gutter_origin = line_bounds.origin() + vec2f(-10.0, MAIN_LINE_HEIGHT * 0.5);
+
         context.set_font_size(12.0);
-
-        let gutter_text = format!("{}", text_location.line_index + 1);
-        let gutter_text_width = context.measure_text(&gutter_text).width;
-
         context.set_text_align(TextAlign::Right);
         context.set_text_baseline(TextBaseline::Middle);
         context.set_fill_style(rgbau(255, 192, 0, 255));
-        let gutter_text_bounds = RectF::new(gutter_origin - vec2f(gutter_text_width, 6.0),
-                                            vec2f(gutter_text_width, 12.0));
+
+        let gutter_text = format!("{}", text_location.line_index + 1);
+        let gutter_text_metrics = context.measure_text(&gutter_text);
+
+        let gutter_text_bounds =
+            RectF::from_points(vec2f(gutter_text_metrics.actual_bounding_box_left,
+                                     -gutter_text_metrics.font_bounding_box_ascent),
+                               vec2f(gutter_text_metrics.actual_bounding_box_right,
+                                     -gutter_text_metrics.font_bounding_box_descent));
         let gutter_path_bounds = gutter_text_bounds.dilate(vec2f(4.0, 2.0));
         let gutter_path_radius = gutter_path_bounds.width() * 0.5 - 1.0;
-        let path = create_rounded_rect_path(gutter_path_bounds, gutter_path_radius);
+        let path = create_rounded_rect_path(gutter_path_bounds + gutter_origin,
+                                            gutter_path_radius);
         context.fill_path(path, FillRule::Winding);
 
         context.set_fill_style(rgbau(32, 32, 32, 255));
@@ -866,13 +871,17 @@ fn draw_search_box(context: &mut CanvasRenderingContext2D,
     let corner_radius = rect.height() * 0.5 - 1.0;
 
     let path = create_rounded_rect_path(rect, corner_radius);
-    context.save();
-    context.clip_path(path.clone(), FillRule::Winding);
-    context.set_shadow_offset(vec2f(0.0, 1.5));
-    context.set_shadow_blur(5.0 * hidpi_factor);
-    context.set_shadow_color(rgbau(0, 0, 0, 92));
     context.set_fill_style(rgbau(0, 0, 0, 16));
-    context.fill_path(path, FillRule::Winding);
+    context.fill_path(path.clone(), FillRule::Winding);
+    context.save();
+    context.clip_path(path, FillRule::Winding);
+    let shadow_path = create_rounded_rect_path(rect + vec2f(0.0, 1.5), corner_radius);
+    context.set_shadow_blur(5.0 * hidpi_factor);
+    context.set_shadow_offset(vec2f(0.0, 0.0));
+    context.set_shadow_color(rgbau(0, 0, 0, 92));
+    context.set_stroke_style(rgbau(0, 0, 0, 92));
+    context.set_line_width(1.0);
+    context.stroke_path(shadow_path);
     context.restore();
 
     context.set_font_size(rect.height() * 0.5);
@@ -884,7 +893,7 @@ fn draw_search_box(context: &mut CanvasRenderingContext2D,
 
     context.set_font(FONT_NAME_REGULAR);
     context.set_font_size(17.0);
-    context.set_fill_style(rgbau(255, 255, 255, 64));
+    context.set_fill_style(rgbau(255, 255, 255, 32));
     context.set_text_align(TextAlign::Left);
     context.set_text_baseline(TextBaseline::Middle);
     context.fill_text(text, rect.origin() + vec2f(1.05, 0.5) * rect.height());
@@ -947,11 +956,15 @@ fn draw_edit_box(context: &mut CanvasRenderingContext2D, rect: RectF, hidpi_fact
 
     context.save();
     let path = create_rounded_rect_path(rect.contract(1.0), CORNER_RADIUS - 1.0);
-    context.set_shadow_color(rgbau(255, 255, 255, 32));
-    context.set_shadow_offset(vec2f(0.0, 1.5));
-    context.set_shadow_blur(4.0 * hidpi_factor);
-    context.set_fill_style(rgbau(32, 32, 32, 32));
-    context.fill_path(path, FillRule::Winding);
+    context.set_fill_style(rgbau(255, 255, 255, 32));
+    context.fill_path(path.clone(), FillRule::Winding);
+    context.clip_path(path.clone(), FillRule::Winding);
+    context.set_line_width(1.0);
+    context.set_shadow_blur(2.0 * hidpi_factor);
+    context.set_shadow_color(rgbau(32, 32, 32, 92));
+    context.set_shadow_offset(vec2f(0.0, 1.0));
+    context.set_stroke_style(rgbau(32, 32, 32, 92));
+    context.stroke_path(path);
     context.restore();
 
     context.set_stroke_style(rgbau(0, 0, 0, 48));
@@ -1009,23 +1022,27 @@ fn draw_check_box(context: &mut CanvasRenderingContext2D,
     context.set_text_baseline(TextBaseline::Middle);
     context.fill_text(text, rect.origin() + vec2f(28.0, rect.height() * 0.5));
 
+    context.save();
     let check_box_rect = RectF::new(vec2f(rect.origin_x(), rect.center().y().floor() - 9.0),
                                     vec2f(20.0, 20.0)).contract(1.0);
     let check_box_path = create_rounded_rect_path(check_box_rect, CORNER_RADIUS);
-    context.save();
-    context.clip_path(check_box_path.clone(), FillRule::Winding);
-    context.set_shadow_offset(vec2f(0.0, 1.0));
-    context.set_shadow_blur(3.0 * hidpi_factor);
-    context.set_shadow_color(rgbau(0, 0, 0, 32));
-    context.set_fill_style(rgbau(0, 0, 0, 92));
-    context.fill_path(check_box_path, FillRule::Winding);
+    context.set_fill_style(rgbau(0, 0, 0, 32));
+    context.fill_path(check_box_path.clone(), FillRule::Winding);
+    context.clip_path(check_box_path, FillRule::Winding);
+    context.set_line_width(1.0);
+    context.set_stroke_style(rgbau(0, 0, 0, 92));
+    context.set_shadow_color(rgbau(0, 0, 0, 92));
+    context.set_shadow_blur(1.5 * hidpi_factor);
+    context.set_shadow_offset(vec2f(0.0, 0.0));
+    let shadow_path = create_rounded_rect_path(check_box_rect + vec2f(0.0, 1.0), CORNER_RADIUS);
+    context.stroke_path(shadow_path);
     context.restore();
 
     context.set_font(FONT_NAME_EMOJI);
     context.set_font_size(17.0);
     context.set_fill_style(rgbau(255, 255, 255, 128));
     context.set_text_align(TextAlign::Center);
-    context.fill_text("✔︎", rect.origin() + vec2f(11.0, rect.height() * 0.5));
+    context.fill_text("✔︎", check_box_rect.center());
 }
 
 fn draw_button(context: &mut CanvasRenderingContext2D,
@@ -1102,20 +1119,8 @@ fn draw_slider(context: &mut CanvasRenderingContext2D,
     context.fill_path(track_path, FillRule::Winding);
     context.restore();
 
-    // Draw knob shadow.
-    let knob_position = vec2f(rect.origin_x() + (value * rect.width()).floor(), center_y);
-    let mut background_gradient =
-        Gradient::radial(LineSegment2F::new(knob_position, knob_position) + vec2f(0.0, 1.0),
-                         F32x2::splat(knob_radius) * F32x2::new(-3.0, 3.0));
-    background_gradient.add_color_stop(rgbau(0, 0, 0, 64), 0.0);
-    background_gradient.add_color_stop(rgbau(0, 0, 0, 0),  1.0);
-    context.set_fill_style(background_gradient);
-    let mut path = Path2D::new();
-    path.rect(RectF::new(knob_position, Vector2F::zero()).dilate(knob_radius + 5.0));
-    path.ellipse(knob_position, knob_radius, 0.0, 0.0, PI_2);
-    context.fill_path(path, FillRule::EvenOdd);
-
     // Fill knob.
+    let knob_position = vec2f(rect.origin_x() + (value * rect.width()).floor(), center_y);
     let mut background_gradient =
         Gradient::linear_from_points(knob_position - vec2f(0.0, knob_radius),
                                      knob_position + vec2f(0.0, knob_radius));
@@ -1124,7 +1129,11 @@ fn draw_slider(context: &mut CanvasRenderingContext2D,
     let mut path = Path2D::new();
     path.ellipse(knob_position, knob_radius - 1.0, 0.0, 0.0, PI_2);
     context.set_fill_style(rgbu(40, 43, 48));
+    context.set_shadow_blur(6.0 * hidpi_factor);
+    context.set_shadow_color(rgbau(0, 0, 0, 128));
+    context.set_shadow_offset(vec2f(0.0, 1.0));
     context.fill_path(path.clone(), FillRule::Winding);
+    context.set_shadow_color(rgbau(0, 0, 0, 0));
     context.set_fill_style(background_gradient);
     context.fill_path(path, FillRule::Winding);
 
@@ -1156,22 +1165,17 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
 
     context.save();
 
-    // Draw drop shadow.
-    let shadow_path = create_rounded_rect_path(rect, CORNER_RADIUS * 2.0);
-    context.set_fill_style(rgbau(0, 0, 0, 0));
-    context.set_shadow_blur(20.0 * hidpi_factor);
-    context.set_shadow_color(rgbau(0, 0, 0, 128));
-    context.set_shadow_offset(vec2f(0.0, 4.0));
-    context.fill_path(shadow_path, FillRule::Winding);
-    context.set_shadow_color(rgbau(0, 0, 0, 0));
-
     // Draw window.
     let mut path = create_rounded_rect_path(rect, CORNER_RADIUS);
     path.move_to(rect.origin() + vec2f(-10.0, ARROW_Y_POSITION));
     path.line_to(rect.origin() + vec2f(1.0, ARROW_Y_POSITION - 11.0));
     path.line_to(rect.origin() + vec2f(1.0, ARROW_Y_POSITION + 11.0));
     context.set_fill_style(rgbu(200, 200, 200));
+    context.set_shadow_blur(20.0 * hidpi_factor);
+    context.set_shadow_offset(vec2f(0.0, 4.0));
+    context.set_shadow_color(rgbau(0, 0, 0, 64));
     context.fill_path(path, FillRule::Winding);
+    context.set_shadow_color(rgbau(0, 0, 0, 0));
 
     // Draw images.
 
@@ -1240,30 +1244,36 @@ fn draw_thumbnails(context: &mut CanvasRenderingContext2D,
 
     // Draw scroll bar.
 
+    context.save();
     let scroll_bar_rect = RectF::new(rect.upper_right() + vec2f(-12.0, 4.0),
                                      vec2f(8.0, rect.height() - 8.0));
-    context.save();
-    context.set_shadow_blur(4.0 * hidpi_factor);
+    let path = create_rounded_rect_path(scroll_bar_rect, CORNER_RADIUS);
+    context.set_fill_style(rgbau(0, 0, 0, 32));
+    context.fill_path(path.clone(), FillRule::Winding);
+    context.clip_path(path, FillRule::Winding);
+    context.set_stroke_style(rgbau(0, 0, 0, 92));
     context.set_shadow_offset(vec2f(0.0, 0.0));
     context.set_shadow_color(rgbau(0, 0, 0, 92));
-    context.set_fill_style(rgbau(0, 0, 0, 32));
-    let clip_path = create_rounded_rect_path(scroll_bar_rect, CORNER_RADIUS);
-    context.clip_path(clip_path, FillRule::Winding);
-    let path = create_rounded_rect_path(scroll_bar_rect + vec2f(0.0, 1.0), CORNER_RADIUS);
-    context.fill_path(path, FillRule::Winding);
+    context.set_shadow_blur(4.0 * hidpi_factor);
+    let shadow_path = create_rounded_rect_path(scroll_bar_rect + vec2f(0.0, 1.0), CORNER_RADIUS);
+    context.stroke_path(shadow_path);
+    context.set_shadow_color(rgbau(0, 0, 0, 0));
     context.restore();
 
     let knob_rect = RectF::new(
-        rect.upper_right() + vec2f(-11.0, 5.0 + (rect.height() - 8.0 - scroll_height) * scroll_y),
-        vec2f(6.0, scroll_height - 2.0));
-    context.set_shadow_blur(4.0 * hidpi_factor);
-    context.set_shadow_offset(vec2f(0.0, 1.0));
-    context.set_shadow_color(rgbu(220, 220, 220));
-    context.set_fill_style(rgbau(0, 0, 0, 32));
-    let clip_path = create_rounded_rect_path(knob_rect, 2.0);
-    context.clip_path(clip_path, FillRule::Winding);
-    let path = create_rounded_rect_path(knob_rect.dilate(2.0) + vec2f(0.0, 1.0), 3.0);
-    context.fill_path(path, FillRule::Winding);
+        scroll_bar_rect.origin() + vec2f(0.0, (rect.height() - 8.0 - scroll_height) * scroll_y),
+        vec2f(8.0, scroll_height));
+    context.set_fill_style(rgbu(220, 220, 220));
+    let path = create_rounded_rect_path(knob_rect.contract(1.0), 3.0);
+    context.fill_path(path.clone(), FillRule::Winding);
+    context.clip_path(path, FillRule::Winding);
+    context.set_stroke_style(rgbu(128, 128, 128));
+    context.set_line_width(1.0);
+    let shadow_path = create_rounded_rect_path(knob_rect, 3.0);
+    context.set_shadow_blur(2.0 * hidpi_factor);
+    context.set_shadow_color(rgbu(128, 128, 128));
+    context.set_shadow_offset(vec2f(0.0, 0.0));
+    context.stroke_path(shadow_path);
 
     context.restore();
 }

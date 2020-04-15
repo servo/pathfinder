@@ -326,8 +326,8 @@ impl LayoutExt for Layout {
 
         let glyph_id = last_glyph.glyph_id;
         let font_metrics = last_glyph.font.font.metrics();
-        let glyph_rect = last_glyph.font.font.typographic_bounds(glyph_id).unwrap();
         let scale_factor = self.size / font_metrics.units_per_em as f32;
+        let glyph_rect = last_glyph.font.font.typographic_bounds(glyph_id).unwrap();
         last_glyph.offset.x() + glyph_rect.max_x() * scale_factor
     }
 
@@ -338,14 +338,16 @@ impl LayoutExt for Layout {
         };
 
         let glyph_id = first_glyph.glyph_id;
+        let font_metrics = first_glyph.font.font.metrics();
+        let scale_factor = self.size / font_metrics.units_per_em as f32;
         let glyph_rect = first_glyph.font
                                     .font
                                     .raster_bounds(glyph_id,
-                                                   self.size,
+                                                   font_metrics.units_per_em as f32,
                                                    Transform2F::default(),
                                                    HintingOptions::None,
                                                    RasterizationOptions::GrayscaleAa).unwrap();
-        first_glyph.offset.x() + glyph_rect.min_x() as f32
+        first_glyph.offset.x() + glyph_rect.min_x() as f32 * scale_factor
     }
 
     fn actual_bounding_box_right(&self) -> f32 {
@@ -355,14 +357,16 @@ impl LayoutExt for Layout {
         };
 
         let glyph_id = last_glyph.glyph_id;
+        let font_metrics = last_glyph.font.font.metrics();
+        let scale_factor = self.size / font_metrics.units_per_em as f32;
         let glyph_rect = last_glyph.font
                                    .font
                                    .raster_bounds(glyph_id,
-                                                  self.size,
+                                                  font_metrics.units_per_em as f32,
                                                   Transform2F::default(),
                                                   HintingOptions::None,
                                                   RasterizationOptions::GrayscaleAa).unwrap();
-        last_glyph.offset.x() + glyph_rect.max_x() as f32
+        last_glyph.offset.x() + glyph_rect.max_x() as f32 * scale_factor
     }
 
     fn hanging_baseline(&self) -> f32 {
