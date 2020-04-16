@@ -11,4 +11,7 @@
 //! Render targets.
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct RenderTargetId(pub u32);
+pub struct RenderTargetId {
+    pub scene: u32,
+    pub render_target: u32,
+}

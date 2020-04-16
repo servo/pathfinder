@@ -24,6 +24,9 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2I, vec2f};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static NEXT_SCENE_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone)]
 pub struct Scene {
@@ -33,18 +36,24 @@ pub struct Scene {
     palette: Palette,
     bounds: RectF,
     view_box: RectF,
+    id: SceneId,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SceneId(pub u32);
 
 impl Scene {
     #[inline]
     pub fn new() -> Scene {
+        let scene_id = SceneId(NEXT_SCENE_ID.fetch_add(1, Ordering::Relaxed) as u32);
         Scene {
             display_list: vec![],
             paths: vec![],
             clip_paths: vec![],
-            palette: Palette::new(),
+            palette: Palette::new(scene_id),
             bounds: RectF::default(),
             view_box: RectF::default(),
+            id: scene_id,
         }
     }
 
@@ -94,7 +103,10 @@ impl Scene {
                                                              .render_targets
                                                              .into_iter()
                                                              .enumerate() {
-            let old_render_target_id = RenderTargetId(old_render_target_index as u32);
+            let old_render_target_id = RenderTargetId {
+                scene: scene.id.0,
+                render_target: old_render_target_index as u32,
+            };
             let new_render_target_id = self.palette.push_render_target(render_target);
             render_target_mapping.insert(old_render_target_id, new_render_target_id);
         }

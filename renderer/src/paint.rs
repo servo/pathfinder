@@ -11,7 +11,7 @@
 use crate::allocator::{AllocationMode, TextureAllocator};
 use crate::gpu_data::{RenderCommand, TextureLocation, TextureMetadataEntry, TexturePageDescriptor};
 use crate::gpu_data::{TexturePageId, TileBatchTexture};
-use crate::scene::RenderTarget;
+use crate::scene::{RenderTarget, SceneId};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{Filter, PatternFilter};
@@ -37,6 +37,7 @@ pub struct Palette {
     pub(crate) paints: Vec<Paint>,
     pub(crate) render_targets: Vec<RenderTarget>,
     cache: HashMap<Paint, PaintId>,
+    scene_id: SceneId,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -84,8 +85,8 @@ impl Debug for PaintContents {
 
 impl Palette {
     #[inline]
-    pub fn new() -> Palette {
-        Palette { paints: vec![], render_targets: vec![], cache: HashMap::new() }
+    pub fn new(scene_id: SceneId) -> Palette {
+        Palette { paints: vec![], render_targets: vec![], cache: HashMap::new(), scene_id }
     }
 }
 
@@ -336,9 +337,9 @@ impl Palette {
     }
 
     pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
-        let id = RenderTargetId(self.render_targets.len() as u32);
+        let id = self.render_targets.len() as u32;
         self.render_targets.push(render_target);
-        id
+        RenderTargetId { scene: self.scene_id.0, render_target: id }
     }
 
     pub fn build_paint_info(&self, render_transform: Transform2F) -> PaintInfo {
@@ -377,8 +378,8 @@ impl Palette {
                         let location;
                         match *pattern.source() {
                             PatternSource::RenderTarget { id: render_target_id, .. } => {
-                                location =
-                                    render_target_metadata[render_target_id.0 as usize].location;
+                                let index = render_target_id.render_target as usize;
+                                location = render_target_metadata[index].location;
                             }
                             PatternSource::Image(ref image) => {
                                 // TODO(pcwalton): We should be able to use tile cleverness to
@@ -510,7 +511,7 @@ impl Palette {
             RenderCommand::AllocateTexturePages(texture_page_descriptors),
         ];
         for (index, metadata) in render_target_metadata.iter().enumerate() {
-            let id = RenderTargetId(index as u32);
+            let id = RenderTargetId { scene: self.scene_id.0, render_target: index as u32 };
             render_commands.push(RenderCommand::DeclareRenderTarget {
                 id,
                 location: metadata.location,

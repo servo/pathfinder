@@ -472,12 +472,12 @@ where
     fn declare_render_target(&mut self,
                              render_target_id: RenderTargetId,
                              location: TextureLocation) {
-        while self.render_targets.len() < render_target_id.0 as usize + 1 {
+        while self.render_targets.len() < render_target_id.render_target as usize + 1 {
             self.render_targets.push(RenderTargetInfo {
                 location: TextureLocation { page: TexturePageId(!0), rect: RectI::default() },
             });
         }
-        let mut render_target = &mut self.render_targets[render_target_id.0 as usize];
+        let mut render_target = &mut self.render_targets[render_target_id.render_target as usize];
         debug_assert_eq!(render_target.location.page, TexturePageId(!0));
         render_target.location = location;
     }
@@ -1078,7 +1078,7 @@ where
     }
 
     fn render_target_location(&self, render_target_id: RenderTargetId) -> TextureLocation {
-        self.render_targets[render_target_id.0 as usize].location
+        self.render_targets[render_target_id.render_target as usize].location
     }
 
     fn texture_page_framebuffer(&self, id: TexturePageId) -> &D::Framebuffer {
