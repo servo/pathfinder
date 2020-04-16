@@ -24,7 +24,9 @@ use pathfinder_resources::ResourceLoader;
 use std::mem;
 use std::str;
 use std::time::Duration;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::WebGl2RenderingContext as WebGl;
+use js_sys::{Uint8Array, Uint16Array, Float32Array, Object};
 
 pub struct WebGlDevice {
     context: web_sys::WebGl2RenderingContext,
@@ -157,6 +159,10 @@ impl WebGlDevice {
             UniformData::Vec4(data) => {
                 self.context
                     .uniform4f(location, data.x(), data.y(), data.z(), data.w());
+                self.ck();
+            }
+            UniformData::IVec2(data) => {
+                self.context.uniform2i(location, data[0], data[1]);
                 self.ck();
             }
             UniformData::IVec3(data) => {
@@ -371,11 +377,13 @@ fn slice_to_u8<T>(slice: &[T]) -> &[u8] {
         )
     }
 }
-fn check_and_extract_data(
+
+// this function is unsafe due to the underlying UintXArray::view
+unsafe fn check_and_extract_data(
     data_ref: TextureDataRef,
     minimum_size: Vector2I,
     format: TextureFormat,
-) -> &[u8] {
+) -> Object {
     let channels = match (format, data_ref) {
         (TextureFormat::R8, TextureDataRef::U8(_)) => 1,
         (TextureFormat::RGBA8, TextureDataRef::U8(_)) => 4,
@@ -389,15 +397,15 @@ fn check_and_extract_data(
     match data_ref {
         TextureDataRef::U8(data) => {
             assert!(data.len() >= area * channels);
-            slice_to_u8(data)
+            Uint8Array::view(data).unchecked_into()
         }
         TextureDataRef::F16(data) => {
             assert!(data.len() >= area * channels);
-            slice_to_u8(data)
+            Uint16Array::view_mut_raw(data.as_ptr() as *mut u16, data.len()).unchecked_into()
         }
         TextureDataRef::F32(data) => {
             assert!(data.len() >= area * channels);
-            slice_to_u8(data)
+            Float32Array::view(data).unchecked_into()
         }
     }
 }
@@ -447,7 +455,9 @@ impl Device for WebGlDevice {
         size: Vector2I,
         data_ref: TextureDataRef,
     ) -> WebGlTexture {
-        let data = check_and_extract_data(data_ref, size, format);
+        let data = unsafe {
+            check_and_extract_data(data_ref, size, format)
+        };
 
         let texture = self.context.create_texture().unwrap();
         let texture = WebGlTexture {
@@ -459,7 +469,7 @@ impl Device for WebGlDevice {
 
         self.bind_texture(&texture, 0);
         self.context
-            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+            .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                 WebGl::TEXTURE_2D,
                 0,
                 format.gl_internal_format() as i32,
@@ -468,7 +478,7 @@ impl Device for WebGlDevice {
                 0,
                 format.gl_format(),
                 format.gl_type(),
-                Some(data),
+                Some(&data),
             )
             .unwrap();
 
@@ -742,7 +752,9 @@ impl Device for WebGlDevice {
     }
 
     fn upload_to_texture(&self, texture: &WebGlTexture, rect: RectI, data_ref: TextureDataRef) {
-        let data = check_and_extract_data(data_ref, rect.size(), texture.format);
+        let data = unsafe {
+            check_and_extract_data(data_ref, rect.size(), texture.format)
+        };
         assert!(rect.size().x() >= 0);
         assert!(rect.size().y() >= 0);
         assert!(rect.max_x() <= texture.size.x());
@@ -751,30 +763,30 @@ impl Device for WebGlDevice {
         self.bind_texture(texture, 0);
         if rect.origin() == Vector2I::default() && rect.size() == texture.size {
             self.context
-                .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
+                .tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_array_buffer_view(
                     WebGl::TEXTURE_2D,
                     0,
                     texture.format.gl_internal_format() as i32,
-                    texture.size.x() as i32,
-                    texture.size.y() as i32,
+                    rect.width(),
+                    rect.height(),
                     0,
                     texture.format.gl_format(),
                     texture.format.gl_type(),
-                    Some(data),
+                    Some(&data),
                 )
                 .unwrap();
         } else {
             self.context
-                .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+                .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_array_buffer_view(
                     WebGl::TEXTURE_2D,
                     0,
                     rect.origin().x(),
                     rect.origin().y(),
-                    texture.size.x() as i32,
-                    texture.size.y() as i32,
+                    rect.width(),
+                    rect.height(),
                     texture.format.gl_format(),
                     texture.format.gl_type(),
-                    Some(data),
+                    Some(&data),
                 )
                 .unwrap();
         }

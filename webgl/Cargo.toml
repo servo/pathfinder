@@ -45,3 +45,6 @@ features = [
 
 [dependencies.pathfinder_resources]
 path = "../resources"
+
+[dependencies.js-sys]
+version = "0.3.37"

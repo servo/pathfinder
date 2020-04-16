@@ -40,7 +40,7 @@ void main(){
     vec2 maskTexCoord1 =(vec2(aMaskTexCoord1)+ tileOffset)/ 256.0;
 
     vec2 textureMetadataScale = vec2(1.0)/ vec2(uTextureMetadataSize);
-    vec2 metadataEntryCoord = ivec2(aColor % 128 * 4, aColor / 128);
+    vec2 metadataEntryCoord = vec2(aColor % 128 * 4, aColor / 128);
     vec2 colorTexMatrix0Coord =(metadataEntryCoord + vec2(0.5, 0.5))* textureMetadataScale;
     vec2 colorTexOffsetsCoord =(metadataEntryCoord + vec2(1.5, 0.5))* textureMetadataScale;
     vec2 baseColorCoord =(metadataEntryCoord + vec2(2.5, 0.5))* textureMetadataScale;

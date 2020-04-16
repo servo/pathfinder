@@ -41,7 +41,7 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     float2 maskTexCoord0 = (float2(in.aMaskTexCoord0) + tileOffset) / float2(256.0);
     float2 maskTexCoord1 = (float2(in.aMaskTexCoord1) + tileOffset) / float2(256.0);
     float2 textureMetadataScale = float2(1.0) / float2((*spvDescriptorSet0.uTextureMetadataSize));
-    float2 metadataEntryCoord = float2(int2((in.aColor % 128) * 4, in.aColor / 128));
+    float2 metadataEntryCoord = float2(float((in.aColor % 128) * 4), float(in.aColor / 128));
     float2 colorTexMatrix0Coord = (metadataEntryCoord + float2(0.5)) * textureMetadataScale;
     float2 colorTexOffsetsCoord = (metadataEntryCoord + float2(1.5, 0.5)) * textureMetadataScale;
     float2 baseColorCoord = (metadataEntryCoord + float2(2.5, 0.5)) * textureMetadataScale;
