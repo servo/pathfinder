@@ -94,16 +94,18 @@ impl Canvas {
         self.scene
     }
 
-    pub fn get_context_2d(self, font_context: CanvasFontContext) -> CanvasRenderingContext2D {
+    pub fn get_context_2d(self, canvas_font_context: CanvasFontContext)
+                          -> CanvasRenderingContext2D {
         #[cfg(feature = "pf-text")]
-        let default_font_collection = font_context.default_font_collection.clone();
+        let default_font_collection =
+            canvas_font_context.0.borrow().default_font_collection.clone();
         #[cfg(not(feature = "pf-text"))]
         let default_font_collection = Arc::new(FontCollection);
         CanvasRenderingContext2D {
             canvas: self,
             current_state: State::default(default_font_collection),
             saved_states: vec![],
-            font_context,
+            canvas_font_context,
         }
     }
 
@@ -118,7 +120,7 @@ pub struct CanvasRenderingContext2D {
     current_state: State,
     saved_states: Vec<State>,
     #[allow(dead_code)]
-    font_context: CanvasFontContext,
+    canvas_font_context: CanvasFontContext,
 }
 
 impl CanvasRenderingContext2D {
@@ -132,11 +134,6 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn into_canvas(self) -> Canvas {
         self.canvas
-    }
-
-    #[inline]
-    pub fn font_context(&self) -> CanvasFontContext {
-        self.font_context.clone()
     }
 
     // Drawing rectangles

@@ -1544,7 +1544,8 @@ fn main() {
         gpu_graph.render(&mut context, vec2f(415.0, 5.0));
 
         // Render the canvas to screen.
-        let scene = SceneProxy::from_scene(context.into_canvas().into_scene(), RayonExecutor);
+        let canvas = context.into_canvas();
+        let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
         scene.build_and_render(&mut renderer, BuildOptions::default());
         window.gl_swap_window();
 

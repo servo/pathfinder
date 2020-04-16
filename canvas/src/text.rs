@@ -21,8 +21,10 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_renderer::paint::PaintId;
-use pathfinder_text::{SceneExt, TextRenderMode};
+use pathfinder_text::{FontContext, FontRenderOptions, TextRenderMode};
 use skribo::{FontCollection, FontFamily, FontRef, Layout, TextStyle};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 impl CanvasRenderingContext2D {
@@ -51,14 +53,22 @@ impl CanvasRenderingContext2D {
         let clip_path = self.current_state.clip_path;
         let blend_mode = self.current_state.global_composite_operation.to_blend_mode();
 
-        drop(self.canvas.scene.push_layout(&layout,
-                                           &TextStyle { size: self.current_state.font_size },
-                                           &(transform * self.current_state.transform),
-                                           TextRenderMode::Fill,
-                                           HintingOptions::None,
-                                           clip_path,
-                                           blend_mode,
-                                           paint_id));
+        // TODO(pcwalton): Report errors.
+        drop(self.canvas_font_context
+                 .0
+                 .borrow_mut()
+                 .font_context
+                 .push_layout(&mut self.canvas.scene,
+                              &layout,
+                              &TextStyle { size: self.current_state.font_size },
+                              &FontRenderOptions {
+                                  transform: transform * self.current_state.transform,
+                                  render_mode: TextRenderMode::Fill,
+                                  hinting_options: HintingOptions::None,
+                                  clip_path,
+                                  blend_mode,
+                                  paint_id,
+                              }));
     }
 
     fn fill_or_stroke_text(&mut self,
@@ -75,14 +85,21 @@ impl CanvasRenderingContext2D {
         let transform = self.current_state.transform * Transform2F::from_translation(position);
 
         // TODO(pcwalton): Report errors.
-        drop(self.canvas.scene.push_layout(&layout,
-                                           &TextStyle { size: self.current_state.font_size },
-                                           &transform,
-                                           render_mode,
-                                           HintingOptions::None,
-                                           clip_path,
-                                           blend_mode,
-                                           paint_id));
+        drop(self.canvas_font_context
+                 .0
+                 .borrow_mut()
+                 .font_context
+                 .push_layout(&mut self.canvas.scene,
+                              &layout,
+                              &TextStyle { size: self.current_state.font_size },
+                              &FontRenderOptions {
+                                  transform,
+                                  render_mode,
+                                  hinting_options: HintingOptions::None,
+                                  clip_path,
+                                  blend_mode,
+                                  paint_id,
+                              }));
     }
 
     fn layout_text(&self, string: &str) -> Layout {
@@ -100,7 +117,7 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn set_font<FC>(&mut self, font_collection: FC) where FC: IntoFontCollection {
-        let font_collection = font_collection.into_font_collection(&self.font_context);
+        let font_collection = font_collection.into_font_collection(&self.canvas_font_context);
         self.current_state.font_collection = font_collection; 
     }
 
@@ -179,7 +196,10 @@ pub struct TextMetrics {
 
 #[cfg(feature = "pf-text")]
 #[derive(Clone)]
-pub struct CanvasFontContext {
+pub struct CanvasFontContext(pub(crate) Rc<RefCell<CanvasFontContextData>>);
+
+pub(super) struct CanvasFontContextData {
+    pub(super) font_context: FontContext<Font>,
     #[allow(dead_code)]
     pub(super) font_source: Arc<dyn Source>,
     #[allow(dead_code)]
@@ -196,10 +216,11 @@ impl CanvasFontContext {
             }
         }
 
-        CanvasFontContext {
+        CanvasFontContext(Rc::new(RefCell::new(CanvasFontContextData {
             font_source,
             default_font_collection: Arc::new(default_font_collection),
-        }
+            font_context: FontContext::new(),
+        })))
     }
 
     /// A convenience method to create a font context with the system source.
@@ -211,6 +232,18 @@ impl CanvasFontContext {
     /// A convenience method to create a font context with a set of in-memory fonts.
     pub fn from_fonts<I>(fonts: I) -> CanvasFontContext where I: Iterator<Item = Handle> {
         CanvasFontContext::new(Arc::new(MemSource::from_fonts(fonts).unwrap()))
+    }
+
+    fn get_font_by_postscript_name(&self, postscript_name: &str) -> Font {
+        let this = self.0.borrow();
+        if let Some(cached_font) = this.font_context.get_cached_font(postscript_name) {
+            return (*cached_font).clone();
+        }
+        this.font_source
+            .select_by_postscript_name(postscript_name)
+            .expect("Couldn't find a font with that PostScript name!")
+            .load()
+            .expect("Failed to load the font!")
     }
 }
 
@@ -413,6 +446,7 @@ impl IntoFontCollection for Vec<FontFamily> {
     }
 }
 
+/*
 impl IntoFontCollection for Handle {
     #[inline]
     fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
@@ -422,15 +456,18 @@ impl IntoFontCollection for Handle {
 
 impl<'a> IntoFontCollection for &'a [Handle] {
     #[inline]
-    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
         let mut font_collection = FontCollection::new();
         for handle in self {
+            let postscript_name = handle.postscript_name();
+
             let font = handle.load().expect("Failed to load the font!");
             font_collection.add_family(FontFamily::new_from_font(font));
         }
         Arc::new(font_collection)
     }
 }
+*/
 
 impl IntoFontCollection for Font {
     #[inline]
@@ -453,10 +490,7 @@ impl<'a> IntoFontCollection for &'a [Font] {
 impl<'a> IntoFontCollection for &'a str {
     #[inline]
     fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
-        context.font_source
-               .select_by_postscript_name(self)
-               .expect("Couldn't find a font with that PostScript name!")
-               .into_font_collection(context)
+        context.get_font_by_postscript_name(self).into_font_collection(context)
     }
 }
 
@@ -465,11 +499,7 @@ impl<'a, 'b> IntoFontCollection for &'a [&'b str] {
     fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
         let mut font_collection = FontCollection::new();
         for postscript_name in self {
-            let font = context.font_source
-                              .select_by_postscript_name(postscript_name)
-                              .expect("Failed to find a font with that PostScript name!")
-                              .load()
-                              .expect("Failed to load the font!");
+            let font = context.get_font_by_postscript_name(postscript_name);
             font_collection.add_family(FontFamily::new_from_font(font));
         }
         Arc::new(font_collection)

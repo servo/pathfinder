@@ -16,6 +16,10 @@ version = "0.23"
 default-features = false
 features = ["png"]
 
+[dependencies.log]
+version = "0.4"
+features = ["release_max_level_info"]
+
 [dependencies.pathfinder_canvas]
 path = "../../canvas"
 features = ["pf-text"]
