@@ -12,7 +12,7 @@
 
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeExt, MASK_TILES_ACROSS, MASK_TILES_DOWN};
-use crate::gpu_data::{FillBatchPrimitive, RenderCommand, Tile, TileBatch};
+use crate::gpu_data::{AlphaTileId, Fill, FillBatchEntry, RenderCommand, Tile, TileBatch};
 use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
@@ -33,7 +33,7 @@ use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use instant::Instant;
-use std::u16;
+use std::u32;
 
 pub(crate) struct SceneBuilder<'a> {
     scene: &'a Scene,
@@ -45,7 +45,7 @@ pub(crate) struct SceneBuilder<'a> {
 #[derive(Debug)]
 pub(crate) struct ObjectBuilder {
     pub built_path: BuiltPath,
-    pub fills: Vec<FillBatchPrimitive>,
+    pub fills: Vec<FillBatchEntry>,
     pub bounds: RectF,
 }
 
@@ -63,17 +63,23 @@ struct BuiltDrawPath {
 #[derive(Debug)]
 pub(crate) struct BuiltPath {
     pub solid_tiles: SolidTiles,
-    pub empty_tiles: Vec<Tile>,
-    pub single_mask_tiles: Vec<Tile>,
-    pub dual_mask_tiles: Vec<Tile>,
+    pub empty_tiles: Vec<BuiltTile>,
+    pub single_mask_tiles: Vec<BuiltTile>,
+    pub dual_mask_tiles: Vec<BuiltTile>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
     pub fill_rule: FillRule,
 }
 
 #[derive(Clone, Debug)]
+pub struct BuiltTile {
+    pub page: u16,
+    pub tile: Tile,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) enum SolidTiles {
     Occluders(Vec<Occluder>),
-    Regular(Vec<Tile>),
+    Regular(Vec<BuiltTile>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -170,8 +176,7 @@ impl<'a> SceneBuilder<'a> {
                                    TilingPathInfo::Clip);
 
         tiler.generate_tiles();
-
-        self.listener.send(RenderCommand::AddFills(tiler.object_builder.fills));
+        self.send_fills(tiler.object_builder.fills);
         tiler.object_builder.built_path
     }
 
@@ -203,9 +208,7 @@ impl<'a> SceneBuilder<'a> {
         }));
 
         tiler.generate_tiles();
-
-        self.listener.send(RenderCommand::AddFills(tiler.object_builder.fills));
-
+        self.send_fills(tiler.object_builder.fills);
         BuiltDrawPath {
             path: tiler.object_builder.built_path,
             blend_mode: path_object.blend_mode(),
@@ -214,6 +217,12 @@ impl<'a> SceneBuilder<'a> {
             sampling_flags_1: TextureSamplingFlags::empty(),
             mask_0_fill_rule: path_object.fill_rule(),
             mask_1_fill_rule: built_clip_path.map(|_| FillRule::Winding),
+        }
+    }
+
+    fn send_fills(&self, fills: Vec<FillBatchEntry>) {
+        if !fills.is_empty() {
+            self.listener.send(RenderCommand::AddFills(fills));
         }
     }
 
@@ -365,49 +374,97 @@ impl<'a> SceneBuilder<'a> {
     fn add_alpha_tiles(&self,
                        culled_tiles: &mut CulledTiles,
                        layer_z_buffer: &ZBuffer,
-                       alpha_tiles: &[Tile],
+                       built_alpha_tiles: &[BuiltTile],
                        current_depth: u32,
                        color_texture: Option<TileBatchTexture>,
                        blend_mode: BlendMode,
                        filter: Filter,
                        mask_0_fill_rule: Option<FillRule>,
                        mask_1_fill_rule: Option<FillRule>) {
-        if alpha_tiles.is_empty() {
-            return;
-        }
+        let mut batch_indices: Vec<BatchIndex> = vec![];
+        for built_alpha_tile in built_alpha_tiles {
+            // Early cull if possible.
+            let alpha_tile_coords = built_alpha_tile.tile.tile_position();
+            if !layer_z_buffer.test(alpha_tile_coords, current_depth) {
+                continue;
+            }
 
-        // Create a new `DrawTiles` display item if we don't have one or if we have to break a
-        // batch due to blend mode or paint page. Note that every path with a blend mode that
-        // requires a readable framebuffer needs its own batch.
-        //
-        // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid
-        // batch breaks in some cases…
-        match culled_tiles.display_list.last() {
-            Some(&CulledDisplayItem::DrawTiles(TileBatch {
-                tiles: _,
-                color_texture: ref batch_color_texture,
-                blend_mode: batch_blend_mode,
-                filter: batch_filter,
-                mask_0_fill_rule: batch_mask_0_fill_rule,
-                mask_1_fill_rule: batch_mask_1_fill_rule,
-            })) if *batch_color_texture == color_texture &&
-                batch_blend_mode == blend_mode &&
-                batch_filter == filter &&
-                batch_mask_0_fill_rule == mask_0_fill_rule &&
-                batch_mask_1_fill_rule == mask_1_fill_rule &&
-                !batch_blend_mode.needs_readable_framebuffer() => {}
-            _ => {
-                let batch = TileBatch {
+            // Find an appropriate batch if we can.
+            let mut dest_batch_index = batch_indices.iter().filter(|&batch_index| {
+                batch_index.tile_page == built_alpha_tile.page
+            }).next().cloned();
+
+            // If no batch was found, try to reuse the last batch in the display list.
+            //
+            // TODO(pcwalton): We could try harder to find a batch by taking tile positions into
+            // account...
+            if dest_batch_index.is_none() {
+                match culled_tiles.display_list.last() {
+                    Some(&CulledDisplayItem::DrawTiles(TileBatch {
+                        tiles: _,
+                        color_texture: ref batch_color_texture,
+                        blend_mode: batch_blend_mode,
+                        filter: batch_filter,
+                        mask_0_fill_rule: batch_mask_0_fill_rule,
+                        mask_1_fill_rule: batch_mask_1_fill_rule,
+                        tile_page: batch_tile_page
+                    })) if *batch_color_texture == color_texture &&
+                            batch_blend_mode == blend_mode &&
+                            batch_filter == filter &&
+                            batch_mask_0_fill_rule == mask_0_fill_rule &&
+                            batch_mask_1_fill_rule == mask_1_fill_rule &&
+                            !batch_blend_mode.needs_readable_framebuffer() &&
+                            batch_tile_page == built_alpha_tile.page => {
+                        dest_batch_index = Some(BatchIndex {
+                            display_item_index: culled_tiles.display_list.len() - 1,
+                            tile_page: batch_tile_page,
+                        });
+                        batch_indices.push(dest_batch_index.unwrap());
+                    }
+                    _ => {}
+                }
+            }
+
+            // If it's still the case that no suitable batch was found, then make a new one.
+            if dest_batch_index.is_none() {
+                dest_batch_index = Some(BatchIndex {
+                    display_item_index: culled_tiles.display_list.len(),
+                    tile_page: built_alpha_tile.page,
+                });
+                batch_indices.push(dest_batch_index.unwrap());
+                culled_tiles.display_list.push(CulledDisplayItem::DrawTiles(TileBatch {
                     tiles: vec![],
                     color_texture,
                     blend_mode,
                     filter,
                     mask_0_fill_rule,
                     mask_1_fill_rule,
-                };
-                culled_tiles.display_list.push(CulledDisplayItem::DrawTiles(batch))
+                    tile_page: built_alpha_tile.page,
+                }));
+            }
+
+            // Add to the appropriate batch.
+            match culled_tiles.display_list[dest_batch_index.unwrap().display_item_index] {
+                CulledDisplayItem::DrawTiles(ref mut tiles) => {
+                    tiles.tiles.push(built_alpha_tile.tile);
+                }
+                _ => unreachable!(),
             }
         }
+
+        #[derive(Clone, Copy)]
+        struct BatchIndex {
+            display_item_index: usize,
+            tile_page: u16,
+        }
+
+        /*
+        // Create a new `DrawTiles` display item if we don't have one or if we have to break a
+        // batch due to blend mode or paint page. Note that every path with a blend mode that
+        // requires a readable framebuffer needs its own batch.
+        //
+        // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid
+        // batch breaks in some cases…
 
         // Fetch the destination alpha tiles buffer.
         let culled_alpha_tiles = match *culled_tiles.display_list.last_mut().unwrap() {
@@ -423,6 +480,7 @@ impl<'a> SceneBuilder<'a> {
                 culled_alpha_tiles.push(*alpha_tile);
             }
         }
+        */
     }
 
     fn pack_tiles(&mut self, culled_tiles: CulledTiles) {
@@ -507,9 +565,9 @@ impl BuiltPath {
         };
 
         BuiltPath {
+            empty_tiles: vec![],
             single_mask_tiles: vec![],
             dual_mask_tiles: vec![],
-            empty_tiles: vec![],
             solid_tiles: if occludes {
                 SolidTiles::Occluders(vec![])
             } else {
@@ -595,8 +653,8 @@ impl ObjectBuilder {
             return;
         }
 
-        // Allocate global tile if necessary.
-        let alpha_tile_index = self.get_or_allocate_alpha_tile_index(scene_builder, tile_coords);
+        // Allocate a global tile if necessary.
+        let alpha_tile_id = self.get_or_allocate_alpha_tile_index(scene_builder, tile_coords);
 
         // Pack whole pixels.
         let px = (segment & I32x4::splat(0xf00)).to_u32x4();
@@ -604,15 +662,18 @@ impl ObjectBuilder {
 
         // Pack instance data.
         debug!("... OK, pushing");
-        self.fills.push(FillBatchPrimitive {
-            px: LineSegmentU4 { from: px[0] as u8, to: px[2] as u8 },
-            subpx: LineSegmentU8 {
-                from_x: from_x as u8,
-                from_y: from_y as u8,
-                to_x:   to_x   as u8,
-                to_y:   to_y   as u8,
+        self.fills.push(FillBatchEntry {
+            page: alpha_tile_id.page(),
+            fill: Fill {
+                px: LineSegmentU4 { from: px[0] as u8, to: px[2] as u8 },
+                subpx: LineSegmentU8 {
+                    from_x: from_x as u8,
+                    from_y: from_y as u8,
+                    to_x:   to_x   as u8,
+                    to_y:   to_y   as u8,
+                },
+                alpha_tile_index: alpha_tile_id.tile(),
             },
-            alpha_tile_index,
         });
     }
 
@@ -620,19 +681,18 @@ impl ObjectBuilder {
         &mut self,
         scene_builder: &SceneBuilder,
         tile_coords: Vector2I,
-    ) -> u16 {
+    ) -> AlphaTileId {
         let local_tile_index = self.built_path.tiles.coords_to_index_unchecked(tile_coords);
-        let alpha_tile_index = self.built_path.tiles.data[local_tile_index].alpha_tile_index;
-        if alpha_tile_index != !0 {
-            return alpha_tile_index;
+        let alpha_tile_id = self.built_path.tiles.data[local_tile_index].alpha_tile_id;
+        if alpha_tile_id.is_valid() {
+            return alpha_tile_id;
         }
 
-        // FIXME(pcwalton): Check for overflow!
-        let alpha_tile_index = scene_builder
-            .next_alpha_tile_index
-            .fetch_add(1, Ordering::Relaxed) as u16;
-        self.built_path.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
-        alpha_tile_index
+        let alpha_tile_index = scene_builder.next_alpha_tile_index.fetch_add(1, Ordering::Relaxed);
+        debug_assert!(alpha_tile_index < u32::MAX as usize);
+        let alpha_tile_id = AlphaTileId(alpha_tile_index as u32);
+        self.built_path.tiles.data[local_tile_index].alpha_tile_id = alpha_tile_id;
+        alpha_tile_id
     }
 
     pub(crate) fn add_active_fill(
@@ -738,21 +798,32 @@ impl ObjectBuilder {
 
 impl<'a> PackedTile<'a> {
     pub(crate) fn add_to(&self,
-                         tiles: &mut Vec<Tile>,
+                         tiles: &mut Vec<BuiltTile>,
                          draw_tiling_path_info: &DrawTilingPathInfo) {
-        let fill_tile_index = self.draw_tile.alpha_tile_index as u16;
+        let fill_tile_index = self.draw_tile.alpha_tile_id.tile() as u16;
         let fill_tile_backdrop = self.draw_tile.backdrop as i8;
         let (clip_tile_index, clip_tile_backdrop) = match self.clip_tile {
             None => (0, 0),
-            Some(clip_tile) => (clip_tile.alpha_tile_index as u16, clip_tile.backdrop as i8),
+            Some(clip_tile) => {
+                // FIXME(pcwalton): This may not always be the case!
+                debug_assert!(!self.draw_tile.alpha_tile_id.is_valid() ||
+                              !clip_tile.alpha_tile_id.is_valid() ||
+                              self.draw_tile.alpha_tile_id.page() ==
+                              clip_tile.alpha_tile_id.page());
+
+                (clip_tile.alpha_tile_id.tile() as u16, clip_tile.backdrop as i8)
+            }
         };
 
-        tiles.push(Tile::new_alpha(self.tile_coords,
-                                   fill_tile_index,
-                                   fill_tile_backdrop,
-                                   clip_tile_index,
-                                   clip_tile_backdrop,
-                                   draw_tiling_path_info));
+        tiles.push(BuiltTile {
+            page: self.draw_tile.alpha_tile_id.page(),
+            tile: Tile::new_alpha(self.tile_coords,
+                                  fill_tile_index,
+                                  fill_tile_backdrop,
+                                  clip_tile_index,
+                                  clip_tile_backdrop,
+                                  draw_tiling_path_info),
+        });
     }
 }
 

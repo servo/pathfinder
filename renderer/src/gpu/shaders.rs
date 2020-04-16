@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::gpu_data::FillBatchPrimitive;
+use crate::gpu_data::Fill;
 use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
@@ -69,8 +69,7 @@ where
         let vertex_array = device.create_vertex_array();
 
         let vertex_buffer = device.create_buffer();
-        let vertex_buffer_data: BufferData<FillBatchPrimitive> =
-            BufferData::Uninitialized(MAX_FILLS_PER_BATCH);
+        let vertex_buffer_data: BufferData<Fill> = BufferData::Uninitialized(MAX_FILLS_PER_BATCH);
         device.allocate_buffer(
             &vertex_buffer,
             vertex_buffer_data,

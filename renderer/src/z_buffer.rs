@@ -93,6 +93,7 @@ impl ZBuffer {
                         blend_mode: BlendMode::default(),
                         mask_0_fill_rule: None,
                         mask_1_fill_rule: None,
+                        tile_page: !0,
                     });
                 }
             }

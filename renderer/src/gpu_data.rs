@@ -56,7 +56,7 @@ pub enum RenderCommand {
     UploadTextureMetadata(Vec<TextureMetadataEntry>),
 
     // Adds fills to the queue.
-    AddFills(Vec<FillBatchPrimitive>),
+    AddFills(Vec<FillBatchEntry>),
 
     // Flushes the queue of fills.
     FlushFills,
@@ -100,6 +100,7 @@ pub struct TileBatch {
     pub mask_1_fill_rule: Option<FillRule>,
     pub filter: Filter,
     pub blend_mode: BlendMode,
+    pub tile_page: u16,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -120,8 +121,7 @@ pub struct FillObjectPrimitive {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct TileObjectPrimitive {
-    /// If `u16::MAX`, then this is a solid tile.
-    pub alpha_tile_index: u16,
+    pub alpha_tile_id: AlphaTileId,
     pub backdrop: i8,
 }
 
@@ -132,10 +132,16 @@ pub struct TextureMetadataEntry {
     pub base_color: ColorU,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FillBatchEntry {
+    pub fill: Fill,
+    pub page: u16,
+}
+
 // FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(packed)]
-pub struct FillBatchPrimitive {
+pub struct Fill {
     pub px: LineSegmentU4,
     pub subpx: LineSegmentU8,
     pub alpha_tile_index: u16,
@@ -155,6 +161,31 @@ pub struct Tile {
     pub color: u16,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct AlphaTileId(pub u32);
+
+impl AlphaTileId {
+    #[inline]
+    pub fn invalid() -> AlphaTileId {
+        AlphaTileId(!0)
+    }
+
+    #[inline]
+    pub fn page(self) -> u16 {
+        (self.0 >> 16) as u16
+    }
+
+    #[inline]
+    pub fn tile(self) -> u16 {
+        (self.0 & 0xffff) as u16
+    }
+
+    #[inline]
+    pub fn is_valid(self) -> bool {
+        self.0 < !0
+    }
+}
+
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
@@ -171,7 +202,9 @@ impl Debug for RenderCommand {
             RenderCommand::UploadTextureMetadata(ref metadata) => {
                 write!(formatter, "UploadTextureMetadata(x{})", metadata.len())
             }
-            RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
+            RenderCommand::AddFills(ref fills) => {
+                write!(formatter, "AddFills(x{})", fills.len())
+            }
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
             RenderCommand::PushRenderTarget(render_target_id) => {
                 write!(formatter, "PushRenderTarget({:?})", render_target_id)

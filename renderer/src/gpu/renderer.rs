@@ -14,8 +14,9 @@ use crate::gpu::shaders::{BlitProgram, BlitVertexArray, CopyTileProgram, CopyTil
 use crate::gpu::shaders::{FillProgram, FillVertexArray, MAX_FILLS_PER_BATCH, ReprojectionProgram};
 use crate::gpu::shaders::{ReprojectionVertexArray, StencilProgram, StencilVertexArray};
 use crate::gpu::shaders::{TileProgram, TileVertexArray};
-use crate::gpu_data::{FillBatchPrimitive, RenderCommand, TextureLocation, TextureMetadataEntry};
-use crate::gpu_data::{TexturePageDescriptor, TexturePageId, Tile, TileBatchTexture};
+use crate::gpu_data::{Fill, FillBatchEntry, RenderCommand, TextureLocation};
+use crate::gpu_data::{TextureMetadataEntry, TexturePageDescriptor, TexturePageId};
+use crate::gpu_data::{Tile, TileBatchTexture};
 use crate::options::BoundingQuad;
 use crate::paint::PaintCompositeOp;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
@@ -36,7 +37,6 @@ use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, Textu
 use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
-use std::cmp;
 use std::collections::VecDeque;
 use std::f32;
 use std::mem;
@@ -120,7 +120,7 @@ where
     quads_vertex_indices_buffer: D::Buffer,
     quads_vertex_indices_length: usize,
     fill_vertex_array: FillVertexArray<D>,
-    fill_framebuffer: D::Framebuffer,
+    alpha_tile_pages: Vec<AlphaTilePage<D>>,
     dest_blend_framebuffer: D::Framebuffer,
     intermediate_dest_framebuffer: D::Framebuffer,
     texture_pages: Vec<TexturePage<D>>,
@@ -140,7 +140,6 @@ where
 
     // Rendering state
     framebuffer_flags: FramebufferFlags,
-    buffered_fills: Vec<FillBatchPrimitive>,
     texture_cache: TextureCache<D>,
 
     // Debug
@@ -228,11 +227,6 @@ where
             &quad_vertex_indices_buffer,
         );
 
-        let fill_framebuffer_size = vec2i(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
-        let fill_framebuffer_texture =
-            device.create_texture(TextureFormat::R16F, fill_framebuffer_size);
-        let fill_framebuffer = device.create_framebuffer(fill_framebuffer_texture);
-
         let window_size = dest_framebuffer.window_size(&device);
         let dest_blend_texture = device.create_texture(TextureFormat::RGBA8, window_size);
         let dest_blend_framebuffer = device.create_framebuffer(dest_blend_texture);
@@ -264,7 +258,7 @@ where
             quads_vertex_indices_buffer,
             quads_vertex_indices_length: 0,
             fill_vertex_array,
-            fill_framebuffer,
+            alpha_tile_pages: vec![],
             dest_blend_framebuffer,
             intermediate_dest_framebuffer,
             texture_pages: vec![],
@@ -289,7 +283,6 @@ where
             debug_ui_presenter,
 
             framebuffer_flags: FramebufferFlags::empty(),
-            buffered_fills: vec![],
             texture_cache: TextureCache::new(),
 
             flags: RendererFlags::empty(),
@@ -298,6 +291,10 @@ where
 
     pub fn begin_scene(&mut self) {
         self.framebuffer_flags = FramebufferFlags::empty();
+        for alpha_tile_page in &mut self.alpha_tile_pages {
+            alpha_tile_page.must_preserve_framebuffer = false;
+        }
+
         self.device.begin_commands();
         self.stats = RenderStats::default();
     }
@@ -320,7 +317,11 @@ where
                 self.upload_texture_metadata(metadata)
             }
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
-            RenderCommand::FlushFills => self.draw_buffered_fills(),
+            RenderCommand::FlushFills => {
+                for page_index in 0..(self.alpha_tile_pages.len() as u16) {
+                    self.draw_buffered_fills(page_index)
+                }
+            }
             RenderCommand::BeginTileDrawing => self.begin_tile_drawing(),
             RenderCommand::PushRenderTarget(render_target_id) => {
                 self.push_render_target(render_target_id)
@@ -330,7 +331,8 @@ where
                 let count = batch.tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_tiles(&batch.tiles);
-                self.draw_tiles(count as u32,
+                self.draw_tiles(batch.tile_page,
+                                count as u32,
                                 batch.color_texture,
                                 batch.mask_0_fill_rule,
                                 batch.mask_1_fill_rule,
@@ -550,44 +552,49 @@ where
         self.quads_vertex_indices_length = length;
     }
 
-    fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
-        if fills.is_empty() {
+    fn add_fills(&mut self, fill_batch: &[FillBatchEntry]) {
+        if fill_batch.is_empty() {
             return;
         }
 
-        self.stats.fill_count += fills.len();
+        self.stats.fill_count += fill_batch.len();
 
-        while !fills.is_empty() {
-            let count = cmp::min(fills.len(), MAX_FILLS_PER_BATCH - self.buffered_fills.len());
-            self.buffered_fills.extend_from_slice(&fills[0..count]);
-            fills = &fills[count..];
-            if self.buffered_fills.len() == MAX_FILLS_PER_BATCH {
-                self.draw_buffered_fills();
+        for fill_batch_entry in fill_batch {
+            let page = fill_batch_entry.page;
+            while self.alpha_tile_pages.len() <= page as usize {
+                self.alpha_tile_pages.push(AlphaTilePage::new(&mut self.device));
+            }
+            self.alpha_tile_pages[page as usize].buffered_fills.push(fill_batch_entry.fill);
+            if self.alpha_tile_pages[page as usize].buffered_fills.len() == MAX_FILLS_PER_BATCH {
+                self.draw_buffered_fills(page);
             }
         }
     }
 
-    fn draw_buffered_fills(&mut self) {
-        if self.buffered_fills.is_empty() {
+    fn draw_buffered_fills(&mut self, page: u16) {
+        let mask_viewport = self.mask_viewport();
+
+        let alpha_tile_page = &mut self.alpha_tile_pages[page as usize];
+        let buffered_fills = &mut alpha_tile_page.buffered_fills;
+        if buffered_fills.is_empty() {
             return;
         }
 
         self.device.allocate_buffer(
             &self.fill_vertex_array.vertex_buffer,
-            BufferData::Memory(&self.buffered_fills),
+            BufferData::Memory(&buffered_fills),
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
 
         let mut clear_color = None;
-        if !self.framebuffer_flags.contains(
-                FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS) {
+        if !alpha_tile_page.must_preserve_framebuffer {
             clear_color = Some(ColorF::default());
         };
 
-        debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
-        self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
-            target: &RenderTarget::Framebuffer(&self.fill_framebuffer),
+        debug_assert!(buffered_fills.len() <= u32::MAX as usize);
+        self.device.draw_elements_instanced(6, buffered_fills.len() as u32, &RenderState {
+            target: &RenderTarget::Framebuffer(&alpha_tile_page.framebuffer),
             program: &self.fill_program.program,
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
@@ -600,7 +607,7 @@ where
                  UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
                 (&self.fill_program.area_lut_uniform, UniformData::TextureUnit(0)),
             ],
-            viewport: self.mask_viewport(),
+            viewport: mask_viewport,
             options: RenderOptions {
                 blend: Some(BlendState {
                     src_rgb_factor: BlendFactor::One,
@@ -614,8 +621,8 @@ where
             },
         });
 
-        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS);
-        self.buffered_fills.clear();
+        alpha_tile_page.must_preserve_framebuffer = true;
+        buffered_fills.clear();
     }
 
     fn tile_transform(&self) -> Transform4F {
@@ -625,6 +632,7 @@ where
     }
 
     fn draw_tiles(&mut self,
+                  tile_page: u16,
                   tile_count: u32,
                   color_texture_0: Option<TileBatchTexture>,
                   mask_0_fill_rule: Option<FillRule>,
@@ -676,12 +684,14 @@ where
         if mask_0_fill_rule.is_some() {
             uniforms.push((&self.tile_program.mask_texture_0_uniform,
                            UniformData::TextureUnit(textures.len() as u32)));
-            textures.push(self.device.framebuffer_texture(&self.fill_framebuffer));
+            textures.push(self.device.framebuffer_texture(
+                &self.alpha_tile_pages[tile_page as usize].framebuffer));
         }
         if mask_1_fill_rule.is_some() {
             uniforms.push((&self.tile_program.mask_texture_1_uniform,
                            UniformData::TextureUnit(textures.len() as u32)));
-            textures.push(self.device.framebuffer_texture(&self.fill_framebuffer));
+            textures.push(self.device.framebuffer_texture(
+                &self.alpha_tile_pages[tile_page as usize].framebuffer));
         }
 
         // TODO(pcwalton): Refactor.
@@ -1158,9 +1168,8 @@ impl Div<usize> for RenderTime {
 
 bitflags! {
     struct FramebufferFlags: u8 {
-        const MUST_PRESERVE_FILL_FRAMEBUFFER_CONTENTS = 0x01;
-        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x02;
-        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x04;
+        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x01;
+        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x02;
     }
 }
 
@@ -1366,6 +1375,21 @@ impl BlendModeExt for BlendMode {
             BlendMode::Color |
             BlendMode::Luminosity => true,
         }
+    }
+}
+
+struct AlphaTilePage<D> where D: Device {
+    buffered_fills: Vec<Fill>,
+    framebuffer: D::Framebuffer,
+    must_preserve_framebuffer: bool,
+}
+
+impl<D> AlphaTilePage<D> where D: Device {
+    fn new(device: &mut D) -> AlphaTilePage<D> {
+        let framebuffer_size = vec2i(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+        let framebuffer_texture = device.create_texture(TextureFormat::R16F, framebuffer_size);
+        let framebuffer = device.create_framebuffer(framebuffer_texture);
+        AlphaTilePage { buffered_fills: vec![], framebuffer, must_preserve_framebuffer: false }
     }
 }
 
