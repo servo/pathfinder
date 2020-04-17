@@ -44,21 +44,18 @@ bitflags! {
     // NB: If you change this, make sure to update the `Display`
     // implementation as well.
     pub struct BuildResultFlags: u16 {
-        const UNSUPPORTED_CLIP_PATH_NODE       = 0x0001;
-        const UNSUPPORTED_DEFS_NODE            = 0x0002;
-        const UNSUPPORTED_FILTER_NODE          = 0x0004;
-        const UNSUPPORTED_IMAGE_NODE           = 0x0008;
-        const UNSUPPORTED_LINEAR_GRADIENT_NODE = 0x0010;
-        const UNSUPPORTED_MASK_NODE            = 0x0020;
-        const UNSUPPORTED_PATTERN_NODE         = 0x0040;
-        const UNSUPPORTED_RADIAL_GRADIENT_NODE = 0x0080;
-        const UNSUPPORTED_NESTED_SVG_NODE      = 0x0100;
-        const UNSUPPORTED_TEXT_NODE            = 0x0200;
-        const UNSUPPORTED_LINK_PAINT           = 0x0400;
-        const UNSUPPORTED_CLIP_PATH_ATTR       = 0x0800;
-        const UNSUPPORTED_FILTER_ATTR          = 0x1000;
-        const UNSUPPORTED_MASK_ATTR            = 0x2000;
-        const UNSUPPORTED_OPACITY_ATTR         = 0x4000;
+        const UNSUPPORTED_FILTER_NODE          = 0x0001;
+        const UNSUPPORTED_IMAGE_NODE           = 0x0002;
+        const UNSUPPORTED_LINEAR_GRADIENT_NODE = 0x0004;
+        const UNSUPPORTED_MASK_NODE            = 0x0008;
+        const UNSUPPORTED_PATTERN_NODE         = 0x0010;
+        const UNSUPPORTED_RADIAL_GRADIENT_NODE = 0x0020;
+        const UNSUPPORTED_NESTED_SVG_NODE      = 0x0040;
+        const UNSUPPORTED_MULTIPLE_CLIP_PATHS  = 0x0080;
+        const UNSUPPORTED_LINK_PAINT           = 0x0100;
+        const UNSUPPORTED_FILTER_ATTR          = 0x0200;
+        const UNSUPPORTED_MASK_ATTR            = 0x0400;
+        const UNSUPPORTED_STROKE_DASH          = 0x0800;
     }
 }
 
@@ -104,17 +101,19 @@ impl BuiltSVG {
         match *node.borrow() {
             NodeKind::Group(ref group) => {
                 if group.filter.is_some() {
-                    self.result_flags
-                        .insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
                 }
                 if group.mask.is_some() {
-                    self.result_flags
-                        .insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
                 }
 
                 if let Some(ref clip_path_name) = group.clip_path {
                     if let Some(clip_path_id) = self.clip_paths.get(clip_path_name) {
                         // TODO(pcwalton): Combine multiple clip paths if there's already one.
+                        if state.clip_path.is_some() {
+                            self.result_flags
+                                .insert(BuildResultFlags::UNSUPPORTED_MULTIPLE_CLIP_PATHS);
+                        }
                         state.clip_path = Some(*clip_path_id);
                     }
                 }
@@ -127,6 +126,9 @@ impl BuiltSVG {
                 // TODO(pcwalton): Multiple clip paths.
                 let path = UsvgPathToSegments::new(path.data.iter().cloned());
                 let path = Transform2FPathIter::new(path, &state.transform);
+                if clip_outline.is_some() {
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MULTIPLE_CLIP_PATHS);
+                }
                 *clip_outline = Some(Outline::from_segments(path));
             }
             NodeKind::Path(ref path) if state.path_destination == PathDestination::Draw &&
@@ -151,6 +153,10 @@ impl BuiltSVG {
                         line_join: LineJoin::from_usvg_line_join(stroke.linejoin,
                                                                  stroke.miterlimit.value() as f32),
                     };
+
+                    if stroke.dasharray.is_some() {
+                        self.result_flags.insert(BuildResultFlags::UNSUPPORTED_STROKE_DASH);
+                    }
 
                     let path = UsvgPathToSegments::new(path.data.iter().cloned());
                     let outline = Outline::from_segments(path);
@@ -267,8 +273,6 @@ impl Display for BuildResultFlags {
 
         // Must match the order in `BuildResultFlags`.
         static NAMES: &'static [&'static str] = &[
-            "<clipPath>",
-            "<defs>",
             "<filter>",
             "<image>",
             "<linearGradient>",
@@ -276,12 +280,11 @@ impl Display for BuildResultFlags {
             "<pattern>",
             "<radialGradient>",
             "nested <svg>",
-            "<text>",
-            "paint server element",
-            "clip-path attribute",
+            "multiple clip paths",
+            "non-color paint",
             "filter attribute",
             "mask attribute",
-            "opacity attribute",
+            "stroke dash",
         ];
     }
 }
