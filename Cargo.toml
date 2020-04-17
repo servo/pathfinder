@@ -66,5 +66,4 @@ default-members = [
 ]
 
 [patch.crates-io]
-pathfinder_geometry = { path = "geometry" }
 pathfinder_simd = { path = "simd" }
