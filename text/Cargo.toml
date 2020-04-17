@@ -1,22 +1,27 @@
 [package]
 name = "pathfinder_text"
-version = "0.1.0"
-authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+version = "0.5.0"
 edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+description = "Text layout for the Pathfinder vector graphics renderer"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/servo/pathfinder"
+homepage = "https://github.com/servo/pathfinder"
 
 [dependencies]
-euclid = "0.20"
 font-kit = "0.6"
 
 [dependencies.pathfinder_content]
 path = "../content"
+version = "0.5"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
+version = "0.5"
 
 [dependencies.pathfinder_renderer]
 path = "../renderer"
+version = "0.5"
 
 [dependencies.skribo]
-git = "https://github.com/linebender/skribo.git"
-rev = "85293c3b3d7bbd7fc6b8fbfb732bc9450904211f"
+version = "0.1"
