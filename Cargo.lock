@@ -1591,7 +1591,7 @@ dependencies = [
  "pathfinder_geometry 0.5.0",
  "pathfinder_renderer 0.1.0",
  "pathfinder_text 0.1.0",
- "skribo 0.0.1 (git+https://github.com/pcwalton/skribo.git?rev=fe9c968521b4a6ed98c9166a6e620028fea285c1)",
+ "skribo 0.0.1 (git+https://github.com/linebender/skribo.git?rev=85293c3b3d7bbd7fc6b8fbfb732bc9450904211f)",
 ]
 
 [[package]]
@@ -1809,7 +1809,7 @@ dependencies = [
  "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.5.0",
  "pathfinder_renderer 0.1.0",
- "skribo 0.0.1 (git+https://github.com/pcwalton/skribo.git?rev=fe9c968521b4a6ed98c9166a6e620028fea285c1)",
+ "skribo 0.0.1 (git+https://github.com/linebender/skribo.git?rev=85293c3b3d7bbd7fc6b8fbfb732bc9450904211f)",
 ]
 
 [[package]]
@@ -2258,7 +2258,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "skribo"
 version = "0.0.1"
-source = "git+https://github.com/pcwalton/skribo.git?rev=fe9c968521b4a6ed98c9166a6e620028fea285c1#fe9c968521b4a6ed98c9166a6e620028fea285c1"
+source = "git+https://github.com/linebender/skribo.git?rev=85293c3b3d7bbd7fc6b8fbfb732bc9450904211f#85293c3b3d7bbd7fc6b8fbfb732bc9450904211f"
 dependencies = [
  "font-kit 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "harfbuzz 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2993,7 +2993,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum shared_library 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)" = "5a9e7e0f2bfae24d8a5b5a66c5b257a83c7412304311512a0c054cd5e619da11"
 "checksum simplecss 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "596554e63596d556a0dbd681416342ca61c75f1a45203201e7e77d3fa2fa9014"
 "checksum siphasher 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "0b8de496cf83d4ed58b6be86c3a275b8602f6ffe98d3024a869e124147a9a3ac"
-"checksum skribo 0.0.1 (git+https://github.com/pcwalton/skribo.git?rev=fe9c968521b4a6ed98c9166a6e620028fea285c1)" = "<none>"
+"checksum skribo 0.0.1 (git+https://github.com/linebender/skribo.git?rev=85293c3b3d7bbd7fc6b8fbfb732bc9450904211f)" = "<none>"
 "checksum slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
 "checksum smallvec 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5c2fb2ec9bcd216a5b0d0ccf31ab17b5ed1d627960edff65bbe95d3ce221cefc"
 "checksum smithay-client-toolkit 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)" = "93960e8975909fcb14cc755de93af2149d8b8f4eb368315537d40cfd0f324054"

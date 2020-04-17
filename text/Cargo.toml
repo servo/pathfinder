@@ -18,5 +18,5 @@ path = "../geometry"
 path = "../renderer"
 
 [dependencies.skribo]
-git = "https://github.com/pcwalton/skribo.git"
-rev = "fe9c968521b4a6ed98c9166a6e620028fea285c1"
+git = "https://github.com/linebender/skribo.git"
+rev = "85293c3b3d7bbd7fc6b8fbfb732bc9450904211f"
