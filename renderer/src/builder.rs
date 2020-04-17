@@ -35,9 +35,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use instant::Instant;
 use std::u32;
 
-pub(crate) struct SceneBuilder<'a> {
-    scene: &'a Scene,
-    built_options: &'a PreparedBuildOptions,
+pub(crate) struct SceneBuilder<'a, 'b> {
+    scene: &'a mut Scene,
+    built_options: &'b PreparedBuildOptions,
     next_alpha_tile_index: AtomicUsize,
     pub(crate) listener: Box<dyn RenderCommandListener>,
 }
@@ -87,12 +87,12 @@ pub(crate) struct Occluder {
     pub(crate) coords: Vector2I,
 }
 
-impl<'a> SceneBuilder<'a> {
+impl<'a, 'b> SceneBuilder<'a, 'b> {
     pub(crate) fn new(
-        scene: &'a Scene,
-        built_options: &'a PreparedBuildOptions,
+        scene: &'a mut Scene,
+        built_options: &'b PreparedBuildOptions,
         listener: Box<dyn RenderCommandListener>,
-    ) -> SceneBuilder<'a> {
+    ) -> SceneBuilder<'a, 'b> {
         SceneBuilder {
             scene,
             built_options,
@@ -120,7 +120,7 @@ impl<'a> SceneBuilder<'a> {
         });
 
         let render_transform = match self.built_options.transform {
-            PreparedRenderTransform::Transform2D(tr) => tr.inverse(),
+            PreparedRenderTransform::Transform2D(transform) => transform.inverse(),
             _ => Transform2F::default()
         };
 

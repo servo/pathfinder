@@ -41,8 +41,8 @@ pub enum RenderCommand {
         needs_readable_framebuffer: bool,
     },
 
-    // Allocates texture pages for the frame.
-    AllocateTexturePages(Vec<TexturePageDescriptor>),
+    // Allocates a texture page.
+    AllocateTexturePage { page_id: TexturePageId, descriptor: TexturePageDescriptor },
 
     // Uploads data to a texture page.
     UploadTexelData { texels: Arc<Vec<ColorU>>, location: TextureLocation },
@@ -81,7 +81,7 @@ pub enum RenderCommand {
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct TexturePageId(pub u32);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TexturePageDescriptor {
     pub size: Vector2I,
 }
@@ -190,8 +190,8 @@ impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
-            RenderCommand::AllocateTexturePages(ref pages) => {
-                write!(formatter, "AllocateTexturePages(x{})", pages.len())
+            RenderCommand::AllocateTexturePage { page_id, descriptor: _ } => {
+                write!(formatter, "AllocateTexturePage({})", page_id.0)
             }
             RenderCommand::UploadTexelData { ref texels, location } => {
                 write!(formatter, "UploadTexelData(x{:?}, {:?})", texels.len(), location)

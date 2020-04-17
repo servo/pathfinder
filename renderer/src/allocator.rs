@@ -16,12 +16,18 @@ use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 
 const ATLAS_TEXTURE_LENGTH: u32 = 1024;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TextureAllocator {
-    pages: Vec<TexturePageAllocator>,
+    pages: Vec<TexturePage>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct TexturePage {
+    allocator: TexturePageAllocator,
+    is_new: bool,
+}
+
+#[derive(Clone, Debug)]
 pub enum TexturePageAllocator {
     // An atlas allocated with our quadtree allocator.
     Atlas(TextureAtlasAllocator),
@@ -29,13 +35,13 @@ pub enum TexturePageAllocator {
     Image { size: Vector2I },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TextureAtlasAllocator {
     root: TreeNode,
     size: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum TreeNode {
     EmptyLeaf,
     FullLeaf,
@@ -65,7 +71,7 @@ impl TextureAllocator {
 
         // Try to add to each atlas.
         for (page_index, page) in self.pages.iter_mut().enumerate() {
-            match *page {
+            match page.allocator {
                 TexturePageAllocator::Image { .. } => {}
                 TexturePageAllocator::Atlas(ref mut allocator) => {
                     if let Some(rect) = allocator.allocate(requested_size) {
@@ -79,26 +85,40 @@ impl TextureAllocator {
         let page = TexturePageId(self.pages.len() as u32);
         let mut allocator = TextureAtlasAllocator::new();
         let rect = allocator.allocate(requested_size).expect("Allocation failed!");
-        self.pages.push(TexturePageAllocator::Atlas(allocator));
+        self.pages.push(TexturePage {
+            is_new: true,
+            allocator: TexturePageAllocator::Atlas(allocator),
+        });
         TextureLocation { page, rect }
     }
 
     pub fn allocate_image(&mut self, requested_size: Vector2I) -> TextureLocation {
         let page = TexturePageId(self.pages.len() as u32);
         let rect = RectI::new(Vector2I::default(), requested_size);
-        self.pages.push(TexturePageAllocator::Image { size: rect.size() });
+        self.pages.push(TexturePage {
+            is_new: true,
+            allocator: TexturePageAllocator::Image { size: rect.size() },
+        });
         TextureLocation { page, rect }
     }
 
-    pub fn page_size(&self, page_index: TexturePageId) -> Vector2I {
-        match self.pages[page_index.0 as usize] {
+    pub fn page_size(&self, page_id: TexturePageId) -> Vector2I {
+        match self.pages[page_id.0 as usize].allocator {
             TexturePageAllocator::Atlas(ref atlas) => Vector2I::splat(atlas.size as i32),
             TexturePageAllocator::Image { size, .. } => size,
         }
     }
 
-    pub fn page_scale(&self, page_index: TexturePageId) -> Vector2F {
-        vec2f(1.0, 1.0) / self.page_size(page_index).to_f32()
+    pub fn page_scale(&self, page_id: TexturePageId) -> Vector2F {
+        vec2f(1.0, 1.0) / self.page_size(page_id).to_f32()
+    }
+
+    pub fn page_is_new(&self, page_id: TexturePageId) -> bool {
+        self.pages[page_id.0 as usize].is_new
+    }
+
+    pub fn mark_page_as_allocated(&mut self, page_id: TexturePageId) {
+        self.pages[page_id.0 as usize].is_new = false;
     }
 
     #[inline]

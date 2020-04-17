@@ -14,16 +14,14 @@ use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
-use crate::paint::{Paint, PaintContents, PaintId, PaintInfo, Palette};
+use crate::paint::{MergedPaletteInfo, Paint, PaintId, PaintInfo, Palette};
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
-use pathfinder_content::pattern::{Pattern, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2I, vec2f};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_SCENE_ID: AtomicUsize = AtomicUsize::new(0);
@@ -97,49 +95,10 @@ impl Scene {
     }
 
     pub fn append_scene(&mut self, scene: Scene) {
-        // Merge render targets.
-        let mut render_target_mapping = HashMap::new();
-        for (old_render_target_index, render_target) in scene.palette   
-                                                             .render_targets
-                                                             .into_iter()
-                                                             .enumerate() {
-            let old_render_target_id = RenderTargetId {
-                scene: scene.id.0,
-                render_target: old_render_target_index as u32,
-            };
-            let new_render_target_id = self.palette.push_render_target(render_target);
-            render_target_mapping.insert(old_render_target_id, new_render_target_id);
-        }
-
-        // Merge paints.
-        let mut paint_mapping = HashMap::new();
-        for (old_paint_index, old_paint) in scene.palette.paints.iter().enumerate() {
-            let old_paint_id = PaintId(old_paint_index as u16);
-            let new_paint_id = match *old_paint.overlay() {
-                None => self.palette.push_paint(old_paint),
-                Some(ref overlay) => {
-                    match *overlay.contents() {
-                        PaintContents::Pattern(ref pattern) => {
-                            match pattern.source() {
-                                PatternSource::RenderTarget { id: old_render_target_id, size } => {
-                                    let mut new_pattern =
-                                        Pattern::from_render_target(*old_render_target_id, *size);
-                                    new_pattern.set_filter(pattern.filter());
-                                    new_pattern.apply_transform(pattern.transform());
-                                    new_pattern.set_repeat_x(pattern.repeat_x());
-                                    new_pattern.set_repeat_y(pattern.repeat_y());
-                                    new_pattern.set_smoothing_enabled(pattern.smoothing_enabled());
-                                    self.palette.push_paint(&Paint::from_pattern(new_pattern))
-                                }
-                                _ => self.palette.push_paint(old_paint),
-                            }
-                        }
-                        _ => self.palette.push_paint(old_paint),
-                    }
-                }
-            };
-            paint_mapping.insert(old_paint_id, new_paint_id);
-        }
+        let MergedPaletteInfo {
+            render_target_mapping,
+            paint_mapping,
+        } = self.palette.append_palette(scene.palette);
 
         // Merge clip paths.
         let mut clip_path_mapping = Vec::with_capacity(scene.clip_paths.len());
@@ -187,7 +146,7 @@ impl Scene {
     }
 
     #[inline]
-    pub fn build_paint_info(&self, render_transform: Transform2F) -> PaintInfo {
+    pub fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
         self.palette.build_paint_info(render_transform)
     }
 
@@ -285,7 +244,7 @@ impl Scene {
     }
 
     #[inline]
-    pub fn build<E>(&self,
+    pub fn build<E>(&mut self,
                     options: BuildOptions,
                     listener: Box<dyn RenderCommandListener>,
                     executor: &E)

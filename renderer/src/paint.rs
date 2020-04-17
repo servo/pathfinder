@@ -34,10 +34,17 @@ const GRADIENT_TILE_LENGTH: u32 = 256;
 
 #[derive(Clone)]
 pub struct Palette {
-    pub(crate) paints: Vec<Paint>,
-    pub(crate) render_targets: Vec<RenderTarget>,
+    pub paints: Vec<Paint>,
+    render_targets: Vec<RenderTargetData>,
     cache: HashMap<Paint, PaintId>,
+    allocator: TextureAllocator,
     scene_id: SceneId,
+}
+
+#[derive(Clone)]
+struct RenderTargetData {
+    render_target: RenderTarget,
+    metadata: RenderTargetMetadata,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -86,7 +93,13 @@ impl Debug for PaintContents {
 impl Palette {
     #[inline]
     pub fn new(scene_id: SceneId) -> Palette {
-        Palette { paints: vec![], render_targets: vec![], cache: HashMap::new(), scene_id }
+        Palette {
+            paints: vec![],
+            render_targets: vec![],
+            cache: HashMap::new(),
+            allocator: TextureAllocator::new(),
+            scene_id,
+        }
     }
 }
 
@@ -305,7 +318,7 @@ pub struct RadialGradientMetadata {
     pub radii: F32x2,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct RenderTargetMetadata {
     /// The location of the render target.
     pub location: TextureLocation,
@@ -338,31 +351,30 @@ impl Palette {
 
     pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
         let id = self.render_targets.len() as u32;
-        self.render_targets.push(render_target);
+
+        let metadata = RenderTargetMetadata {
+            location: self.allocator.allocate_image(render_target.size()),
+        };
+
+        self.render_targets.push(RenderTargetData { render_target, metadata });
         RenderTargetId { scene: self.scene_id.0, render_target: id }
     }
 
-    pub fn build_paint_info(&self, render_transform: Transform2F) -> PaintInfo {
-        let mut allocator = TextureAllocator::new();
-        let (mut paint_metadata, mut render_target_metadata) = (vec![], vec![]);
-
-        // Assign render target locations.
-        for render_target in &self.render_targets {
-            render_target_metadata.push(RenderTargetMetadata {
-                location: allocator.allocate_image(render_target.size()),
-            });
-        }
+    pub fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
+        let mut paint_metadata = vec![];
 
         // Assign paint locations.
         let mut gradient_tile_builder = GradientTileBuilder::new();
         let mut image_texel_info = vec![];
         for paint in &self.paints {
+            let allocator = &mut self.allocator;
+            let render_targets = &self.render_targets;
             let color_texture_metadata = paint.overlay.as_ref().map(|overlay| {
                 match overlay.contents {
                     PaintContents::Gradient(ref gradient) => {
                         // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
                         PaintColorTextureMetadata {
-                            location: gradient_tile_builder.allocate(&mut allocator, gradient),
+                            location: gradient_tile_builder.allocate(allocator, gradient),
                             sampling_flags: TextureSamplingFlags::empty(),
                             filter: match gradient.radii() {
                                 None => PaintFilter::None,
@@ -379,7 +391,7 @@ impl Palette {
                         match *pattern.source() {
                             PatternSource::RenderTarget { id: render_target_id, .. } => {
                                 let index = render_target_id.render_target as usize;
-                                location = render_target_metadata[index].location;
+                                location = render_targets[index].metadata.location;
                             }
                             PatternSource::Image(ref image) => {
                                 // TODO(pcwalton): We should be able to use tile cleverness to
@@ -435,7 +447,7 @@ impl Palette {
                 Some(ref mut color_texture_metadata) => color_texture_metadata,
             };
 
-            let texture_scale = allocator.page_scale(color_texture_metadata.location.page);
+            let texture_scale = self.allocator.page_scale(color_texture_metadata.location.page);
             let texture_rect = color_texture_metadata.location.rect;
             color_texture_metadata.transform = match paint.overlay    
                                                           .as_ref()
@@ -487,13 +499,6 @@ impl Palette {
             }
         }
 
-        // Allocate textures.
-        let mut texture_page_descriptors = vec![];
-        for page_index in 0..allocator.page_count() {
-            let page_size = allocator.page_size(TexturePageId(page_index));
-            texture_page_descriptors.push(TexturePageDescriptor { size: page_size });
-        }
-
         // Create texture metadata.
         let texture_metadata = paint_metadata.iter().map(|paint_metadata| {
             TextureMetadataEntry {
@@ -504,12 +509,28 @@ impl Palette {
                 base_color: paint_metadata.base_color,
             }
         }).collect();
+        let mut render_commands = vec![RenderCommand::UploadTextureMetadata(texture_metadata)];
+
+        // Allocate textures.
+        let mut texture_page_descriptors = vec![];
+        for page_index in 0..self.allocator.page_count() {
+            let page_id = TexturePageId(page_index);
+            let page_size = self.allocator.page_size(page_id);
+            let descriptor = TexturePageDescriptor { size: page_size };
+            texture_page_descriptors.push(descriptor);
+
+            if self.allocator.page_is_new(page_id) {
+                render_commands.push(RenderCommand::AllocateTexturePage { page_id, descriptor });
+                self.allocator.mark_page_as_allocated(page_id);
+            }
+        }
+
+        // Gather up render target metadata.
+        let render_target_metadata: Vec<_> = self.render_targets.iter().map(|render_target_data| {
+            render_target_data.metadata
+        }).collect();
 
         // Create render commands.
-        let mut render_commands = vec![
-            RenderCommand::UploadTextureMetadata(texture_metadata),
-            RenderCommand::AllocateTexturePages(texture_page_descriptors),
-        ];
         for (index, metadata) in render_target_metadata.iter().enumerate() {
             let id = RenderTargetId { scene: self.scene_id.0, render_target: index as u32 };
             render_commands.push(RenderCommand::DeclareRenderTarget {
@@ -527,6 +548,58 @@ impl Palette {
 
         PaintInfo { render_commands, paint_metadata, render_target_metadata }
     }
+
+    pub(crate) fn append_palette(&mut self, palette: Palette) -> MergedPaletteInfo {
+        // Merge render targets.
+        let mut render_target_mapping = HashMap::new();
+        for (old_render_target_index, render_target) in palette.render_targets
+                                                               .into_iter()
+                                                               .enumerate() {
+            let old_render_target_id = RenderTargetId {
+                scene: palette.scene_id.0,
+                render_target: old_render_target_index as u32,
+            };
+            let new_render_target_id = self.push_render_target(render_target.render_target);
+            render_target_mapping.insert(old_render_target_id, new_render_target_id);
+        }
+
+        // Merge paints.
+        let mut paint_mapping = HashMap::new();
+        for (old_paint_index, old_paint) in palette.paints.iter().enumerate() {
+            let old_paint_id = PaintId(old_paint_index as u16);
+            let new_paint_id = match *old_paint.overlay() {
+                None => self.push_paint(old_paint),
+                Some(ref overlay) => {
+                    match *overlay.contents() {
+                        PaintContents::Pattern(ref pattern) => {
+                            match pattern.source() {
+                                PatternSource::RenderTarget { id: old_render_target_id, size } => {
+                                    let mut new_pattern =
+                                        Pattern::from_render_target(*old_render_target_id, *size);
+                                    new_pattern.set_filter(pattern.filter());
+                                    new_pattern.apply_transform(pattern.transform());
+                                    new_pattern.set_repeat_x(pattern.repeat_x());
+                                    new_pattern.set_repeat_y(pattern.repeat_y());
+                                    new_pattern.set_smoothing_enabled(pattern.smoothing_enabled());
+                                    self.push_paint(&Paint::from_pattern(new_pattern))
+                                }
+                                _ => self.push_paint(old_paint),
+                            }
+                        }
+                        _ => self.push_paint(old_paint),
+                    }
+                }
+            };
+            paint_mapping.insert(old_paint_id, new_paint_id);
+        }
+
+        MergedPaletteInfo { render_target_mapping, paint_mapping }
+    }
+}
+
+pub(crate) struct MergedPaletteInfo {
+    pub(crate) render_target_mapping: HashMap<RenderTargetId, RenderTargetId>,
+    pub(crate) paint_mapping: HashMap<PaintId, PaintId>,
 }
 
 impl PaintMetadata {

@@ -123,7 +123,7 @@ where
     alpha_tile_pages: Vec<AlphaTilePage<D>>,
     dest_blend_framebuffer: D::Framebuffer,
     intermediate_dest_framebuffer: D::Framebuffer,
-    texture_pages: Vec<TexturePage<D>>,
+    texture_pages: Vec<Option<TexturePage<D>>>,
     render_targets: Vec<RenderTargetInfo>,
     render_target_stack: Vec<RenderTargetId>,
     texture_metadata_texture: D::Texture,
@@ -304,8 +304,8 @@ where
             RenderCommand::Start { bounding_quad, path_count, needs_readable_framebuffer } => {
                 self.start_rendering(bounding_quad, path_count, needs_readable_framebuffer);
             }
-            RenderCommand::AllocateTexturePages(ref texture_page_descriptors) => {
-                self.allocate_texture_pages(texture_page_descriptors)
+            RenderCommand::AllocateTexturePage { page_id, ref descriptor } => {
+                self.allocate_texture_page(page_id, descriptor)
             }
             RenderCommand::UploadTexelData { ref texels, location } => {
                 self.upload_texel_data(texels, location)
@@ -379,6 +379,8 @@ where
 
         self.flags.set(RendererFlags::INTERMEDIATE_DEST_FRAMEBUFFER_NEEDED,
                        needs_readable_framebuffer);
+
+        self.render_targets.clear();
     }
 
     pub fn draw_debug_ui(&self) {
@@ -440,29 +442,37 @@ where
         &self.quad_vertex_indices_buffer
     }
 
-    fn allocate_texture_pages(&mut self, texture_page_descriptors: &[TexturePageDescriptor]) {
-        // Clear out old paint textures.
-        for old_texture_page in self.texture_pages.drain(..) {
+    fn allocate_texture_page(&mut self,
+                             page_id: TexturePageId,
+                             descriptor: &TexturePageDescriptor) {
+        // Fill in IDs up to the requested page ID.
+        let page_index = page_id.0 as usize;
+        while self.texture_pages.len() < page_index + 1 {
+            self.texture_pages.push(None);
+        }
+
+        // Clear out any existing texture.
+        if let Some(old_texture_page) = self.texture_pages[page_index].take() {
             let old_texture = self.device.destroy_framebuffer(old_texture_page.framebuffer);
             self.texture_cache.release_texture(old_texture);
         }
 
-        // Clear out old render targets.
-        self.render_targets.clear();
-
-        // Allocate textures.
-        for texture_page_descriptor in texture_page_descriptors {
-            let texture_size = texture_page_descriptor.size;
-            let texture = self.texture_cache.create_texture(&mut self.device,
-                                                            TextureFormat::RGBA8,
-                                                            texture_size);
-            let framebuffer = self.device.create_framebuffer(texture);
-            self.texture_pages.push(TexturePage { framebuffer, must_preserve_contents: false });
-        }
+        // Allocate texture.
+        let texture_size = descriptor.size;
+        let texture = self.texture_cache.create_texture(&mut self.device,
+                                                        TextureFormat::RGBA8,
+                                                        texture_size);
+        let framebuffer = self.device.create_framebuffer(texture);
+        self.texture_pages[page_index] = Some(TexturePage {
+            framebuffer,
+            must_preserve_contents: false,
+        });
     }
 
     fn upload_texel_data(&mut self, texels: &[ColorU], location: TextureLocation) {
-        let texture_page = &mut self.texture_pages[location.page.0 as usize];
+        let texture_page = self.texture_pages[location.page.0 as usize]
+                               .as_mut()
+                               .expect("Texture page not allocated yet!");
         let texture = self.device.framebuffer_texture(&texture_page.framebuffer);
         let texels = color::color_slice_to_u8_slice(texels);
         self.device.upload_to_texture(texture, location.rect, TextureDataRef::U8(texels));
@@ -1024,7 +1034,10 @@ where
         let must_preserve_contents = match self.render_target_stack.last() {
             Some(&render_target_id) => {
                 let texture_page = self.render_target_location(render_target_id).page;
-                self.texture_pages[texture_page.0 as usize].must_preserve_contents
+                self.texture_pages[texture_page.0 as usize]
+                    .as_ref()
+                    .expect("Draw target texture page not allocated!")
+                    .must_preserve_contents
             }
             None => {
                 self.framebuffer_flags
@@ -1045,7 +1058,10 @@ where
         match self.render_target_stack.last() {
             Some(&render_target_id) => {
                 let texture_page = self.render_target_location(render_target_id).page;
-                self.texture_pages[texture_page.0 as usize].must_preserve_contents = true;
+                self.texture_pages[texture_page.0 as usize]
+                    .as_mut()
+                    .expect("Draw target texture page not allocated!")
+                    .must_preserve_contents = true;
             }
             None => {
                 self.framebuffer_flags
@@ -1082,7 +1098,10 @@ where
     }
 
     fn texture_page_framebuffer(&self, id: TexturePageId) -> &D::Framebuffer {
-        &self.texture_pages[id.0 as usize].framebuffer
+        &self.texture_pages[id.0 as usize]
+             .as_ref()
+             .expect("Texture page not allocated!")
+             .framebuffer
     }
 
     fn texture_page(&self, id: TexturePageId) -> &D::Texture {
