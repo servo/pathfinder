@@ -1,8 +1,12 @@
 [package]
 name = "pathfinder_gpu"
 version = "0.5.0"
-authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+description = "A simple cross-platform GPU abstraction library"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/servo/pathfinder"
+homepage = "https://github.com/servo/pathfinder"
 
 [dependencies]
 bitflags = "1.0"
@@ -15,12 +19,16 @@ features = ["png"]
 
 [dependencies.pathfinder_color]
 path = "../color"
+version = "0.5"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
+version = "0.5"
 
 [dependencies.pathfinder_resources]
 path = "../resources"
+version = "0.5"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+version = "0.5"

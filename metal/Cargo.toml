@@ -1,8 +1,12 @@
 [package]
 name = "pathfinder_metal"
-version = "0.1.0"
-authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+version = "0.5.0"
 edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+description = "A simple cross-platform GPU abstraction library: OpenGL backend"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/servo/pathfinder"
+homepage = "https://github.com/servo/pathfinder"
 
 [dependencies]
 bitflags = "1.0"
@@ -17,12 +21,16 @@ objc = "0.2"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
+version = "0.5"
 
 [dependencies.pathfinder_gpu]
 path = "../gpu"
+version = "0.5"
 
 [dependencies.pathfinder_resources]
 path = "../resources"
+version = "0.5"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+version = "0.5"
