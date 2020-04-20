@@ -184,10 +184,10 @@ impl Transform2F {
     }
 
     #[inline]
-    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2F {
+    pub fn row_major(m11: f32, m12: f32, m13: f32, m21: f32, m22: f32, m23: f32) -> Transform2F {
         Transform2F {
             matrix: Matrix2x2F::row_major(m11, m12, m21, m22),
-            vector: Vector2F::new(m31, m32),
+            vector: Vector2F::new(m13, m23),
         }
     }
 
@@ -242,11 +242,11 @@ impl Transform2F {
         self.matrix.m22()
     }
     #[inline]
-    pub fn m31(&self) -> f32 {
+    pub fn m13(&self) -> f32 {
         self.vector.x()
     }
     #[inline]
-    pub fn m32(&self) -> f32 {
+    pub fn m23(&self) -> f32 {
         self.vector.y()
     }
 

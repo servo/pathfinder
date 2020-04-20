@@ -206,6 +206,11 @@ impl LineSegment2F {
     }
 
     #[inline]
+    pub fn length(self) -> f32 {
+        self.square_length().sqrt()
+    }
+
+    #[inline]
     pub fn vector(self) -> Vector2F {
         self.to() - self.from()
     }

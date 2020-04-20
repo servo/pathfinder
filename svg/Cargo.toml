@@ -29,3 +29,7 @@ version = "0.5"
 [dependencies.pathfinder_renderer]
 path = "../renderer"
 version = "0.5"
+
+[dependencies.pathfinder_simd]
+path = "../simd"
+version = "0.5"

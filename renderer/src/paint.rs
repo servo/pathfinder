@@ -15,15 +15,16 @@ use crate::scene::{RenderTarget, SceneId};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{Filter, PatternFilter};
-use pathfinder_content::gradient::Gradient;
+use pathfinder_content::gradient::{Gradient, GradientGeometry};
 use pathfinder_content::pattern::{Pattern, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
-use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
+use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gpu::TextureSamplingFlags;
-use pathfinder_simd::default::F32x2;
+use pathfinder_simd::default::{F32x2, F32x4};
+use std::f32;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
@@ -81,10 +82,7 @@ pub enum PaintCompositeOp {
 impl Debug for PaintContents {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match *self {
-            PaintContents::Gradient(_) => {
-                // TODO(pcwalton)
-                write!(formatter, "(gradient)")
-            }
+            PaintContents::Gradient(ref gradient) => gradient.fmt(formatter),
             PaintContents::Pattern(ref pattern) => pattern.fmt(formatter),
         }
     }
@@ -185,12 +183,7 @@ impl Paint {
 
         if let Some(ref mut overlay) = self.overlay {
             match overlay.contents {
-                PaintContents::Gradient(ref mut gradient) => {
-                    gradient.set_line(*transform * gradient.line());
-                    if let Some(radii) = gradient.radii() {
-                        gradient.set_radii(Some(radii * transform.extract_scale().0));
-                    }
-                }
+                PaintContents::Gradient(ref mut gradient) => gradient.apply_transform(*transform),
                 PaintContents::Pattern(ref mut pattern) => pattern.apply_transform(*transform),
             }
         }
@@ -300,6 +293,8 @@ pub struct PaintMetadata {
 pub struct PaintColorTextureMetadata {
     /// The location of the paint.
     pub location: TextureLocation,
+    /// The scale for the page this paint is on.
+    pub page_scale: Vector2F,
     /// The transform to apply to screen coordinates to translate them into UVs.
     pub transform: Transform2F,
     /// The sampling mode for the texture.
@@ -373,13 +368,15 @@ impl Palette {
                 match overlay.contents {
                     PaintContents::Gradient(ref gradient) => {
                         // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
+                        let location = gradient_tile_builder.allocate(allocator, gradient);
                         PaintColorTextureMetadata {
-                            location: gradient_tile_builder.allocate(allocator, gradient),
+                            location,
+                            page_scale: allocator.page_scale(location.page),
                             sampling_flags: TextureSamplingFlags::empty(),
-                            filter: match gradient.radii() {
-                                None => PaintFilter::None,
-                                Some(radii) => {
-                                    PaintFilter::RadialGradient { line: gradient.line(), radii }
+                            filter: match gradient.geometry {
+                                GradientGeometry::Linear(_) => PaintFilter::None,
+                                GradientGeometry::Radial { line, radii, .. } => {
+                                    PaintFilter::RadialGradient { line, radii }
                                 }
                             },
                             transform: Transform2F::default(),
@@ -424,6 +421,7 @@ impl Palette {
 
                         PaintColorTextureMetadata {
                             location,
+                            page_scale: allocator.page_scale(location.page),
                             sampling_flags,
                             filter,
                             transform: Transform2F::default(),
@@ -455,36 +453,27 @@ impl Palette {
                                                                    metadata but no overlay?")
                                                           .contents {
                 PaintContents::Gradient(Gradient {
-                    line: gradient_line,
-                    radii: None,
+                    geometry: GradientGeometry::Linear(gradient_line),
                     ..
                 }) => {
+                    // Project gradient line onto (0.0-1.0, v0).
                     let v0 = texture_rect.to_f32().center().y() * texture_scale.y();
-                    let length_inv = 1.0 / gradient_line.square_length();
-                    let (p0, d) = (gradient_line.from(), gradient_line.vector());
-                    Transform2F {
-                        matrix: Matrix2x2F::row_major(
-                            d.x(), d.y(), 0.0, 0.0).scale(length_inv),
-                        vector: Vector2F::new(-p0.dot(d) * length_inv, v0),
-                    } * render_transform
+                    let dp = gradient_line.vector();
+                    let m0 = dp.0.concat_xy_xy(dp.0) / F32x4::splat(gradient_line.square_length());
+                    let m13 = m0.zw() * -gradient_line.from().0;
+                    Transform2F::row_major(m0.x(), m0.y(), m13.x() + m13.y(), 0.0, 0.0, v0)
                 }
-                PaintContents::Gradient(Gradient { radii: Some(_), .. }) => {
-                    let texture_origin_uv = rect_to_inset_uv(texture_rect, texture_scale).origin();
-                    let gradient_tile_scale = texture_scale * (GRADIENT_TILE_LENGTH - 1) as
-                        f32;
-                    Transform2F {
-                        matrix: Matrix2x2F::from_scale(gradient_tile_scale),
-                        vector: texture_origin_uv,
-                    } * render_transform
-                }
+                PaintContents::Gradient(Gradient {
+                    geometry: GradientGeometry::Radial { ref transform, .. },
+                    ..
+                }) => transform.inverse(),
                 PaintContents::Pattern(ref pattern) => {
                     match pattern.source() {
                         PatternSource::Image(_) => {
                             let texture_origin_uv =
                                 rect_to_uv(texture_rect, texture_scale).origin();
-                            Transform2F::from_translation(texture_origin_uv) *
-                                Transform2F::from_scale(texture_scale) *
-                                pattern.transform().inverse() * render_transform
+                            Transform2F::from_scale(texture_scale).translate(texture_origin_uv) *
+                                pattern.transform().inverse()
                         }
                         PatternSource::RenderTarget { .. } => {
                             // FIXME(pcwalton): Only do this in GL, not Metal!
@@ -492,11 +481,12 @@ impl Palette {
                                 rect_to_uv(texture_rect, texture_scale).lower_left();
                             Transform2F::from_translation(texture_origin_uv) *
                                 Transform2F::from_scale(texture_scale * vec2f(1.0, -1.0)) *
-                                pattern.transform().inverse() * render_transform
+                                pattern.transform().inverse()
                         }
                     }
                 }
-            }
+            };
+            color_texture_metadata.transform *= render_transform;
         }
 
         // Create texture metadata.
@@ -610,8 +600,10 @@ impl PaintMetadata {
                 match color_metadata.filter {
                     PaintFilter::None => Filter::None,
                     PaintFilter::RadialGradient { line, radii } => {
-                        let uv_origin = color_metadata.transform.vector;
-                        Filter::RadialGradient { line, radii, uv_origin }
+                        let uv_rect = rect_to_uv(color_metadata.location.rect,
+                                                 color_metadata.page_scale).contract(
+                            vec2f(0.0, color_metadata.page_scale.y() * 0.5));
+                        Filter::RadialGradient { line, radii, uv_origin: uv_rect.origin() }
                     }
                     PaintFilter::PatternFilter(pattern_filter) => {
                         Filter::PatternFilter(pattern_filter)
@@ -628,10 +620,6 @@ impl PaintMetadata {
 
 fn rect_to_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
     rect.to_f32() * texture_scale
-}
-
-fn rect_to_inset_uv(rect: RectI, texture_scale: Vector2F) -> RectF {
-    rect_to_uv(rect, texture_scale).contract(texture_scale * 0.5)
 }
 
 // Gradient allocation

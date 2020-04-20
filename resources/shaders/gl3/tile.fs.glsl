@@ -310,11 +310,7 @@ vec4 filterRadialGradient(vec2 colorTexCoord,
     vec2 lineFrom = filterParams0 . xy, lineVector = filterParams0 . zw;
     vec2 radii = filterParams1 . xy, uvOrigin = filterParams1 . zw;
 
-
-    fragCoord . y = framebufferSize . y - fragCoord . y;
-
-
-    vec2 dP = fragCoord - lineFrom, dC = lineVector;
+    vec2 dP = colorTexCoord - lineFrom, dC = lineVector;
     float dR = radii . y - radii . x;
 
     float a = dot(dC, dC)- dR * dR;

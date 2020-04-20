@@ -294,7 +294,7 @@ vec4 filterText(vec2 colorTexCoord,
 //       opposite sign
 //
 //                | x           y           z               w
-//  --------------+-------------------------------------------
+//  --------------+-----------------------------------------------------
 //  filterParams0 | lineFrom.x  lineFrom.y  lineVector.x    lineVector.y
 //  filterParams1 | radii.x     radii.y     uvOrigin.x      uvOrigin.y
 //  filterParams2 | -           -           -               -
@@ -308,11 +308,7 @@ vec4 filterRadialGradient(vec2 colorTexCoord,
     vec2 lineFrom = filterParams0.xy, lineVector = filterParams0.zw;
     vec2 radii = filterParams1.xy, uvOrigin = filterParams1.zw;
 
-#ifndef PF_ORIGIN_UPPER_LEFT
-    fragCoord.y = framebufferSize.y - fragCoord.y;
-#endif
-
-    vec2 dP = fragCoord - lineFrom, dC = lineVector;
+    vec2 dP = colorTexCoord - lineFrom, dC = lineVector;
     float dR = radii.y - radii.x;
 
     float a = dot(dC, dC) - dR * dR;
