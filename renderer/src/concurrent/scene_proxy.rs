@@ -24,9 +24,9 @@ use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
 use crate::options::{BuildOptions, RenderCommandListener};
 use crate::scene::Scene;
+use crossbeam_channel::{self, Receiver, Sender};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_gpu::Device;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 const MAX_MESSAGES_IN_FLIGHT: usize = 1024;
@@ -42,7 +42,8 @@ impl SceneProxy {
 
     pub fn from_scene<E>(scene: Scene, executor: E) -> SceneProxy
                          where E: Executor + Send + 'static {
-        let (main_to_worker_sender, main_to_worker_receiver) = mpsc::channel();
+        let (main_to_worker_sender, main_to_worker_receiver) =
+            crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);
         thread::spawn(move || scene_thread(scene, executor, main_to_worker_receiver));
         SceneProxy { sender: main_to_worker_sender }
     }
@@ -66,7 +67,7 @@ impl SceneProxy {
 
     #[inline]
     pub fn build_with_stream(&self, options: BuildOptions) -> RenderCommandStream {
-        let (sender, receiver) = mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
+        let (sender, receiver) = crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);
         let listener = Box::new(move |command| drop(sender.send(command)));
         self.build_with_listener(options, listener);
         RenderCommandStream::new(receiver)
@@ -94,7 +95,7 @@ impl SceneProxy {
 
     #[inline]
     pub fn copy_scene(&self) -> Scene {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);
         self.sender.send(MainToWorkerMsg::CopyScene(sender)).unwrap();
         receiver.recv().unwrap()
     }
