@@ -92,7 +92,6 @@ impl ZBuffer {
                         filter: Filter::None,
                         blend_mode: BlendMode::default(),
                         mask_0_fill_rule: None,
-                        mask_1_fill_rule: None,
                         tile_page: !0,
                     });
                 }
@@ -112,11 +111,10 @@ impl Tile {
             tile_x: tile_origin.x() as i16,
             tile_y: tile_origin.y() as i16,
             mask_0_backdrop: 0,
-            mask_1_backdrop: 0,
             mask_0_u: 0,
             mask_0_v: 0,
-            mask_1_u: 0,
-            mask_1_v: 0,
+            flags: 0,
+            pad: 0,
             color: paint_id.0,
         }
     }

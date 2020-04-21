@@ -146,23 +146,25 @@ impl<'a, 'b> Tiler<'a, 'b> {
                             occluders.push(Occluder::new(packed_tile.tile_coords));
                         }
                         SolidTiles::Regular(ref mut solid_tiles) => {
-                            packed_tile.add_to(solid_tiles, &draw_tiling_path_info);
+                            packed_tile.add_to(solid_tiles,
+                                               &mut self.object_builder.built_path.clip_tiles,
+                                               &draw_tiling_path_info,
+                                               &self.scene_builder);
                         }
                     }
                 }
                 TileType::SingleMask => {
                     debug_assert_ne!(packed_tile.draw_tile.alpha_tile_id.page(), !0);
                     packed_tile.add_to(&mut self.object_builder.built_path.single_mask_tiles,
-                                       &draw_tiling_path_info);
-                }
-                TileType::DualMask => {
-                    debug_assert_ne!(packed_tile.draw_tile.alpha_tile_id.page(), !0);
-                    packed_tile.add_to(&mut self.object_builder.built_path.dual_mask_tiles,
-                                       &draw_tiling_path_info);
+                                       &mut self.object_builder.built_path.clip_tiles,
+                                       &draw_tiling_path_info,
+                                       &self.scene_builder);
                 }
                 TileType::Empty if blend_mode_is_destructive => {
                     packed_tile.add_to(&mut self.object_builder.built_path.empty_tiles,
-                                       &draw_tiling_path_info);
+                                       &mut self.object_builder.built_path.clip_tiles,
+                                       &draw_tiling_path_info,
+                                       &self.scene_builder);
                 }
                 TileType::Empty => {
                     // Just cull.
@@ -404,7 +406,6 @@ pub(crate) enum TileType {
     Solid,
     Empty,
     SingleMask,
-    DualMask,
 }
 
 impl<'a> PackedTile<'a> {
@@ -504,7 +505,7 @@ impl<'a> PackedTile<'a> {
             Some(clip_tile) => {
                 // We have both a draw and clip mask. Composite them together.
                 PackedTile {
-                    tile_type: TileType::DualMask,
+                    tile_type: TileType::SingleMask,
                     tile_coords,
                     draw_tile,
                     clip_tile: Some(clip_tile),

@@ -10,20 +10,18 @@ struct spvDescriptorSetBuffer0
 {
     texture2d<float> uMaskTexture0 [[id(0)]];
     sampler uMaskTexture0Smplr [[id(1)]];
-    texture2d<float> uMaskTexture1 [[id(2)]];
-    sampler uMaskTexture1Smplr [[id(3)]];
-    texture2d<float> uColorTexture0 [[id(4)]];
-    sampler uColorTexture0Smplr [[id(5)]];
-    texture2d<float> uGammaLUT [[id(6)]];
-    sampler uGammaLUTSmplr [[id(7)]];
-    constant float2* uColorTexture0Size [[id(8)]];
-    constant float2* uFramebufferSize [[id(9)]];
-    constant float4* uFilterParams0 [[id(10)]];
-    constant float4* uFilterParams1 [[id(11)]];
-    constant float4* uFilterParams2 [[id(12)]];
-    texture2d<float> uDestTexture [[id(13)]];
-    sampler uDestTextureSmplr [[id(14)]];
-    constant int* uCtrl [[id(15)]];
+    texture2d<float> uColorTexture0 [[id(2)]];
+    sampler uColorTexture0Smplr [[id(3)]];
+    texture2d<float> uGammaLUT [[id(4)]];
+    sampler uGammaLUTSmplr [[id(5)]];
+    constant float2* uColorTexture0Size [[id(6)]];
+    constant float2* uFramebufferSize [[id(7)]];
+    constant float4* uFilterParams0 [[id(8)]];
+    constant float4* uFilterParams1 [[id(9)]];
+    constant float4* uFilterParams2 [[id(10)]];
+    texture2d<float> uDestTexture [[id(11)]];
+    sampler uDestTextureSmplr [[id(12)]];
+    constant int* uCtrl [[id(13)]];
 };
 
 constant float3 _1040 = {};
@@ -36,9 +34,8 @@ struct main0_out
 struct main0_in
 {
     float3 vMaskTexCoord0 [[user(locn0)]];
-    float3 vMaskTexCoord1 [[user(locn1)]];
-    float2 vColorTexCoord0 [[user(locn2)]];
-    float4 vBaseColor [[user(locn3)]];
+    float2 vColorTexCoord0 [[user(locn1)]];
+    float4 vBaseColor [[user(locn2)]];
 };
 
 // Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
@@ -548,47 +545,42 @@ float4 composite(thread const float4& srcColor, thread const texture2d<float> de
     return float4(((srcColor.xyz * (srcColor.w * (1.0 - destColor.w))) + (blendedRGB * (srcColor.w * destColor.w))) + (destColor.xyz * (1.0 - srcColor.w)), 1.0);
 }
 
-void calculateColor(thread const int& ctrl, thread texture2d<float> uMaskTexture0, thread const sampler uMaskTexture0Smplr, thread float3& vMaskTexCoord0, thread texture2d<float> uMaskTexture1, thread const sampler uMaskTexture1Smplr, thread float3& vMaskTexCoord1, thread float4& vBaseColor, thread float2& vColorTexCoord0, thread texture2d<float> uColorTexture0, thread const sampler uColorTexture0Smplr, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr, thread float2 uColorTexture0Size, thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread float4 uFilterParams0, thread float4 uFilterParams1, thread float4 uFilterParams2, thread texture2d<float> uDestTexture, thread const sampler uDestTextureSmplr, thread float4& oFragColor)
+void calculateColor(thread const int& ctrl, thread texture2d<float> uMaskTexture0, thread const sampler uMaskTexture0Smplr, thread float3& vMaskTexCoord0, thread float4& vBaseColor, thread float2& vColorTexCoord0, thread texture2d<float> uColorTexture0, thread const sampler uColorTexture0Smplr, thread texture2d<float> uGammaLUT, thread const sampler uGammaLUTSmplr, thread float2 uColorTexture0Size, thread float4& gl_FragCoord, thread float2 uFramebufferSize, thread float4 uFilterParams0, thread float4 uFilterParams1, thread float4 uFilterParams2, thread texture2d<float> uDestTexture, thread const sampler uDestTextureSmplr, thread float4& oFragColor)
 {
     int maskCtrl0 = (ctrl >> 0) & 3;
-    int maskCtrl1 = (ctrl >> 2) & 3;
     float maskAlpha = 1.0;
     float param = maskAlpha;
     float3 param_1 = vMaskTexCoord0;
     int param_2 = maskCtrl0;
     maskAlpha = sampleMask(param, uMaskTexture0, uMaskTexture0Smplr, param_1, param_2);
-    float param_3 = maskAlpha;
-    float3 param_4 = vMaskTexCoord1;
-    int param_5 = maskCtrl1;
-    maskAlpha = sampleMask(param_3, uMaskTexture1, uMaskTexture1Smplr, param_4, param_5);
     float4 color = vBaseColor;
     int color0Combine = (ctrl >> 6) & 3;
     if (color0Combine != 0)
     {
         int color0Filter = (ctrl >> 4) & 3;
-        float2 param_6 = vColorTexCoord0;
-        float2 param_7 = uColorTexture0Size;
-        float2 param_8 = gl_FragCoord.xy;
-        float2 param_9 = uFramebufferSize;
-        float4 param_10 = uFilterParams0;
-        float4 param_11 = uFilterParams1;
-        float4 param_12 = uFilterParams2;
-        int param_13 = color0Filter;
-        float4 color0 = filterColor(param_6, uColorTexture0, uColorTexture0Smplr, uGammaLUT, uGammaLUTSmplr, param_7, param_8, param_9, param_10, param_11, param_12, param_13);
-        float4 param_14 = color;
-        float4 param_15 = color0;
-        int param_16 = color0Combine;
-        color = combineColor0(param_14, param_15, param_16);
+        float2 param_3 = vColorTexCoord0;
+        float2 param_4 = uColorTexture0Size;
+        float2 param_5 = gl_FragCoord.xy;
+        float2 param_6 = uFramebufferSize;
+        float4 param_7 = uFilterParams0;
+        float4 param_8 = uFilterParams1;
+        float4 param_9 = uFilterParams2;
+        int param_10 = color0Filter;
+        float4 color0 = filterColor(param_3, uColorTexture0, uColorTexture0Smplr, uGammaLUT, uGammaLUTSmplr, param_4, param_5, param_6, param_7, param_8, param_9, param_10);
+        float4 param_11 = color;
+        float4 param_12 = color0;
+        int param_13 = color0Combine;
+        color = combineColor0(param_11, param_12, param_13);
     }
     color.w *= maskAlpha;
     int compositeOp = (ctrl >> 8) & 15;
-    float4 param_17 = color;
-    float2 param_18 = uFramebufferSize;
-    float2 param_19 = gl_FragCoord.xy;
-    int param_20 = compositeOp;
-    color = composite(param_17, uDestTexture, uDestTextureSmplr, param_18, param_19, param_20);
-    float3 _1337 = color.xyz * color.w;
-    color = float4(_1337.x, _1337.y, _1337.z, color.w);
+    float4 param_14 = color;
+    float2 param_15 = uFramebufferSize;
+    float2 param_16 = gl_FragCoord.xy;
+    int param_17 = compositeOp;
+    color = composite(param_14, uDestTexture, uDestTextureSmplr, param_15, param_16, param_17);
+    float3 _1324 = color.xyz * color.w;
+    color = float4(_1324.x, _1324.y, _1324.z, color.w);
     oFragColor = color;
 }
 
@@ -596,7 +588,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
 {
     main0_out out = {};
     int param = (*spvDescriptorSet0.uCtrl);
-    calculateColor(param, spvDescriptorSet0.uMaskTexture0, spvDescriptorSet0.uMaskTexture0Smplr, in.vMaskTexCoord0, spvDescriptorSet0.uMaskTexture1, spvDescriptorSet0.uMaskTexture1Smplr, in.vMaskTexCoord1, in.vBaseColor, in.vColorTexCoord0, spvDescriptorSet0.uColorTexture0, spvDescriptorSet0.uColorTexture0Smplr, spvDescriptorSet0.uGammaLUT, spvDescriptorSet0.uGammaLUTSmplr, (*spvDescriptorSet0.uColorTexture0Size), gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), (*spvDescriptorSet0.uFilterParams0), (*spvDescriptorSet0.uFilterParams1), (*spvDescriptorSet0.uFilterParams2), spvDescriptorSet0.uDestTexture, spvDescriptorSet0.uDestTextureSmplr, out.oFragColor);
+    calculateColor(param, spvDescriptorSet0.uMaskTexture0, spvDescriptorSet0.uMaskTexture0Smplr, in.vMaskTexCoord0, in.vBaseColor, in.vColorTexCoord0, spvDescriptorSet0.uColorTexture0, spvDescriptorSet0.uColorTexture0Smplr, spvDescriptorSet0.uGammaLUT, spvDescriptorSet0.uGammaLUTSmplr, (*spvDescriptorSet0.uColorTexture0Size), gl_FragCoord, (*spvDescriptorSet0.uFramebufferSize), (*spvDescriptorSet0.uFilterParams0), (*spvDescriptorSet0.uFilterParams1), (*spvDescriptorSet0.uFilterParams2), spvDescriptorSet0.uDestTexture, spvDescriptorSet0.uDestTextureSmplr, out.oFragColor);
     return out;
 }
 

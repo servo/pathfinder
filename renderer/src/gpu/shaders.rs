@@ -16,6 +16,7 @@ use pathfinder_resources::ResourceLoader;
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
 const TILE_INSTANCE_SIZE: usize = 12;
+const CLIP_TILE_INSTANCE_SIZE: usize = 8;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -165,8 +166,6 @@ impl<D> TileVertexArray<D> where D: Device {
             device.get_vertex_attr(&tile_program.program, "TileOrigin").unwrap();
         let mask_0_tex_coord_attr =
             device.get_vertex_attr(&tile_program.program, "MaskTexCoord0").unwrap();
-        let mask_1_tex_coord_attr =
-            device.get_vertex_attr(&tile_program.program, "MaskTexCoord1").unwrap();
         let mask_backdrop_attr =
             device.get_vertex_attr(&tile_program.program, "MaskBackdrop").unwrap();
         let color_attr = device.get_vertex_attr(&tile_program.program, "Color").unwrap();
@@ -200,21 +199,12 @@ impl<D> TileVertexArray<D> where D: Device {
             divisor: 1,
             buffer_index: 1,
         });
-        device.configure_vertex_attr(&vertex_array, &mask_1_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 6,
-            divisor: 1,
-            buffer_index: 1,
-        });
         device.configure_vertex_attr(&vertex_array, &mask_backdrop_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I8,
             stride: TILE_INSTANCE_SIZE,
-            offset: 8,
+            offset: 6,
             divisor: 1,
             buffer_index: 1,
         });
@@ -223,7 +213,7 @@ impl<D> TileVertexArray<D> where D: Device {
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
             stride: TILE_INSTANCE_SIZE,
-            offset: 10,
+            offset: 8,
             divisor: 1,
             buffer_index: 1,
         });
@@ -264,6 +254,74 @@ impl<D> CopyTileVertexArray<D> where D: Device {
         CopyTileVertexArray { vertex_array }
     }
 }
+
+pub struct ClipTileVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+    pub vertex_buffer: D::Buffer,
+}
+
+impl<D> ClipTileVertexArray<D> where D: Device {
+    pub fn new(device: &D,
+               clip_tile_program: &ClipTileProgram<D>,
+               quad_vertex_positions_buffer: &D::Buffer,
+               quad_vertex_indices_buffer: &D::Buffer)
+               -> ClipTileVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let vertex_buffer = device.create_buffer();
+
+        let tile_offset_attr =
+            device.get_vertex_attr(&clip_tile_program.program, "TileOffset").unwrap();
+        let dest_tile_origin_attr =
+            device.get_vertex_attr(&clip_tile_program.program, "DestTileOrigin").unwrap();
+        let src_tile_origin_attr =
+            device.get_vertex_attr(&clip_tile_program.program, "SrcTileOrigin").unwrap();
+        let src_backdrop_attr =
+            device.get_vertex_attr(&clip_tile_program.program, "SrcBackdrop").unwrap();
+
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &tile_offset_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: 4,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &dest_tile_origin_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: CLIP_TILE_INSTANCE_SIZE,
+            offset: 0,
+            divisor: 1,
+            buffer_index: 1,
+        });
+        device.configure_vertex_attr(&vertex_array, &src_tile_origin_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: CLIP_TILE_INSTANCE_SIZE,
+            offset: 2,
+            divisor: 1,
+            buffer_index: 1,
+        });
+        device.configure_vertex_attr(&vertex_array, &src_backdrop_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I8,
+            stride: CLIP_TILE_INSTANCE_SIZE,
+            offset: 4,
+            divisor: 1,
+            buffer_index: 1,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+
+        ClipTileVertexArray { vertex_array, vertex_buffer }
+    }
+}
+
 
 pub struct BlitProgram<D> where D: Device {
     pub program: D::Program,
@@ -316,7 +374,6 @@ pub struct TileProgram<D> where D: Device {
     pub color_texture_0_uniform: D::Uniform,
     pub color_texture_1_uniform: D::Uniform,
     pub mask_texture_0_uniform: D::Uniform,
-    pub mask_texture_1_uniform: D::Uniform,
     pub gamma_lut_uniform: D::Uniform,
     pub color_texture_0_size_uniform: D::Uniform,
     pub filter_params_0_uniform: D::Uniform,
@@ -337,7 +394,6 @@ impl<D> TileProgram<D> where D: Device {
         let color_texture_0_uniform = device.get_uniform(&program, "ColorTexture0");
         let color_texture_1_uniform = device.get_uniform(&program, "ColorTexture1");
         let mask_texture_0_uniform = device.get_uniform(&program, "MaskTexture0");
-        let mask_texture_1_uniform = device.get_uniform(&program, "MaskTexture1");
         let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
         let color_texture_0_size_uniform = device.get_uniform(&program, "ColorTexture0Size");
         let filter_params_0_uniform = device.get_uniform(&program, "FilterParams0");
@@ -355,7 +411,6 @@ impl<D> TileProgram<D> where D: Device {
             color_texture_0_uniform,
             color_texture_1_uniform,
             mask_texture_0_uniform,
-            mask_texture_1_uniform,
             gamma_lut_uniform,
             color_texture_0_size_uniform,
             filter_params_0_uniform,
@@ -389,6 +444,19 @@ impl<D> CopyTileProgram<D> where D: Device {
             framebuffer_size_uniform,
             src_uniform,
         }
+    }
+}
+
+pub struct ClipTileProgram<D> where D: Device {
+    pub program: D::Program,
+    pub src_uniform: D::Uniform,
+}
+
+impl<D> ClipTileProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> ClipTileProgram<D> {
+        let program = device.create_program(resources, "tile_clip");
+        let src_uniform = device.get_uniform(&program, "Src");
+        ClipTileProgram { program, src_uniform }
     }
 }
 

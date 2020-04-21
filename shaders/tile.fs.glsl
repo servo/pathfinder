@@ -73,14 +73,12 @@ precision highp sampler2D;
 #define COMBINER_CTRL_COMPOSITE_LUMINOSITY      0xf
 
 #define COMBINER_CTRL_MASK_0_SHIFT              0
-#define COMBINER_CTRL_MASK_1_SHIFT              2
 #define COMBINER_CTRL_COLOR_FILTER_SHIFT        4
 #define COMBINER_CTRL_COLOR_COMBINE_SHIFT       6
 #define COMBINER_CTRL_COMPOSITE_SHIFT           8
 
 uniform sampler2D uColorTexture0;
 uniform sampler2D uMaskTexture0;
-uniform sampler2D uMaskTexture1;
 uniform sampler2D uDestTexture;
 uniform sampler2D uGammaLUT;
 uniform vec4 uFilterParams0;
@@ -91,7 +89,6 @@ uniform vec2 uColorTexture0Size;
 uniform int uCtrl;
 
 in vec3 vMaskTexCoord0;
-in vec3 vMaskTexCoord1;
 in vec2 vColorTexCoord0;
 in vec4 vBaseColor;
 
@@ -560,10 +557,8 @@ float sampleMask(float maskAlpha,
 void calculateColor(int ctrl) {
     // Sample mask.
     int maskCtrl0 = (ctrl >> COMBINER_CTRL_MASK_0_SHIFT) & COMBINER_CTRL_MASK_MASK;
-    int maskCtrl1 = (ctrl >> COMBINER_CTRL_MASK_1_SHIFT) & COMBINER_CTRL_MASK_MASK;
     float maskAlpha = 1.0;
     maskAlpha = sampleMask(maskAlpha, uMaskTexture0, vMaskTexCoord0, maskCtrl0);
-    maskAlpha = sampleMask(maskAlpha, uMaskTexture1, vMaskTexCoord1, maskCtrl1);
 
     // Sample color.
     vec4 color = vBaseColor;

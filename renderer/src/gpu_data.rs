@@ -10,6 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
+use crate::builder::{ALPHA_TILES_PER_LEVEL, ALPHA_TILE_LEVEL_COUNT};
 use crate::options::BoundingQuad;
 use crate::paint::PaintCompositeOp;
 use pathfinder_color::ColorU;
@@ -23,7 +24,9 @@ use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::TextureSamplingFlags;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+use std::u32;
 
 pub enum RenderCommand {
     // Starts rendering a frame.
@@ -61,6 +64,9 @@ pub enum RenderCommand {
     // Flushes the queue of fills.
     FlushFills,
 
+    // Renders clips to the mask tile.
+    ClipTiles(Vec<ClipBatch>),
+
     // Pushes a render target onto the stack. Draw commands go to the render target on top of the
     // stack.
     PushRenderTarget(RenderTargetId),
@@ -97,7 +103,6 @@ pub struct TileBatch {
     pub tiles: Vec<Tile>,
     pub color_texture: Option<TileBatchTexture>,
     pub mask_0_fill_rule: Option<FillRule>,
-    pub mask_1_fill_rule: Option<FillRule>,
     pub filter: Filter,
     pub blend_mode: BlendMode,
     pub tile_page: u16,
@@ -147,6 +152,38 @@ pub struct Fill {
     pub alpha_tile_index: u16,
 }
 
+#[derive(Clone, Debug)]
+pub struct ClipBatch {
+    pub clips: Vec<Clip>,
+    pub key: ClipBatchKey,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ClipBatchKey {
+    pub dest_page: u16,
+    pub src_page: u16,
+    pub kind: ClipBatchKind,
+}
+
+// Order is significant here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ClipBatchKind {
+    Draw,
+    Clip,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct Clip {
+    pub dest_u: u8,
+    pub dest_v: u8,
+    pub src_u: u8,
+    pub src_v: u8,
+    pub backdrop: i8,
+    pub pad_0: u8,
+    pub pad_1: u16,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct Tile {
@@ -154,17 +191,24 @@ pub struct Tile {
     pub tile_y: i16,
     pub mask_0_u: u8,
     pub mask_0_v: u8,
-    pub mask_1_u: u8,
-    pub mask_1_v: u8,
     pub mask_0_backdrop: i8,
-    pub mask_1_backdrop: i8,
+    pub pad: u8,
     pub color: u16,
+    pub flags: u16,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct AlphaTileId(pub u32);
 
 impl AlphaTileId {
+    #[inline]
+    pub fn new(next_alpha_tile_index: &[AtomicUsize; ALPHA_TILE_LEVEL_COUNT], level: usize) 
+               -> AlphaTileId {
+        let alpha_tile_index = next_alpha_tile_index[level].fetch_add(1, Ordering::Relaxed);
+        debug_assert!(alpha_tile_index < ALPHA_TILES_PER_LEVEL);
+        AlphaTileId((level * ALPHA_TILES_PER_LEVEL + alpha_tile_index) as u32)
+    }
+
     #[inline]
     pub fn invalid() -> AlphaTileId {
         AlphaTileId(!0)
@@ -206,6 +250,9 @@ impl Debug for RenderCommand {
                 write!(formatter, "AddFills(x{})", fills.len())
             }
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
+            RenderCommand::ClipTiles(ref batches) => {
+                write!(formatter, "ClipTiles(x{})", batches.len())
+            }
             RenderCommand::PushRenderTarget(render_target_id) => {
                 write!(formatter, "PushRenderTarget({:?})", render_target_id)
             }

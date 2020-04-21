@@ -16,9 +16,8 @@ struct spvDescriptorSetBuffer0
 struct main0_out
 {
     float3 vMaskTexCoord0 [[user(locn0)]];
-    float3 vMaskTexCoord1 [[user(locn1)]];
-    float2 vColorTexCoord0 [[user(locn2)]];
-    float4 vBaseColor [[user(locn3)]];
+    float2 vColorTexCoord0 [[user(locn1)]];
+    float4 vBaseColor [[user(locn2)]];
     float4 gl_Position [[position]];
 };
 
@@ -27,9 +26,8 @@ struct main0_in
     int2 aTileOffset [[attribute(0)]];
     int2 aTileOrigin [[attribute(1)]];
     uint2 aMaskTexCoord0 [[attribute(2)]];
-    uint2 aMaskTexCoord1 [[attribute(3)]];
-    int2 aMaskBackdrop [[attribute(4)]];
-    int aColor [[attribute(5)]];
+    int2 aMaskBackdrop [[attribute(3)]];
+    int aColor [[attribute(4)]];
 };
 
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
@@ -39,7 +37,6 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     float2 tileOffset = float2(in.aTileOffset);
     float2 position = (tileOrigin + tileOffset) * (*spvDescriptorSet0.uTileSize);
     float2 maskTexCoord0 = (float2(in.aMaskTexCoord0) + tileOffset) / float2(256.0);
-    float2 maskTexCoord1 = (float2(in.aMaskTexCoord1) + tileOffset) / float2(256.0);
     float2 textureMetadataScale = float2(1.0) / float2((*spvDescriptorSet0.uTextureMetadataSize));
     float2 metadataEntryCoord = float2(float((in.aColor % 128) * 4), float(in.aColor / 128));
     float2 colorTexMatrix0Coord = (metadataEntryCoord + float2(0.5)) * textureMetadataScale;
@@ -50,7 +47,6 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     float4 baseColor = spvDescriptorSet0.uTextureMetadata.sample(spvDescriptorSet0.uTextureMetadataSmplr, baseColorCoord, level(0.0));
     out.vColorTexCoord0 = (float2x2(float2(colorTexMatrix0.xy), float2(colorTexMatrix0.zw)) * position) + colorTexOffsets.xy;
     out.vMaskTexCoord0 = float3(maskTexCoord0, float(in.aMaskBackdrop.x));
-    out.vMaskTexCoord1 = float3(maskTexCoord1, float(in.aMaskBackdrop.y));
     out.vBaseColor = baseColor;
     out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(position, 0.0, 1.0);
     return out;
