@@ -15,6 +15,7 @@ extern crate bitflags;
 
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
+use pathfinder_content::dash::OutlineDash;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::{ColorStop, Gradient};
 use pathfinder_content::outline::Outline;
@@ -49,17 +50,14 @@ bitflags! {
     pub struct BuildResultFlags: u16 {
         const UNSUPPORTED_FILTER_NODE            = 0x0001;
         const UNSUPPORTED_IMAGE_NODE             = 0x0002;
-        const UNSUPPORTED_LINEAR_GRADIENT_NODE   = 0x0004;
-        const UNSUPPORTED_MASK_NODE              = 0x0008;
-        const UNSUPPORTED_PATTERN_NODE           = 0x0010;
-        const UNSUPPORTED_RADIAL_GRADIENT_NODE   = 0x0020;
-        const UNSUPPORTED_NESTED_SVG_NODE        = 0x0040;
-        const UNSUPPORTED_MULTIPLE_CLIP_PATHS    = 0x0080;
-        const UNSUPPORTED_LINK_PAINT             = 0x0100;
-        const UNSUPPORTED_FILTER_ATTR            = 0x0200;
-        const UNSUPPORTED_MASK_ATTR              = 0x0400;
-        const UNSUPPORTED_STROKE_DASH            = 0x0800;
-        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x1000;
+        const UNSUPPORTED_MASK_NODE              = 0x0004;
+        const UNSUPPORTED_PATTERN_NODE           = 0x0008;
+        const UNSUPPORTED_NESTED_SVG_NODE        = 0x0010;
+        const UNSUPPORTED_MULTIPLE_CLIP_PATHS    = 0x0020;
+        const UNSUPPORTED_LINK_PAINT             = 0x0040;
+        const UNSUPPORTED_FILTER_ATTR            = 0x0080;
+        const UNSUPPORTED_MASK_ATTR              = 0x0100;
+        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x0200;
     }
 }
 
@@ -159,12 +157,15 @@ impl BuiltSVG {
                                                                  stroke.miterlimit.value() as f32),
                     };
 
-                    if stroke.dasharray.is_some() {
-                        self.result_flags.insert(BuildResultFlags::UNSUPPORTED_STROKE_DASH);
-                    }
-
                     let path = UsvgPathToSegments::new(path.data.iter().cloned());
-                    let outline = Outline::from_segments(path);
+                    let mut outline = Outline::from_segments(path);
+
+                    if let Some(ref dash_array) = stroke.dasharray {
+                        let dash_array: Vec<f32> = dash_array.iter().map(|&x| x as f32).collect();
+                        let mut dash = OutlineDash::new(&outline, &dash_array, stroke.dashoffset);
+                        dash.dash();
+                        outline = dash.into_outline();
+                    }
 
                     let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
                     stroke_to_fill.offset();
@@ -308,16 +309,14 @@ impl Display for BuildResultFlags {
         static NAMES: &'static [&'static str] = &[
             "<filter>",
             "<image>",
-            "<linearGradient>",
             "<mask>",
             "<pattern>",
-            "<radialGradient>",
             "nested <svg>",
             "multiple clip paths",
             "non-color paint",
             "filter attribute",
             "mask attribute",
-            "stroke dash",
+            "gradient spread method",
         ];
     }
 }
