@@ -15,7 +15,7 @@ use crate::gpu_data::{Tile, TileBatch};
 use crate::paint::{PaintId, PaintMetadata};
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_content::effects::{BlendMode, Filter};
+use pathfinder_content::effects::BlendMode;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2I;
 use vec_map::VecMap;
@@ -78,9 +78,11 @@ impl ZBuffer {
 
             // Create a batch if necessary.
             let paint_tile_batch_texture = paint_metadata.tile_batch_texture();
+            let paint_filter = paint_metadata.filter();
             match solid_tiles.batches.last() {
-                Some(TileBatch { color_texture: tile_batch_texture, .. }) if
-                        *tile_batch_texture == paint_tile_batch_texture => {}
+                Some(TileBatch { color_texture: tile_batch_texture, filter: tile_filter, .. }) if
+                        *tile_batch_texture == paint_tile_batch_texture &&
+                        *tile_filter == paint_filter => {}
                 _ => {
                     // Batch break.
                     //
@@ -89,7 +91,7 @@ impl ZBuffer {
                     solid_tiles.batches.push(TileBatch {
                         color_texture: paint_tile_batch_texture,
                         tiles: vec![],
-                        filter: Filter::None,
+                        filter: paint_filter,
                         blend_mode: BlendMode::default(),
                         tile_page: !0,
                     });
