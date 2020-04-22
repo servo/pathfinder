@@ -19,6 +19,8 @@ shaders/gl3/stencil.fs.glsl
 shaders/gl3/stencil.vs.glsl
 shaders/gl3/tile.fs.glsl
 shaders/gl3/tile.vs.glsl
+shaders/gl3/tile_clip.fs.glsl
+shaders/gl3/tile_clip.vs.glsl
 shaders/gl3/tile_copy.fs.glsl
 shaders/gl3/tile_copy.vs.glsl
 shaders/metal/blit.fs.metal
