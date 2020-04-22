@@ -25,7 +25,6 @@ use half::f16;
 use pathfinder_color::{self as color, ColorF, ColorU};
 use pathfinder_content::effects::{BlendMode, BlurDirection, DefringingKernel};
 use pathfinder_content::effects::{Filter, PatternFilter};
-use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
@@ -65,9 +64,6 @@ const TEXTURE_METADATA_TEXTURE_HEIGHT:  i32 = 65536 / TEXTURE_METADATA_ENTRIES_P
 const MASK_FRAMEBUFFER_WIDTH:  i32 = TILE_WIDTH as i32  * MASK_TILES_ACROSS as i32;
 const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * MASK_TILES_DOWN as i32;
 
-const COMBINER_CTRL_MASK_WINDING: i32 =             0x1;
-const COMBINER_CTRL_MASK_EVEN_ODD: i32 =            0x2;
-
 const COMBINER_CTRL_COLOR_COMBINE_SRC_IN: i32 =     0x1;
 const COMBINER_CTRL_COLOR_COMBINE_DEST_IN: i32 =    0x2;
 
@@ -92,7 +88,6 @@ const COMBINER_CTRL_COMPOSITE_SATURATION: i32 =     0xd;
 const COMBINER_CTRL_COMPOSITE_COLOR: i32 =          0xe;
 const COMBINER_CTRL_COMPOSITE_LUMINOSITY: i32 =     0xf;
 
-const COMBINER_CTRL_MASK_0_SHIFT: i32 =             0;
 const COMBINER_CTRL_COLOR_FILTER_SHIFT: i32 =       4;
 const COMBINER_CTRL_COLOR_COMBINE_SHIFT: i32 =      6;
 const COMBINER_CTRL_COMPOSITE_SHIFT: i32 =          8;
@@ -311,6 +306,7 @@ where
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
+        debug!("render command: {:?}", command);
         match *command {
             RenderCommand::Start { bounding_quad, path_count, needs_readable_framebuffer } => {
                 self.start_rendering(bounding_quad, path_count, needs_readable_framebuffer);
@@ -349,7 +345,6 @@ where
                 self.draw_tiles(batch.tile_page,
                                 count as u32,
                                 batch.color_texture,
-                                batch.mask_0_fill_rule,
                                 batch.blend_mode,
                                 batch.filter)
             }
@@ -726,7 +721,6 @@ where
                   tile_page: u16,
                   tile_count: u32,
                   color_texture_0: Option<TileBatchTexture>,
-                  mask_0_fill_rule: Option<FillRule>,
                   blend_mode: BlendMode,
                   filter: Filter) {
         // TODO(pcwalton): Disable blend for solid tiles.
@@ -738,17 +732,6 @@ where
 
         let clear_color = self.clear_color_for_draw_operation();
         let draw_viewport = self.draw_viewport();
-
-        let mut ctrl = 0;
-        match mask_0_fill_rule {
-            None => {}
-            Some(FillRule::Winding) => {
-                ctrl |= COMBINER_CTRL_MASK_WINDING << COMBINER_CTRL_MASK_0_SHIFT
-            }
-            Some(FillRule::EvenOdd) => {
-                ctrl |= COMBINER_CTRL_MASK_EVEN_ODD << COMBINER_CTRL_MASK_0_SHIFT
-            }
-        }
 
         let mut textures = vec![&self.texture_metadata_texture];
         let mut uniforms = vec![
@@ -770,14 +753,14 @@ where
             textures.push(self.device.framebuffer_texture(&self.dest_blend_framebuffer));
         }
 
-        if mask_0_fill_rule.is_some() {
+        if let Some(alpha_tile_page) = self.alpha_tile_pages.get(&tile_page) {
             uniforms.push((&self.tile_program.mask_texture_0_uniform,
-                           UniformData::TextureUnit(textures.len() as u32)));
-            textures.push(self.device.framebuffer_texture(
-                &self.alpha_tile_pages[&tile_page].framebuffer));
+                        UniformData::TextureUnit(textures.len() as u32)));
+            textures.push(self.device.framebuffer_texture(&alpha_tile_page.framebuffer));
         }
 
         // TODO(pcwalton): Refactor.
+        let mut ctrl = 0;
         if let Some(color_texture) = color_texture_0 {
             let color_texture_page = self.texture_page(color_texture.page);
             let color_texture_size = self.device.texture_size(color_texture_page).to_f32();

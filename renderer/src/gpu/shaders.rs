@@ -169,6 +169,7 @@ impl<D> TileVertexArray<D> where D: Device {
         let mask_backdrop_attr =
             device.get_vertex_attr(&tile_program.program, "MaskBackdrop").unwrap();
         let color_attr = device.get_vertex_attr(&tile_program.program, "Color").unwrap();
+        let tile_ctrl_attr = device.get_vertex_attr(&tile_program.program, "TileCtrl").unwrap();
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_offset_attr, &VertexAttrDescriptor {
@@ -214,6 +215,15 @@ impl<D> TileVertexArray<D> where D: Device {
             attr_type: VertexAttrType::I16,
             stride: TILE_INSTANCE_SIZE,
             offset: 8,
+            divisor: 1,
+            buffer_index: 1,
+        });
+        device.configure_vertex_attr(&vertex_array, &tile_ctrl_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: TILE_INSTANCE_SIZE,
+            offset: 10,
             divisor: 1,
             buffer_index: 1,
         });

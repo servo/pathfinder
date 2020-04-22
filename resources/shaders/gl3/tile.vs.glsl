@@ -25,10 +25,12 @@ in ivec2 aTileOrigin;
 in uvec2 aMaskTexCoord0;
 in ivec2 aMaskBackdrop;
 in int aColor;
+in int aTileCtrl;
 
 out vec3 vMaskTexCoord0;
 out vec2 vColorTexCoord0;
 out vec4 vBaseColor;
+out float vTileCtrl;
 
 void main(){
     vec2 tileOrigin = vec2(aTileOrigin), tileOffset = vec2(aTileOffset);
@@ -48,6 +50,7 @@ void main(){
     vColorTexCoord0 = mat2(colorTexMatrix0)* position + colorTexOffsets . xy;
     vMaskTexCoord0 = vec3(maskTexCoord0, float(aMaskBackdrop . x));
     vBaseColor = baseColor;
+    vTileCtrl = float(aTileCtrl);
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 }
 

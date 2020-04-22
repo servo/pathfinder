@@ -79,6 +79,7 @@ precision highp sampler2D;
 
 
 
+
 uniform sampler2D uColorTexture0;
 uniform sampler2D uMaskTexture0;
 uniform sampler2D uDestTexture;
@@ -93,6 +94,7 @@ uniform int uCtrl;
 in vec3 vMaskTexCoord0;
 in vec2 vColorTexCoord0;
 in vec4 vBaseColor;
+in float vTileCtrl;
 
 out vec4 oFragColor;
 
@@ -556,9 +558,9 @@ float sampleMask(float maskAlpha,
 
 
 
-void calculateColor(int ctrl){
+void calculateColor(int tileCtrl, int ctrl){
 
-    int maskCtrl0 =(ctrl >> 0)& 0x3;
+    int maskCtrl0 =(tileCtrl >> 0)& 0x3;
     float maskAlpha = 1.0;
     maskAlpha = sampleMask(maskAlpha, uMaskTexture0, vMaskTexCoord0, maskCtrl0);
 
@@ -598,6 +600,6 @@ void calculateColor(int ctrl){
 
 
 void main(){
-    calculateColor(uCtrl);
+    calculateColor(int(vTileCtrl), uCtrl);
 }
 

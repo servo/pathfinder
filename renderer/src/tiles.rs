@@ -51,6 +51,7 @@ pub(crate) struct DrawTilingPathInfo<'a> {
     pub(crate) paint_metadata: &'a PaintMetadata,
     pub(crate) blend_mode: BlendMode,
     pub(crate) built_clip_path: Option<&'a BuiltPath>,
+    pub(crate) fill_rule: FillRule,
 }
 
 impl<'a, 'b> Tiler<'a, 'b> {

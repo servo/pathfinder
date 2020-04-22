@@ -91,7 +91,6 @@ impl ZBuffer {
                         tiles: vec![],
                         filter: Filter::None,
                         blend_mode: BlendMode::default(),
-                        mask_0_fill_rule: None,
                         tile_page: !0,
                     });
                 }
@@ -113,7 +112,7 @@ impl Tile {
             mask_0_backdrop: 0,
             mask_0_u: 0,
             mask_0_v: 0,
-            flags: 0,
+            ctrl: 0,
             pad: 0,
             color: paint_id.0,
         }

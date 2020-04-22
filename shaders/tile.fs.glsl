@@ -41,9 +41,11 @@ precision highp sampler2D;
 #define FRAC_6_PI   1.9098593171027443
 #define FRAC_PI_3   1.0471975511965976
 
-#define COMBINER_CTRL_MASK_MASK                 0x3
-#define COMBINER_CTRL_MASK_WINDING              0x1
-#define COMBINER_CTRL_MASK_EVEN_ODD             0x2
+#define TILE_CTRL_MASK_MASK                     0x3
+#define TILE_CTRL_MASK_WINDING                  0x1
+#define TILE_CTRL_MASK_EVEN_ODD                 0x2
+
+#define TILE_CTRL_MASK_0_SHIFT                  0
 
 #define COMBINER_CTRL_COLOR_COMBINE_MASK        0x3
 #define COMBINER_CTRL_COLOR_COMBINE_SRC_IN      0x1
@@ -72,7 +74,6 @@ precision highp sampler2D;
 #define COMBINER_CTRL_COMPOSITE_COLOR           0xe
 #define COMBINER_CTRL_COMPOSITE_LUMINOSITY      0xf
 
-#define COMBINER_CTRL_MASK_0_SHIFT              0
 #define COMBINER_CTRL_COLOR_FILTER_SHIFT        4
 #define COMBINER_CTRL_COLOR_COMBINE_SHIFT       6
 #define COMBINER_CTRL_COMPOSITE_SHIFT           8
@@ -91,6 +92,7 @@ uniform int uCtrl;
 in vec3 vMaskTexCoord0;
 in vec2 vColorTexCoord0;
 in vec4 vBaseColor;
+in float vTileCtrl;
 
 out vec4 oFragColor;
 
@@ -545,7 +547,7 @@ float sampleMask(float maskAlpha,
     if (maskCtrl == 0)
         return maskAlpha;
     float coverage = texture(maskTexture, maskTexCoord.xy).r + maskTexCoord.z;
-    if ((maskCtrl & COMBINER_CTRL_MASK_WINDING) != 0)
+    if ((maskCtrl & TILE_CTRL_MASK_WINDING) != 0)
         coverage = abs(coverage);
     else
         coverage = 1.0 - abs(1.0 - mod(coverage, 2.0));
@@ -554,9 +556,9 @@ float sampleMask(float maskAlpha,
 
 // Main function
 
-void calculateColor(int ctrl) {
+void calculateColor(int tileCtrl, int ctrl) {
     // Sample mask.
-    int maskCtrl0 = (ctrl >> COMBINER_CTRL_MASK_0_SHIFT) & COMBINER_CTRL_MASK_MASK;
+    int maskCtrl0 = (tileCtrl >> TILE_CTRL_MASK_0_SHIFT) & TILE_CTRL_MASK_MASK;
     float maskAlpha = 1.0;
     maskAlpha = sampleMask(maskAlpha, uMaskTexture0, vMaskTexCoord0, maskCtrl0);
 
@@ -596,5 +598,5 @@ void calculateColor(int ctrl) {
 // TODO(pcwalton): Generate this dynamically.
 
 void main() {
-    calculateColor(uCtrl);
+    calculateColor(int(vTileCtrl), uCtrl);
 }

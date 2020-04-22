@@ -18,6 +18,7 @@ struct main0_out
     float3 vMaskTexCoord0 [[user(locn0)]];
     float2 vColorTexCoord0 [[user(locn1)]];
     float4 vBaseColor [[user(locn2)]];
+    float vTileCtrl [[user(locn3)]];
     float4 gl_Position [[position]];
 };
 
@@ -28,6 +29,7 @@ struct main0_in
     uint2 aMaskTexCoord0 [[attribute(2)]];
     int2 aMaskBackdrop [[attribute(3)]];
     int aColor [[attribute(4)]];
+    int aTileCtrl [[attribute(5)]];
 };
 
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
@@ -48,6 +50,7 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     out.vColorTexCoord0 = (float2x2(float2(colorTexMatrix0.xy), float2(colorTexMatrix0.zw)) * position) + colorTexOffsets.xy;
     out.vMaskTexCoord0 = float3(maskTexCoord0, float(in.aMaskBackdrop.x));
     out.vBaseColor = baseColor;
+    out.vTileCtrl = float(in.aTileCtrl);
     out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(position, 0.0, 1.0);
     return out;
 }

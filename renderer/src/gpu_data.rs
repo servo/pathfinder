@@ -15,7 +15,6 @@ use crate::options::BoundingQuad;
 use crate::paint::PaintCompositeOp;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{BlendMode, Filter};
-use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::rect::RectI;
@@ -27,6 +26,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::u32;
+
+pub const TILE_CTRL_MASK_MASK:     i32 = 0x3;
+pub const TILE_CTRL_MASK_WINDING:  i32 = 0x1;
+pub const TILE_CTRL_MASK_EVEN_ODD: i32 = 0x2;
+
+pub const TILE_CTRL_MASK_0_SHIFT:  i32 = 0;
 
 pub enum RenderCommand {
     // Starts rendering a frame.
@@ -102,7 +107,6 @@ pub struct TextureLocation {
 pub struct TileBatch {
     pub tiles: Vec<Tile>,
     pub color_texture: Option<TileBatchTexture>,
-    pub mask_0_fill_rule: Option<FillRule>,
     pub filter: Filter,
     pub blend_mode: BlendMode,
     pub tile_page: u16,
@@ -194,7 +198,7 @@ pub struct Tile {
     pub mask_0_backdrop: i8,
     pub pad: u8,
     pub color: u16,
-    pub flags: u16,
+    pub ctrl: u16,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -260,10 +264,9 @@ impl Debug for RenderCommand {
             RenderCommand::BeginTileDrawing => write!(formatter, "BeginTileDrawing"),
             RenderCommand::DrawTiles(ref batch) => {
                 write!(formatter,
-                       "DrawTiles(x{}, C0 {:?}, M0 {:?}, {:?})",
+                       "DrawTiles(x{}, C0 {:?}, {:?})",
                        batch.tiles.len(),
                        batch.color_texture,
-                       batch.mask_0_fill_rule,
                        batch.blend_mode)
             }
             RenderCommand::Finish { cpu_build_time } => {

@@ -12,8 +12,10 @@
 
 use crate::concurrent::executor::Executor;
 use crate::gpu::renderer::{BlendModeExt, MASK_TILES_ACROSS, MASK_TILES_DOWN};
-use crate::gpu_data::{AlphaTileId, Clip, ClipBatch, ClipBatchKey, ClipBatchKind, Fill, FillBatchEntry, RenderCommand};
-use crate::gpu_data::{Tile, TileBatch, TileBatchTexture, TileObjectPrimitive};
+use crate::gpu_data::{AlphaTileId, Clip, ClipBatch, ClipBatchKey, ClipBatchKind, Fill};
+use crate::gpu_data::{FillBatchEntry, RenderCommand, TILE_CTRL_MASK_0_SHIFT};
+use crate::gpu_data::{TILE_CTRL_MASK_EVEN_ODD, TILE_CTRL_MASK_WINDING, Tile, TileBatch};
+use crate::gpu_data::{TileBatchTexture, TileObjectPrimitive};
 use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
@@ -213,6 +215,7 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
             paint_metadata,
             blend_mode: path_object.blend_mode(),
             built_clip_path,
+            fill_rule: path_object.fill_rule(),
         }));
 
         tiler.generate_tiles();
@@ -309,8 +312,7 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
                                              current_depth,
                                              None,
                                              built_draw_path.blend_mode,
-                                             built_draw_path.filter,
-                                             None);
+                                             built_draw_path.filter);
 
                         self.add_alpha_tiles(&mut culled_tiles,
                                              layer_z_buffer,
@@ -318,8 +320,7 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
                                              current_depth,
                                              color_texture,
                                              built_draw_path.blend_mode,
-                                             built_draw_path.filter,
-                                             Some(built_draw_path.mask_0_fill_rule));
+                                             built_draw_path.filter);
 
                         match built_draw_path.path.solid_tiles {
                             SolidTiles::Regular(ref tiles) => {
@@ -329,8 +330,7 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
                                                      current_depth,
                                                      color_texture,
                                                      built_draw_path.blend_mode,
-                                                     built_draw_path.filter,
-                                                     None);
+                                                     built_draw_path.filter);
                             }
                             SolidTiles::Occluders(_) => {}
                         }
@@ -393,8 +393,7 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
                        current_depth: u32,
                        color_texture: Option<TileBatchTexture>,
                        blend_mode: BlendMode,
-                       filter: Filter,
-                       mask_0_fill_rule: Option<FillRule>) {
+                       filter: Filter) {
         let mut batch_indices: Vec<BatchIndex> = vec![];
         for built_alpha_tile in built_alpha_tiles {
             // Early cull if possible.
@@ -419,12 +418,10 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
                         color_texture: ref batch_color_texture,
                         blend_mode: batch_blend_mode,
                         filter: batch_filter,
-                        mask_0_fill_rule: batch_mask_0_fill_rule,
                         tile_page: batch_tile_page
                     })) if *batch_color_texture == color_texture &&
                             batch_blend_mode == blend_mode &&
                             batch_filter == filter &&
-                            batch_mask_0_fill_rule == mask_0_fill_rule &&
                             !batch_blend_mode.needs_readable_framebuffer() &&
                             batch_tile_page == built_alpha_tile.page => {
                         dest_batch_index = Some(BatchIndex {
@@ -449,7 +446,6 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
                     color_texture,
                     blend_mode,
                     filter,
-                    mask_0_fill_rule,
                     tile_page: built_alpha_tile.page,
                 }));
             }
@@ -871,13 +867,20 @@ impl Tile {
                  draw_tiling_path_info: &DrawTilingPathInfo)
                  -> Tile {
         let mask_0_uv = calculate_mask_uv(draw_tile_index);
+
+        let mut ctrl = 0;
+        match draw_tiling_path_info.fill_rule {
+            FillRule::EvenOdd => ctrl |= TILE_CTRL_MASK_EVEN_ODD << TILE_CTRL_MASK_0_SHIFT,
+            FillRule::Winding => ctrl |= TILE_CTRL_MASK_WINDING << TILE_CTRL_MASK_0_SHIFT,
+        }
+
         Tile {
             tile_x: tile_origin.x() as i16,
             tile_y: tile_origin.y() as i16,
             mask_0_u: mask_0_uv.x() as u8,
             mask_0_v: mask_0_uv.y() as u8,
             mask_0_backdrop: draw_tile_backdrop,
-            flags: 0,
+            ctrl: ctrl as u16,
             pad: 0,
             color: draw_tiling_path_info.paint_id.0,
         }
