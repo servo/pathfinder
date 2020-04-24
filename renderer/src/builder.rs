@@ -29,7 +29,6 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
@@ -464,30 +463,6 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
             display_item_index: usize,
             tile_page: u16,
         }
-
-        /*
-        // Create a new `DrawTiles` display item if we don't have one or if we have to break a
-        // batch due to blend mode or paint page. Note that every path with a blend mode that
-        // requires a readable framebuffer needs its own batch.
-        //
-        // TODO(pcwalton): If we really wanted to, we could use tile maps to avoid
-        // batch breaks in some cases…
-
-        // Fetch the destination alpha tiles buffer.
-        let culled_alpha_tiles = match *culled_tiles.display_list.last_mut().unwrap() {
-            CulledDisplayItem::DrawTiles(TileBatch { tiles: ref mut culled_alpha_tiles, .. }) => {
-                culled_alpha_tiles
-            }
-            _ => unreachable!(),
-        };
-
-        for alpha_tile in alpha_tiles {
-            let alpha_tile_coords = alpha_tile.tile_position();
-            if layer_z_buffer.test(alpha_tile_coords, current_depth) {
-                culled_alpha_tiles.push(*alpha_tile);
-            }
-        }
-        */
     }
 
     fn pack_tiles(&mut self, culled_tiles: CulledTiles) {

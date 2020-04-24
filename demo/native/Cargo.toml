@@ -11,10 +11,13 @@ pf-no-simd = ["pathfinder_simd/pf-no-simd"]
 [dependencies]
 color-backtrace = "0.3"
 gl = "0.14"
+lazy_static = "1"
 nfd = "0.0.4"
 pretty_env_logger = "0.4"
-sdl2 = "0.33"
-sdl2-sys = "0.33"
+
+[dependencies.euclid]
+version = "0.20"
+features = []
 
 [dependencies.pathfinder_demo]
 path = "../common"
@@ -34,9 +37,19 @@ path = "../../resources"
 [dependencies.pathfinder_simd]
 path = "../../simd"
 
+[dependencies.surfman]
+# version = "0.2"
+path = "/Users/pcwalton/Source/surfman/surfman"
+features = ["sm-winit"]
+
+[dependencies.winit]
+version = "<0.19.4" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
+
 [target.'cfg(target_os = "macos")'.dependencies]
 foreign-types = "0.3"
+io-surface = "0.12"
 metal = "0.17"
+objc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
 path = "../../metal"

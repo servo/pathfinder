@@ -16,15 +16,15 @@ extern crate log;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, RenderTarget};
-use pathfinder_gpu::{BufferUploadMode, ClearOps, DepthFunc, Device, Primitive, RenderOptions};
-use pathfinder_gpu::{RenderState, ShaderKind, StencilFunc, TextureData, TextureDataRef};
-use pathfinder_gpu::{TextureFormat, TextureSamplingFlags, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BufferUploadMode, ClearOps, ComputeDimensions, ComputeState, DepthFunc, Device, Primitive, ProgramKind};
+use pathfinder_gpu::{RenderOptions, RenderState, ShaderKind, StencilFunc, TextureData};
+use pathfinder_gpu::{TextureDataRef, TextureFormat, TextureSamplingFlags, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use std::mem;
 use std::str;
 use std::time::Duration;
-use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::JsCast;
 use web_sys::WebGl2RenderingContext as WebGl;
 use js_sys::{Uint8Array, Uint16Array, Float32Array, Object};
 
@@ -169,7 +169,7 @@ impl WebGlDevice {
                 self.context.uniform3i(location, data[0], data[1], data[2]);
                 self.ck();
             }
-            UniformData::TextureUnit(unit) => {
+            UniformData::TextureUnit(unit) | UniformData::ImageUnit(unit) => {
                 self.context.uniform1i(location, unit as i32);
                 self.ck();
             }
@@ -412,9 +412,11 @@ unsafe fn check_and_extract_data(
 
 impl Device for WebGlDevice {
     type Buffer = WebGlBuffer;
+    type Fence = ();
     type Framebuffer = WebGlFramebuffer;
     type Program = WebGlProgram;
     type Shader = WebGlShader;
+    type StorageBuffer = ();
     type Texture = WebGlTexture;
     type TextureDataReceiver = ();
     type TimerQuery = WebGlTimerQuery;
@@ -504,6 +506,7 @@ impl Device for WebGlDevice {
         let gl_shader_kind = match kind {
             ShaderKind::Vertex => WebGl::VERTEX_SHADER,
             ShaderKind::Fragment => WebGl::FRAGMENT_SHADER,
+            ShaderKind::Compute => panic!("Compute shaders are unsupported in WebGL!"),
         };
 
         let gl_shader = self
@@ -529,17 +532,21 @@ impl Device for WebGlDevice {
         &self,
         _resources: &dyn ResourceLoader,
         name: &str,
-        vertex_shader: WebGlShader,
-        fragment_shader: WebGlShader,
+        shaders: ProgramKind<WebGlShader>,
     ) -> WebGlProgram {
         let gl_program = self
             .context
             .create_program()
             .expect("unable to create program object");
-        self.context
-            .attach_shader(&gl_program, &vertex_shader.gl_shader);
-        self.context
-            .attach_shader(&gl_program, &fragment_shader.gl_shader);
+        match shaders {
+            ProgramKind::Raster { ref vertex, ref fragment } => {
+                self.context.attach_shader(&gl_program, &vertex.gl_shader);
+                self.context.attach_shader(&gl_program, &fragment.gl_shader);
+            }
+            ProgramKind::Compute(ref shader) => {
+                self.context.attach_shader(&gl_program, &shader.gl_shader);
+            }
+        }
         self.context.link_program(&gl_program);
         if !self
             .context
@@ -557,6 +564,11 @@ impl Device for WebGlDevice {
             context: self.context.clone(),
             gl_program,
         }
+    }
+
+    #[inline]
+    fn set_compute_program_local_size(&self, _: &mut Self::Program, _: ComputeDimensions) {
+        // This does nothing on OpenGL, since the local size is set in the shader.
     }
 
     #[inline]
@@ -583,6 +595,10 @@ impl Device for WebGlDevice {
             .get_uniform_location(&program.gl_program, &name);
         self.ck();
         WebGlUniform { location: location }
+    }
+
+    fn get_storage_buffer(&self, _: &Self::Program, _: &str, _: u32) {
+        // TODO(pcwalton)
     }
 
     fn configure_vertex_attr(
@@ -671,11 +687,12 @@ impl Device for WebGlDevice {
         framebuffer.texture
     }
 
-    fn create_buffer(&self) -> WebGlBuffer {
+    fn create_buffer(&self, mode: BufferUploadMode) -> WebGlBuffer {
         let buffer = self.context.create_buffer().unwrap();
         WebGlBuffer {
             buffer,
             context: self.context.clone(),
+            mode,
         }
     }
 
@@ -684,15 +701,15 @@ impl Device for WebGlDevice {
         buffer: &WebGlBuffer,
         data: BufferData<T>,
         target: BufferTarget,
-        mode: BufferUploadMode,
     ) {
         let target = match target {
             BufferTarget::Vertex => WebGl::ARRAY_BUFFER,
             BufferTarget::Index => WebGl::ELEMENT_ARRAY_BUFFER,
+            BufferTarget::Storage => panic!("Shader storage buffers are unsupported in WebGL!"),
         };
         self.context.bind_buffer(target, Some(&buffer.buffer));
         self.ck();
-        let usage = mode.to_gl_usage();
+        let usage = buffer.mode.to_gl_usage();
         match data {
             BufferData::Uninitialized(len) => {
                 self.context
@@ -703,6 +720,18 @@ impl Device for WebGlDevice {
                     .buffer_data_with_u8_array(target, slice_to_u8(buffer), usage)
             }
         }
+    }
+
+    fn upload_to_buffer<T>(&self,
+                           buffer: &Self::Buffer,
+                           position: usize,
+                           data: &[T],
+                           target: BufferTarget) {
+        let target = target.to_gl_target();
+        self.context.bind_buffer(target, Some(&buffer.buffer)); self.ck();
+        self.context.buffer_sub_data_with_i32_and_u8_array(target,
+                                                            position as i32,
+                                                            slice_to_u8(data)); self.ck();
     }
 
     #[inline]
@@ -845,6 +874,10 @@ impl Device for WebGlDevice {
         self.reset_render_state(render_state);
     }
 
+    fn dispatch_compute(&self, _: ComputeDimensions, _: &ComputeState<Self>) {
+        panic!("Compute shader is unsupported in WebGL!")
+    }
+
     #[inline]
     fn create_timer_query(&self) -> WebGlTimerQuery {
         // FIXME use performance timers
@@ -900,9 +933,18 @@ impl Device for WebGlDevice {
         let suffix = match kind {
             ShaderKind::Vertex => 'v',
             ShaderKind::Fragment => 'f',
+            ShaderKind::Compute => 'c',
         };
         let path = format!("shaders/gl3/{}.{}s.glsl", name, suffix);
         self.create_shader_from_source(name, &resources.slurp(&path).unwrap(), kind)
+    }
+
+    fn add_fence(&self) -> Self::Fence {
+        // TODO(pcwalton)
+    }
+
+    fn wait_for_fence(&self, _: &Self::Fence) {
+        // TODO(pcwalton)
     }
 }
 
@@ -931,6 +973,7 @@ pub struct WebGlFramebuffer {
 pub struct WebGlBuffer {
     context: web_sys::WebGl2RenderingContext,
     pub buffer: web_sys::WebGlBuffer,
+    pub mode: BufferUploadMode,
 }
 
 impl Drop for WebGlBuffer {
@@ -982,6 +1025,7 @@ impl BufferTargetExt for BufferTarget {
         match self {
             BufferTarget::Vertex => WebGl::ARRAY_BUFFER,
             BufferTarget::Index => WebGl::ELEMENT_ARRAY_BUFFER,
+            BufferTarget::Storage => panic!("Shader storage buffers are unsupported in WebGL!"),
         }
     }
 }

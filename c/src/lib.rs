@@ -39,7 +39,7 @@ use std::slice;
 use std::str;
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use metal::{CAMetalLayer, CoreAnimationLayerRef};
+use metal::{CAMetalLayer, CoreAnimationLayerRef, Device};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
 
@@ -617,19 +617,15 @@ pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFScenePro
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
                                              -> PFMetalDeviceRef {
-    Box::into_raw(Box::new(MetalDevice::new(CoreAnimationLayerRef::from_ptr(layer))))
+    let device = Device::system_default().expect("Failed to get Metal system default device!");
+    let layer = CoreAnimationLayerRef::from_ptr(layer);
+    Box::into_raw(Box::new(MetalDevice::new(device, layer.next_drawable().unwrap())))
 }
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDeviceDestroy(device: PFMetalDeviceRef) {
     drop(Box::from_raw(device))
-}
-
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-#[no_mangle]
-pub unsafe extern "C" fn PFMetalDevicePresentDrawable(device: PFMetalDeviceRef) {
-    (*device).present_drawable()
 }
 
 // `renderer`
@@ -806,6 +802,8 @@ impl PFRendererOptions {
             } else {
                 None
             },
+            // TODO(pcwalton): Expose this in the C API.
+            use_compute: false,
         }
     }
 }

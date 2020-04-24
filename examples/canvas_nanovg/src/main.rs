@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use arrayvec::ArrayVec;
+use euclid::default::Size2D;
 use font_kit::handle::Handle;
 use font_kit::sources::mem::MemSource;
 use image;
@@ -35,14 +36,15 @@ use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x2;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::video::GLProfile;
 use std::collections::VecDeque;
 use std::f32::consts::PI;
 use std::iter;
 use std::sync::Arc;
 use std::time::Instant;
+use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
+use surfman::{SurfaceAccess, SurfaceType};
+use winit::dpi::LogicalSize;
+use winit::{Event, EventsLoop, WindowBuilder, WindowEvent};
 
 #[cfg(not(windows))]
 use jemallocator;
@@ -1460,33 +1462,43 @@ impl DemoData {
 }
 
 fn main() {
-    // Set up SDL2.
-    let sdl_context = sdl2::init().unwrap();
-    let video = sdl_context.video().unwrap();
-
-    // Make sure we have at least a GL 3.0 context. Pathfinder requires this.
-    let gl_attributes = video.gl_attr();
-    gl_attributes.set_context_profile(GLProfile::Core);
-    gl_attributes.set_context_version(3, 3);
-
     // Open a window.
-    let window_size = vec2i(WINDOW_WIDTH, WINDOW_HEIGHT);
-    let window =
-        video.window("NanoVG example port", window_size.x() as u32, window_size.y() as u32)
-             .opengl()
-             .allow_highdpi()
-             .build()
-             .unwrap();
+    let mut event_loop = EventsLoop::new();
+    let window_size = Size2D::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+    let logical_size = LogicalSize::new(window_size.width as f64, window_size.height as f64);
+    let window = WindowBuilder::new().with_title("NanoVG example port")
+                                     .with_dimensions(logical_size)
+                                     .build(&event_loop)
+                                     .unwrap();
+    window.show();
 
-    // Create the GL context, and make it current.
-    let gl_context = window.gl_create_context().unwrap();
-    gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
-    window.gl_make_current(&gl_context).unwrap();
+    // Create a `surfman` device. On a multi-GPU system, we'll request the low-power integrated
+    // GPU.
+    let connection = Connection::from_winit_window(&window).unwrap();
+    let native_widget = connection.create_native_widget_from_winit_window(&window).unwrap();
+    let adapter = connection.create_low_power_adapter().unwrap();
+    let mut device = connection.create_device(&adapter).unwrap();
 
-    // Get the real window size (for HiDPI).
-    let (drawable_width, drawable_height) = window.drawable_size();
-    let drawable_size = vec2i(drawable_width as i32, drawable_height as i32);
-    let hidpi_factor = drawable_size.x() as f32 / window_size.x() as f32;
+    // Request an OpenGL 3.x context. Pathfinder requires this.
+    let context_attributes = ContextAttributes {
+        version: SurfmanGLVersion::new(3, 0),
+        flags: ContextAttributeFlags::ALPHA,
+    };
+    let context_descriptor = device.create_context_descriptor(&context_attributes).unwrap();
+
+    // Make the OpenGL context via `surfman`, and load OpenGL functions.
+    let surface_type = SurfaceType::Widget { native_widget };
+    let mut gl_context = device.create_context(&context_descriptor).unwrap();
+    let surface = device.create_surface(&gl_context, SurfaceAccess::GPUOnly, surface_type)
+                        .unwrap();
+    device.bind_surface_to_context(&mut gl_context, surface).unwrap();
+    device.make_context_current(&gl_context).unwrap();
+    gl::load_with(|symbol_name| device.get_proc_address(&gl_context, symbol_name));
+
+    // Get the real size of the window, taking HiDPI into account.
+    let hidpi_factor = window.get_current_monitor().get_hidpi_factor();
+    let physical_size = logical_size.to_physical(hidpi_factor);
+    let framebuffer_size = vec2i(physical_size.width as i32, physical_size.height as i32);
 
     // Load demo data.
     let resources = FilesystemResourceLoader::locate();
@@ -1497,12 +1509,20 @@ fn main() {
     ];
     let demo_data = DemoData::load(&resources);
 
+    // Create a Pathfinder GL device.
+    let default_framebuffer = device.context_surface_info(&gl_context)
+                                    .unwrap()
+                                    .unwrap()
+                                    .framebuffer_object;
+    let pathfinder_device = GLDevice::new(GLVersion::GL3, default_framebuffer);
+
     // Create a Pathfinder renderer.
-    let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
+    let mut renderer = Renderer::new(pathfinder_device,
                                      &resources,
-                                     DestFramebuffer::full_window(drawable_size),
+                                     DestFramebuffer::full_window(framebuffer_size),
                                      RendererOptions {
                                          background_color: Some(rgbf(0.3, 0.3, 0.32)),
+                                         ..RendererOptions::default()
                                      });
 
     // Initialize font state.
@@ -1510,7 +1530,6 @@ fn main() {
     let font_context = CanvasFontContext::new(font_source.clone());
 
     // Initialize general state.
-    let mut event_pump = sdl_context.event_pump().unwrap();
     let mut mouse_position = Vector2F::zero();
     let start_time = Instant::now();
 
@@ -1520,21 +1539,23 @@ fn main() {
     let mut gpu_graph = PerfGraph::new(GraphStyle::MS, "GPU Time");
 
     // Enter the main loop.
-    loop {
+    let mut exit = false;
+    while !exit {
         // Make a canvas.
-        let mut context = Canvas::new(drawable_size.to_f32()).get_context_2d(font_context.clone());
+        let mut context =
+            Canvas::new(framebuffer_size.to_f32()).get_context_2d(font_context.clone());
 
         // Start performance timing.
         let frame_start_time = Instant::now();
         let frame_start_elapsed_time = (frame_start_time - start_time).as_secs_f32();
 
         // Render the demo.
-        context.scale(hidpi_factor);
+        context.scale(hidpi_factor as f32);
         render_demo(&mut context,
                     mouse_position,
-                    window_size.to_f32(),
+                    vec2f(WINDOW_WIDTH as f32, WINDOW_HEIGHT as f32),
                     frame_start_elapsed_time,
-                    hidpi_factor,
+                    hidpi_factor as f32,
                     &demo_data);
 
         // Render performance graphs.
@@ -1547,7 +1568,11 @@ fn main() {
         let canvas = context.into_canvas();
         let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
         scene.build_and_render(&mut renderer, BuildOptions::default());
-        window.gl_swap_window();
+
+        // Present the rendered canvas via `surfman`.
+        let mut surface = device.unbind_surface_from_context(&mut gl_context).unwrap().unwrap();
+        device.present_surface(&mut gl_context, &mut surface).unwrap();
+        device.bind_surface_to_context(&mut gl_context, surface).unwrap();
 
         // Add stats to performance graphs.
         if let Some(gpu_time) = renderer.shift_rendering_time() {
@@ -1558,12 +1583,18 @@ fn main() {
             gpu_graph.push(gpu_time);
         }
 
-        for event in event_pump.poll_iter() {
+        event_loop.poll_events(|event| {
             match event {
-                Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return,
-                Event::MouseMotion { x, y, .. } => mouse_position = vec2i(x, y).to_f32(),
+                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
+                Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => exit = true,
+                Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
+                    mouse_position = vec2f(position.x as f32, position.y as f32);
+                }
                 _ => {}
             }
-        }
+        });
     }
+
+    // Clean up.
+    drop(device.destroy_context(&mut gl_context));
 }

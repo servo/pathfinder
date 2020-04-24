@@ -147,12 +147,11 @@ pub struct FillBatchEntry {
     pub page: u16,
 }
 
-// FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
 #[derive(Clone, Copy, Debug, Default)]
-#[repr(packed)]
+#[repr(C)]
 pub struct Fill {
-    pub px: LineSegmentU4,
     pub subpx: LineSegmentU8,
+    pub px: LineSegmentU4,
     pub alpha_tile_index: u16,
 }
 

@@ -102,7 +102,10 @@ fn main() {
         GLDevice::new(GLVersion::GL3, 0),
         &resource_loader,
         DestFramebuffer::full_window(pixel_size),
-        RendererOptions { background_color: Some(stage.background_color()) }
+        RendererOptions {
+            background_color: Some(stage.background_color()),
+            ..RendererOptions::default()
+        }
     );
     // Clear to swf stage background color.
     let mut scene = Scene::new();

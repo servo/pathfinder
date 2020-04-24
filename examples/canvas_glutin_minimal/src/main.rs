@@ -51,7 +51,10 @@ fn main() {
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
                                      &FilesystemResourceLoader::locate(),
                                      DestFramebuffer::full_window(window_size),
-                                     RendererOptions { background_color: Some(ColorF::white()) });
+                                     RendererOptions {
+                                         background_color: Some(ColorF::white()),
+                                         ..RendererOptions::default()
+                                     });
 
     // Make a canvas. We're going to draw a house.
     let font_context = CanvasFontContext::from_system_source();

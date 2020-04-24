@@ -57,5 +57,8 @@ path = "../../ui"
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = "0.17"
 
+[target.'cfg(target_os = "macos")'.dependencies.io-surface]
+version = "0.12"
+
 [target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
 path = "../../metal"

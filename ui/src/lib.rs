@@ -166,12 +166,10 @@ impl<D> UIPresenter<D> where D: Device {
                                          filled: bool) {
         device.allocate_buffer(&self.solid_vertex_array.vertex_buffer,
                                BufferData::Memory(vertex_data),
-                               BufferTarget::Vertex,
-                               BufferUploadMode::Dynamic);
+                               BufferTarget::Vertex);
         device.allocate_buffer(&self.solid_vertex_array.index_buffer,
                                BufferData::Memory(index_data),
-                               BufferTarget::Index,
-                               BufferUploadMode::Dynamic);
+                               BufferTarget::Index);
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
         device.draw_elements(index_data.len() as u32, &RenderState {
@@ -185,6 +183,7 @@ impl<D> UIPresenter<D> where D: Device {
                 (&self.solid_program.color_uniform, get_color_uniform(color)),
             ],
             textures: &[],
+            images: &[],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
                 blend: Some(alpha_blend_state()),
@@ -398,12 +397,10 @@ impl<D> UIPresenter<D> where D: Device {
                                      color: ColorU) {
         device.allocate_buffer(&self.texture_vertex_array.vertex_buffer,
                                BufferData::Memory(vertex_data),
-                               BufferTarget::Vertex,
-                               BufferUploadMode::Dynamic);
+                               BufferTarget::Vertex);
         device.allocate_buffer(&self.texture_vertex_array.index_buffer,
                                BufferData::Memory(index_data),
-                               BufferTarget::Index,
-                               BufferUploadMode::Dynamic);
+                               BufferTarget::Index);
 
         device.draw_elements(index_data.len() as u32, &RenderState {
             target: &RenderTarget::Default,
@@ -411,6 +408,7 @@ impl<D> UIPresenter<D> where D: Device {
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &[&texture],
+            images: &[],
             uniforms: &[
                 (&self.texture_program.framebuffer_size_uniform,
                  UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
@@ -569,7 +567,7 @@ struct DebugTextureProgram<D> where D: Device {
 
 impl<D> DebugTextureProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> DebugTextureProgram<D> {
-        let program = device.create_program(resources, "debug_texture");
+        let program = device.create_raster_program(resources, "debug_texture");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let texture_size_uniform = device.get_uniform(&program, "TextureSize");
         let texture_uniform = device.get_uniform(&program, "Texture");
@@ -593,7 +591,8 @@ struct DebugTextureVertexArray<D> where D: Device {
 impl<D> DebugTextureVertexArray<D> where D: Device {
     fn new(device: &D, debug_texture_program: &DebugTextureProgram<D>)
            -> DebugTextureVertexArray<D> {
-        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
+        let vertex_buffer = device.create_buffer(BufferUploadMode::Dynamic);
+        let index_buffer = device.create_buffer(BufferUploadMode::Dynamic);
         let vertex_array = device.create_vertex_array();
 
         let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position")
@@ -634,7 +633,8 @@ struct DebugSolidVertexArray<D> where D: Device {
 
 impl<D> DebugSolidVertexArray<D> where D: Device {
     fn new(device: &D, debug_solid_program: &DebugSolidProgram<D>) -> DebugSolidVertexArray<D> {
-        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
+        let vertex_buffer = device.create_buffer(BufferUploadMode::Dynamic);
+        let index_buffer = device.create_buffer(BufferUploadMode::Dynamic);
         let vertex_array = device.create_vertex_array();
 
         let position_attr =
@@ -663,7 +663,7 @@ struct DebugSolidProgram<D> where D: Device {
 
 impl<D> DebugSolidProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> DebugSolidProgram<D> {
-        let program = device.create_program(resources, "debug_solid");
+        let program = device.create_raster_program(resources, "debug_solid");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let color_uniform = device.get_uniform(&program, "Color");
         DebugSolidProgram { program, framebuffer_size_uniform, color_uniform }

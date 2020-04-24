@@ -29,7 +29,7 @@ where
     D: Device,
 {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> GroundProgram<D> {
-        let program = device.create_program(resources, "demo_ground");
+        let program = device.create_raster_program(resources, "demo_ground");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let gridline_count_uniform = device.get_uniform(&program, "GridlineCount");
         let ground_color_uniform = device.get_uniform(&program, "GroundColor");

@@ -53,7 +53,10 @@ fn main() {
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
                                      &resource_loader,
                                      DestFramebuffer::full_window(window_size),
-                                     RendererOptions { background_color: Some(ColorF::white()) });
+                                     RendererOptions {
+                                         background_color: Some(ColorF::white()),
+                                         ..RendererOptions::default()
+                                     });
 
     // Load a font.
     let font_data = Arc::new(resource_loader.slurp("fonts/Overpass-Regular.otf").unwrap());

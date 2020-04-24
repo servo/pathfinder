@@ -8,8 +8,10 @@ edition = "2018"
 arrayvec = "0.5"
 font-kit = "0.6"
 gl = "0.14"
-sdl2 = "0.33"
-sdl2-sys = "0.33"
+
+[dependencies.euclid]
+version = "0.20"
+features = []
 
 [dependencies.image]
 version = "0.23"
@@ -47,6 +49,14 @@ path = "../../resources"
 
 [dependencies.pathfinder_simd]
 path = "../../simd"
+
+[dependencies.surfman]
+git = "https://github.com/pcwalton/surfman"
+rev = "bc29e7ae88ca7dd64d3b1c7e185604693290207f"
+features = ["sm-winit"]
+
+[dependencies.winit]
+version = "<0.19.4" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
 
 [target.'cfg(not(windows))'.dependencies]
 jemallocator = "0.3"

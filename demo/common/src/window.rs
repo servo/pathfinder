@@ -18,9 +18,11 @@ use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use metal::CoreAnimationLayerRef;
+use io_surface::IOSurfaceRef;
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use pathfinder_metal::MetalDevice;
+use metal::Device as MetalDevice;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice as PathfinderMetalDevice;
 
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use gl::types::GLuint;
@@ -36,9 +38,11 @@ pub trait Window {
     fn present(&mut self, device: &mut GLDevice);
 
     #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-    fn metal_layer(&self) -> &CoreAnimationLayerRef;
+    fn metal_device(&self) -> MetalDevice;
     #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-    fn present(&mut self, device: &mut MetalDevice);
+    fn metal_io_surface(&self) -> IOSurfaceRef;
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+    fn present(&mut self, device: &mut PathfinderMetalDevice);
 
     fn make_current(&mut self, view: View);
     fn viewport(&self, view: View) -> RectI;
