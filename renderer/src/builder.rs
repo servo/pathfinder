@@ -641,7 +641,7 @@ impl ObjectBuilder {
         // Ensure this fill is in bounds. If not, cull it.
         if self.tile_coords_to_local_index(tile_coords).is_none() {
             return;
-        };
+        }
 
         debug_assert_eq!(TILE_WIDTH, TILE_HEIGHT);
 
@@ -758,23 +758,12 @@ impl ObjectBuilder {
             (segment.to_x(), segment.from_x())
         };
 
-        // FIXME(pcwalton): Optimize this.
-        let segment_tile_left = f32::floor(segment_left) as i32 / TILE_WIDTH as i32;
-        let segment_tile_right =
-            util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32);
-        debug!(
-            "segment_tile_left={} segment_tile_right={} tile_rect={:?}",
-            segment_tile_left,
-            segment_tile_right,
-            self.tile_rect()
-        );
-
-        for subsegment_tile_x in segment_tile_left..segment_tile_right {
+        let mut subsegment_x = (segment_left as i32 & !(TILE_WIDTH as i32 - 1)) as f32;
+        while subsegment_x < segment_right {
             let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
-            let subsegment_tile_right =
-                ((i32::from(subsegment_tile_x) + 1) * TILE_HEIGHT as i32) as f32;
-            if subsegment_tile_right < segment_right {
-                let x = subsegment_tile_right;
+            let subsegment_x_next = subsegment_x + TILE_WIDTH as f32;
+            if subsegment_x_next < segment_right {
+                let x = subsegment_x_next;
                 let point = Vector2F::new(x, segment.solve_y_for_x(x));
                 if !winding {
                     fill_to = point;
@@ -786,8 +775,10 @@ impl ObjectBuilder {
             }
 
             let fill_segment = LineSegment2F::new(fill_from, fill_to);
-            let fill_tile_coords = vec2i(subsegment_tile_x, tile_y);
+            let fill_tile_coords = vec2i(subsegment_x as i32 / TILE_WIDTH as i32, tile_y);
             self.add_fill(scene_builder, fill_segment, fill_tile_coords);
+
+            subsegment_x = subsegment_x_next;
         }
     }
 
