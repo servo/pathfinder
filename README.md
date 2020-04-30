@@ -14,9 +14,6 @@ Pathfinder contains a library that implements a subset of the
 vector rendering to any Rust app with it. See the `examples/canvas_minimal` for a small example of
 usage.
 
-This example app requires SDL 2; see the "Building" section below for information on getting it up
-and running.
-
 ### Demos
 
 Demo app sources are available in [demo/](https://github.com/servo/pathfinder/tree/master/demo). A prebuilt package for Magic Leap can be found in [releases](https://github.com/servo/pathfinder/releases).
@@ -70,10 +67,6 @@ Running the demo is as simple as:
 
     $ cd demo/native
     $ RUSTFLAGS="-C target-cpu=native" cargo run --release
-
-The SDL 2 library requires some additional manual installation steps. Follow the
-[`rust-sdl2` installation instructions](https://github.com/Rust-SDL2/rust-sdl2#sdl20-development-libraries) to make sure the libraries are installed. Note that SDL2 is
-only required to run the demo; Pathfinder itself has no dependency on the library.
 
 ## Community
 
