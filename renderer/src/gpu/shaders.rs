@@ -9,17 +9,19 @@
 // except according to those terms.
 
 use crate::gpu::options::RendererOptions;
+use crate::gpu::renderer::{MASK_TILES_ACROSS, MASK_TILES_DOWN};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_gpu::{BufferTarget, BufferUploadMode, ComputeDimensions, Device, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
+pub(crate) const TILE_INSTANCE_SIZE: usize = 12;
 const FILL_INSTANCE_SIZE: usize = 8;
-const TILE_INSTANCE_SIZE: usize = 12;
 const CLIP_TILE_INSTANCE_SIZE: usize = 8;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
+pub const MAX_TILES_PER_BATCH: usize = MASK_TILES_ACROSS as usize * MASK_TILES_DOWN as usize;
 
 pub struct BlitVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
