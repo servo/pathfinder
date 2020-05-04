@@ -388,7 +388,7 @@ pub struct FillComputeProgram<D> where D: Device {
 impl<D> FillComputeProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> FillComputeProgram<D> {
         let mut program = device.create_compute_program(resources, "fill");
-        let local_size = ComputeDimensions { x: TILE_WIDTH, y: TILE_HEIGHT, z: 1 };
+        let local_size = ComputeDimensions { x: TILE_WIDTH, y: TILE_HEIGHT / 4, z: 1 };
         device.set_compute_program_local_size(&mut program, local_size);
 
         let dest_uniform = device.get_uniform(&program, "Dest");
@@ -418,10 +418,11 @@ pub struct TileProgram<D> where D: Device {
     pub texture_metadata_size_uniform: D::Uniform,
     pub dest_texture_uniform: D::Uniform,
     pub color_texture_0_uniform: D::Uniform,
+    pub color_texture_size_0_uniform: D::Uniform,
     pub color_texture_1_uniform: D::Uniform,
     pub mask_texture_0_uniform: D::Uniform,
+    pub mask_texture_size_0_uniform: D::Uniform,
     pub gamma_lut_uniform: D::Uniform,
-    pub color_texture_0_size_uniform: D::Uniform,
     pub filter_params_0_uniform: D::Uniform,
     pub filter_params_1_uniform: D::Uniform,
     pub filter_params_2_uniform: D::Uniform,
@@ -438,10 +439,11 @@ impl<D> TileProgram<D> where D: Device {
         let texture_metadata_size_uniform = device.get_uniform(&program, "TextureMetadataSize");
         let dest_texture_uniform = device.get_uniform(&program, "DestTexture");
         let color_texture_0_uniform = device.get_uniform(&program, "ColorTexture0");
+        let color_texture_size_0_uniform = device.get_uniform(&program, "ColorTextureSize0");
         let color_texture_1_uniform = device.get_uniform(&program, "ColorTexture1");
         let mask_texture_0_uniform = device.get_uniform(&program, "MaskTexture0");
+        let mask_texture_size_0_uniform = device.get_uniform(&program, "MaskTextureSize0");
         let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
-        let color_texture_0_size_uniform = device.get_uniform(&program, "ColorTexture0Size");
         let filter_params_0_uniform = device.get_uniform(&program, "FilterParams0");
         let filter_params_1_uniform = device.get_uniform(&program, "FilterParams1");
         let filter_params_2_uniform = device.get_uniform(&program, "FilterParams2");
@@ -455,10 +457,11 @@ impl<D> TileProgram<D> where D: Device {
             texture_metadata_size_uniform,
             dest_texture_uniform,
             color_texture_0_uniform,
+            color_texture_size_0_uniform,
             color_texture_1_uniform,
             mask_texture_0_uniform,
+            mask_texture_size_0_uniform,
             gamma_lut_uniform,
-            color_texture_0_size_uniform,
             filter_params_0_uniform,
             filter_params_1_uniform,
             filter_params_2_uniform,

@@ -84,11 +84,12 @@ uniform sampler2D uColorTexture0;
 uniform sampler2D uMaskTexture0;
 uniform sampler2D uDestTexture;
 uniform sampler2D uGammaLUT;
+uniform vec2 uColorTextureSize0;
+uniform vec2 uMaskTextureSize0;
 uniform vec4 uFilterParams0;
 uniform vec4 uFilterParams1;
 uniform vec4 uFilterParams2;
 uniform vec2 uFramebufferSize;
-uniform vec2 uColorTexture0Size;
 uniform int uCtrl;
 
 in vec3 vMaskTexCoord0;
@@ -544,11 +545,16 @@ vec4 composite(vec4 srcColor,
 
 float sampleMask(float maskAlpha,
                  sampler2D maskTexture,
+                 vec2 maskTextureSize,
                  vec3 maskTexCoord,
                  int maskCtrl){
     if(maskCtrl == 0)
         return maskAlpha;
-    float coverage = texture(maskTexture, maskTexCoord . xy). r + maskTexCoord . z;
+
+    ivec2 maskTexCoordI = ivec2(floor(maskTexCoord . xy));
+    vec4 texel = texture(maskTexture,(vec2(maskTexCoordI / ivec2(1, 4))+ 0.5)/ maskTextureSize);
+    float coverage = texel[maskTexCoordI . y % 4]+ maskTexCoord . z;
+
     if((maskCtrl & 0x1)!= 0)
         coverage = abs(coverage);
     else
@@ -562,7 +568,7 @@ void calculateColor(int tileCtrl, int ctrl){
 
     int maskCtrl0 =(tileCtrl >> 0)& 0x3;
     float maskAlpha = 1.0;
-    maskAlpha = sampleMask(maskAlpha, uMaskTexture0, vMaskTexCoord0, maskCtrl0);
+    maskAlpha = sampleMask(maskAlpha, uMaskTexture0, uMaskTextureSize0, vMaskTexCoord0, maskCtrl0);
 
 
     vec4 color = vBaseColor;
@@ -573,7 +579,7 @@ void calculateColor(int tileCtrl, int ctrl){
         vec4 color0 = filterColor(vColorTexCoord0,
                                   uColorTexture0,
                                   uGammaLUT,
-                                  uColorTexture0Size,
+                                  uColorTextureSize0,
                                   gl_FragCoord . xy,
                                   uFramebufferSize,
                                   uFilterParams0,

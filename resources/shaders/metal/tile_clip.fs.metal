@@ -18,8 +18,7 @@ struct main0_in
 fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> uSrc [[texture(0)]], sampler uSrcSmplr [[sampler(0)]])
 {
     main0_out out = {};
-    float alpha = fast::clamp(abs(uSrc.sample(uSrcSmplr, in.vTexCoord).x + in.vBackdrop), 0.0, 1.0);
-    out.oFragColor = float4(alpha, 0.0, 0.0, 1.0);
+    out.oFragColor = fast::clamp(abs(uSrc.sample(uSrcSmplr, in.vTexCoord) + float4(in.vBackdrop)), float4(0.0), float4(1.0));
     return out;
 }
 

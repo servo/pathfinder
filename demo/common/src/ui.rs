@@ -14,7 +14,7 @@ use crate::{BackgroundColor, Options};
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2I, vec2i};
-use pathfinder_gpu::Device;
+use pathfinder_gpu::{Device, TextureFormat};
 use pathfinder_renderer::gpu::debug::DebugUIPresenter;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_ui::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, FONT_ASCENT, PADDING};
@@ -121,15 +121,30 @@ where
     D: Device,
 {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> DemoUIPresenter<D> {
-        let effects_texture = device.create_texture_from_png(resources, EFFECTS_PNG_NAME);
-        let open_texture = device.create_texture_from_png(resources, OPEN_PNG_NAME);
-        let rotate_texture = device.create_texture_from_png(resources, ROTATE_PNG_NAME);
-        let zoom_in_texture = device.create_texture_from_png(resources, ZOOM_IN_PNG_NAME);
+        let effects_texture = device.create_texture_from_png(resources,
+                                                             EFFECTS_PNG_NAME,
+                                                             TextureFormat::R8);
+        let open_texture = device.create_texture_from_png(resources,
+                                                          OPEN_PNG_NAME,
+                                                          TextureFormat::R8);
+        let rotate_texture = device.create_texture_from_png(resources,
+                                                            ROTATE_PNG_NAME,
+                                                            TextureFormat::R8);
+        let zoom_in_texture = device.create_texture_from_png(resources,
+                                                             ZOOM_IN_PNG_NAME,
+                                                             TextureFormat::R8);
         let zoom_actual_size_texture = device.create_texture_from_png(resources,
-                                                                      ZOOM_ACTUAL_SIZE_PNG_NAME);
-        let zoom_out_texture = device.create_texture_from_png(resources, ZOOM_OUT_PNG_NAME);
-        let background_texture = device.create_texture_from_png(resources, BACKGROUND_PNG_NAME);
-        let screenshot_texture = device.create_texture_from_png(resources, SCREENSHOT_PNG_NAME);
+                                                                      ZOOM_ACTUAL_SIZE_PNG_NAME,
+                                                                      TextureFormat::R8);
+        let zoom_out_texture = device.create_texture_from_png(resources,
+                                                              ZOOM_OUT_PNG_NAME,
+                                                              TextureFormat::R8);
+        let background_texture = device.create_texture_from_png(resources,
+                                                                BACKGROUND_PNG_NAME,
+                                                                TextureFormat::R8);
+        let screenshot_texture = device.create_texture_from_png(resources,
+                                                                SCREENSHOT_PNG_NAME,
+                                                                TextureFormat::R8);
 
         DemoUIPresenter {
             effects_texture,

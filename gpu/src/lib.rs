@@ -104,13 +104,26 @@ pub trait Device: Sized {
     fn try_recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> Option<TextureData>;
     fn recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> TextureData;
 
-    fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
+    fn create_texture_from_png(&self,
+                               resources: &dyn ResourceLoader,
+                               name: &str,
+                               format: TextureFormat)
+                               -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
-        let image = image::load_from_memory_with_format(&data, ImageFormat::Png)
-            .unwrap()
-            .to_luma();
-        let size = vec2i(image.width() as i32, image.height() as i32);
-        self.create_texture_from_data(TextureFormat::R8, size, TextureDataRef::U8(&image))
+        let image = image::load_from_memory_with_format(&data, ImageFormat::Png).unwrap();
+        match format {
+            TextureFormat::R8 => {
+                let image = image.to_luma();
+                let size = vec2i(image.width() as i32, image.height() as i32);
+                self.create_texture_from_data(format, size, TextureDataRef::U8(&image))
+            }
+            TextureFormat::RGBA8 => {
+                let image = image.to_rgba();
+                let size = vec2i(image.width() as i32, image.height() as i32);
+                self.create_texture_from_data(format, size, TextureDataRef::U8(&image))
+            }
+            _ => unimplemented!(),
+        }
     }
 
     fn create_program_from_shader_names(
