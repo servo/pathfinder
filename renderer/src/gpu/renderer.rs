@@ -554,30 +554,37 @@ impl<D> Renderer<D> where D: Device {
 
         self.stats.fill_count += fill_batch.len();
 
-        // Make sure we don't split batches across draw calls.
-        let mut pages_to_flush = vec![];
+        // We have to make sure we don't split batches across draw calls, or else the compute
+        // shader path, which expects to see all the fills belonging to one tile in the same
+        // batch, will break.
+
+        let mut pages_touched = vec![];
         for fill_batch_entry in fill_batch {
-            let page = fill_batch_entry.page;
-            if !self.back_frame.alpha_tile_pages.contains_key(&page) {
+            let page_index = fill_batch_entry.page;
+            if !self.back_frame.alpha_tile_pages.contains_key(&page_index) {
                 let alpha_tile_page = AlphaTilePage::new(&mut self.device);
-                self.back_frame.alpha_tile_pages.insert(page, alpha_tile_page);
+                self.back_frame.alpha_tile_pages.insert(page_index, alpha_tile_page);
             }
-            if self.back_frame
-                   .alpha_tile_pages[&page]
-                   .buffered_fills
-                   .len() == MAX_FILLS_PER_BATCH {
-                pages_to_flush.push(page);
+
+            let page = self.back_frame.alpha_tile_pages.get_mut(&page_index).unwrap();
+            if page.pending_fills.is_empty() {
+                pages_touched.push(page_index);
             }
-            self.back_frame
-                .alpha_tile_pages
-                .get_mut(&page)
-                .unwrap()
-                .buffered_fills
-                .push(fill_batch_entry.fill);
+            page.pending_fills.push(fill_batch_entry.fill);
         }
 
-        for page in pages_to_flush {
-            self.draw_buffered_fills(page);
+        for page_index in pages_touched {
+            if self.back_frame.alpha_tile_pages[&page_index].buffered_fills.len() +
+                    self.back_frame.alpha_tile_pages[&page_index].pending_fills.len() >
+                    MAX_FILLS_PER_BATCH {
+                self.draw_buffered_fills(page_index);
+            }
+
+            let page = self.back_frame.alpha_tile_pages.get_mut(&page_index).unwrap();
+            for fill in &page.pending_fills {
+                page.buffered_fills.push(*fill);
+            }
+            page.pending_fills.clear();
         }
     }
 
@@ -605,14 +612,13 @@ impl<D> Renderer<D> where D: Device {
             return;
         }
 
-        // FIXME(pcwalton): * 10 is a hack; fix.
         let storage_id = {
             let fill_program = &self.fill_program;
             let quad_vertex_positions_buffer = &self.quad_vertex_positions_buffer;
             let quad_vertex_indices_buffer = &self.quad_vertex_indices_buffer;
             self.back_frame
                 .fill_vertex_storage_allocator
-                .allocate(&self.device, MAX_FILLS_PER_BATCH as u64 * 10, |device, size| {
+                .allocate(&self.device, MAX_FILLS_PER_BATCH as u64, |device, size| {
                 FillVertexStorage::new(size,
                                        device,
                                        fill_program,
@@ -692,13 +698,12 @@ impl<D> Renderer<D> where D: Device {
             return;
         }
 
-        // FIXME(pcwalton): * 10 is a hack; fix.
         let storage_id = {
             let fill_program = &self.fill_program;
             let quad_vertex_positions_buffer = &self.quad_vertex_positions_buffer;
             let quad_vertex_indices_buffer = &self.quad_vertex_indices_buffer;
             self.back_frame.fill_vertex_storage_allocator.allocate(&self.device,
-                                                                   MAX_FILLS_PER_BATCH as u64 * 10,
+                                                                   MAX_FILLS_PER_BATCH as u64,
                                                                    |device, size| {
                 FillVertexStorage::new(size,
                                        device,
@@ -1499,7 +1504,6 @@ impl<D> FillVertexStorage<D> where D: Device {
             FillProgram::Compute(_) => {
                 let next_fills_buffer = device.create_buffer(BufferUploadMode::Dynamic);
                 let tile_map_buffer = device.create_buffer(BufferUploadMode::Dynamic);
-                // FIXME(pcwalton): * 10 is a hack; fix.
                 let next_fills_buffer_data: BufferData<i32> =
                     BufferData::Uninitialized(size as usize);
                 let tile_map_buffer_data: BufferData<i32> =
@@ -1901,6 +1905,7 @@ impl BlendModeExt for BlendMode {
 
 struct AlphaTilePage<D> where D: Device {
     buffered_fills: Vec<Fill>,
+    pending_fills: Vec<Fill>,
     framebuffer: D::Framebuffer,
     must_preserve_framebuffer: bool,
 }
@@ -1910,7 +1915,12 @@ impl<D> AlphaTilePage<D> where D: Device {
         let framebuffer_size = vec2i(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         let framebuffer_texture = device.create_texture(TextureFormat::R16F, framebuffer_size);
         let framebuffer = device.create_framebuffer(framebuffer_texture);
-        AlphaTilePage { buffered_fills: vec![], framebuffer, must_preserve_framebuffer: false }
+        AlphaTilePage {
+            buffered_fills: vec![],
+            pending_fills: vec![],
+            framebuffer,
+            must_preserve_framebuffer: false,
+        }
     }
 }
 
