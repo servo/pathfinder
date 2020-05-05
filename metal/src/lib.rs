@@ -728,13 +728,15 @@ impl Device for MetalDevice {
 
         let captured_query = query.clone();
         let start_block = ConcreteBlock::new(move |_: *mut Object, _: u64| {
+            let start_time = Instant::now();
             let mut guard = captured_query.0.mutex.lock().unwrap();
-            guard.start_time = Some(Instant::now());
+            guard.start_time = Some(start_time);
         });
         let captured_query = query.clone();
         let end_block = ConcreteBlock::new(move |_: *mut Object, _: u64| {
+            let end_time = Instant::now();
             let mut guard = captured_query.0.mutex.lock().unwrap();
-            guard.end_time = Some(Instant::now());
+            guard.end_time = Some(end_time);
             captured_query.0.cond.notify_all();
         });
         self.shared_event.notify_listener_at_value(&self.shared_event_listener,
