@@ -20,7 +20,7 @@ pub(crate) const TILE_INSTANCE_SIZE: usize = 12;
 const FILL_INSTANCE_SIZE: usize = 8;
 const CLIP_TILE_INSTANCE_SIZE: usize = 8;
 
-pub const MAX_FILLS_PER_BATCH: usize = 0x4000;
+pub const MAX_FILLS_PER_BATCH: usize = 0x10000;
 pub const MAX_TILES_PER_BATCH: usize = MASK_TILES_ACROSS as usize * MASK_TILES_DOWN as usize;
 
 pub struct BlitVertexArray<D> where D: Device {
