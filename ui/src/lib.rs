@@ -21,8 +21,8 @@ use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
-use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, UniformData};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, TextureFormat};
+use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 use serde_json;
@@ -91,10 +91,15 @@ impl<D> UIPresenter<D> where D: Device {
         let solid_program = DebugSolidProgram::new(device, resources);
         let solid_vertex_array = DebugSolidVertexArray::new(device, &solid_program);
 
-        let font_texture = device.create_texture_from_png(resources, FONT_PNG_NAME);
-        let corner_fill_texture = device.create_texture_from_png(resources, CORNER_FILL_PNG_NAME);
+        let font_texture = device.create_texture_from_png(resources,
+                                                          FONT_PNG_NAME,
+                                                          TextureFormat::R8);
+        let corner_fill_texture = device.create_texture_from_png(resources,
+                                                                 CORNER_FILL_PNG_NAME,
+                                                                 TextureFormat::R8);
         let corner_outline_texture = device.create_texture_from_png(resources,
-                                                                    CORNER_OUTLINE_PNG_NAME);
+                                                                    CORNER_OUTLINE_PNG_NAME,
+                                                                    TextureFormat::R8);
 
         UIPresenter {
             event_queue: UIEventQueue::new(),

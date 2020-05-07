@@ -28,7 +28,7 @@ precision highp sampler2D;
 
 
 
-float computeCoverage(vec2 from, vec2 to, sampler2D areaLUT){
+vec4 computeCoverage(vec2 from, vec2 to, sampler2D areaLUT){
 
     vec2 left = from . x < to . x ? from : to, right = from . x < to . x ? to : from;
 
@@ -43,7 +43,7 @@ float computeCoverage(vec2 from, vec2 to, sampler2D areaLUT){
 
 
     float dX = window . x - window . y;
-    return texture(areaLUT, vec2(y + 8.0, abs(d * dX))/ 16.0). r * dX;
+    return texture(areaLUT, vec2(y + 8.0, abs(d * dX))/ 16.0)* dX;
 }
 
 
@@ -55,6 +55,6 @@ in vec2 vTo;
 out vec4 oFragColor;
 
 void main(){
-    oFragColor = vec4(computeCoverage(vFrom, vTo, uAreaLUT));
+    oFragColor = computeCoverage(vFrom, vTo, uAreaLUT);
 }
 

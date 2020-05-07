@@ -25,5 +25,5 @@ in vec2 vTo;
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = vec4(computeCoverage(vFrom, vTo, uAreaLUT));
+    oFragColor = computeCoverage(vFrom, vTo, uAreaLUT);
 }

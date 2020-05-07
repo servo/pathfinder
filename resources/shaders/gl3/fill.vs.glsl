@@ -31,7 +31,7 @@ out vec2 vTo;
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth){
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize . x);
     uvec2 tileOffset = uvec2(tileIndex % tilesPerRow, tileIndex / tilesPerRow);
-    return vec2(tileOffset)* uTileSize;
+    return vec2(tileOffset)* uTileSize * vec2(1.0, 0.25);
 }
 
 void main(){
@@ -49,9 +49,15 @@ void main(){
         position . y = floor(min(from . y, to . y));
     else
         position . y = uTileSize . y;
+    position . y = floor(position . y * 0.25);
 
-    vFrom = from - position;
-    vTo = to - position;
+
+
+
+
+    vec2 offset = vec2(0.0, 1.5)- position * vec2(1.0, 4.0);
+    vFrom = from + offset;
+    vTo = to + offset;
 
     vec2 globalPosition =(tileOrigin + position)/ uFramebufferSize * 2.0 - 1.0;
 

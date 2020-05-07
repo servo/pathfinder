@@ -28,7 +28,7 @@ float2 computeTileOffset(thread const uint& tileIndex, thread const float& stenc
 {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
     uint2 tileOffset = uint2(tileIndex % tilesPerRow, tileIndex / tilesPerRow);
-    return float2(tileOffset) * uTileSize;
+    return (float2(tileOffset) * uTileSize) * float2(1.0, 0.25);
 }
 
 vertex main0_out main0(main0_in in [[stage_in]], constant float2& uTileSize [[buffer(0)]], constant float2& uFramebufferSize [[buffer(1)]])
@@ -56,8 +56,10 @@ vertex main0_out main0(main0_in in [[stage_in]], constant float2& uTileSize [[bu
     {
         position.y = uTileSize.y;
     }
-    out.vFrom = from - position;
-    out.vTo = to - position;
+    position.y = floor(position.y * 0.25);
+    float2 offset = float2(0.0, 1.5) - (position * float2(1.0, 4.0));
+    out.vFrom = from + offset;
+    out.vTo = to + offset;
     float2 globalPosition = (((tileOrigin + position) / uFramebufferSize) * 2.0) - float2(1.0);
     globalPosition.y = -globalPosition.y;
     out.gl_Position = float4(globalPosition, 0.0, 1.0);

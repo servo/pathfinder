@@ -65,8 +65,8 @@ const TEXTURE_METADATA_TEXTURE_WIDTH:   i32 = TEXTURE_METADATA_ENTRIES_PER_ROW *
 const TEXTURE_METADATA_TEXTURE_HEIGHT:  i32 = 65536 / TEXTURE_METADATA_ENTRIES_PER_ROW;
 
 // FIXME(pcwalton): Shrink this again!
-const MASK_FRAMEBUFFER_WIDTH:  i32 = TILE_WIDTH as i32  * MASK_TILES_ACROSS as i32;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * MASK_TILES_DOWN as i32;
+const MASK_FRAMEBUFFER_WIDTH:  i32 = TILE_WIDTH as i32      * MASK_TILES_ACROSS as i32;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 / 4 * MASK_TILES_DOWN as i32;
 
 const COMBINER_CTRL_COLOR_COMBINE_SRC_IN: i32 =     0x1;
 const COMBINER_CTRL_COLOR_COMBINE_DEST_IN: i32 =    0x2;
@@ -170,8 +170,10 @@ impl<D> Renderer<D> where D: Device {
         let stencil_program = StencilProgram::new(&device, resources);
         let reprojection_program = ReprojectionProgram::new(&device, resources);
 
-        let area_lut_texture = device.create_texture_from_png(resources, "area-lut");
-        let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
+        let area_lut_texture =
+            device.create_texture_from_png(resources, "area-lut", TextureFormat::RGBA8);
+        let gamma_lut_texture =
+            device.create_texture_from_png(resources, "gamma-lut", TextureFormat::R8);
 
         let quad_vertex_positions_buffer = device.create_buffer(BufferUploadMode::Static);
         device.allocate_buffer(&quad_vertex_positions_buffer,
@@ -906,7 +908,10 @@ impl<D> Renderer<D> where D: Device {
 
         if let Some(alpha_tile_page) = self.back_frame.alpha_tile_pages.get(&tile_page) {
             uniforms.push((&self.tile_program.mask_texture_0_uniform,
-                        UniformData::TextureUnit(textures.len() as u32)));
+                           UniformData::TextureUnit(textures.len() as u32)));
+            uniforms.push((&self.tile_program.mask_texture_size_0_uniform,
+                           UniformData::Vec2(F32x2::new(MASK_FRAMEBUFFER_WIDTH as f32,
+                                                        MASK_FRAMEBUFFER_HEIGHT as f32))));
             textures.push(self.device.framebuffer_texture(&alpha_tile_page.framebuffer));
         }
 
@@ -919,16 +924,16 @@ impl<D> Renderer<D> where D: Device {
                 self.device.set_texture_sampling_mode(color_texture_page,
                                                     color_texture.sampling_flags);
                 uniforms.push((&self.tile_program.color_texture_0_uniform,
-                            UniformData::TextureUnit(textures.len() as u32)));
-                uniforms.push((&self.tile_program.color_texture_0_size_uniform,
-                            UniformData::Vec2(color_texture_size.0)));
+                               UniformData::TextureUnit(textures.len() as u32)));
+                uniforms.push((&self.tile_program.color_texture_size_0_uniform,
+                               UniformData::Vec2(color_texture_size.0)));
                 textures.push(color_texture_page);
 
                 ctrl |= color_texture.composite_op.to_combine_mode() <<
                     COMBINER_CTRL_COLOR_COMBINE_SHIFT;
             }
             None => {
-                uniforms.push((&self.tile_program.color_texture_0_size_uniform,
+                uniforms.push((&self.tile_program.color_texture_size_0_uniform,
                                UniformData::Vec2(F32x2::default())));
             }
         }
@@ -1913,7 +1918,7 @@ struct AlphaTilePage<D> where D: Device {
 impl<D> AlphaTilePage<D> where D: Device {
     fn new(device: &mut D) -> AlphaTilePage<D> {
         let framebuffer_size = vec2i(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
-        let framebuffer_texture = device.create_texture(TextureFormat::R16F, framebuffer_size);
+        let framebuffer_texture = device.create_texture(TextureFormat::RGBA16F, framebuffer_size);
         let framebuffer = device.create_framebuffer(framebuffer_texture);
         AlphaTilePage {
             buffered_fills: vec![],
