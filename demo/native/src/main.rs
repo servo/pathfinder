@@ -143,7 +143,12 @@ enum CustomEvent {
 }
 
 impl Window for WindowImpl {
-    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    #[cfg(not(target_os = "macos"))]
+    fn gl_version(&self) -> GLVersion {
+        GLVersion::GL4
+    }
+
+    #[cfg(all(target_os = "macos", feature = "pf-gl"))]
     fn gl_version(&self) -> GLVersion {
         GLVersion::GL3
     }
