@@ -175,13 +175,25 @@ pub enum TextureFormat {
     RGBA32F,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VertexAttrType {
     F32,
     I16,
     I8,
     U16,
     U8,
+}
+
+impl VertexAttrType {
+    pub fn get_size(&self) -> usize {
+        match *self {
+            VertexAttrType::F32 => 4,
+            VertexAttrType::I16 => 2,
+            VertexAttrType::I8 => 1,
+            VertexAttrType::U16 => 2,
+            VertexAttrType::U8 => 1,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -420,7 +432,7 @@ impl UniformData {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VertexAttrDescriptor {
     pub size: usize,
     pub class: VertexAttrClass,
@@ -431,7 +443,49 @@ pub struct VertexAttrDescriptor {
     pub buffer_index: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+impl VertexAttrDescriptor {
+    pub const fn datatype_only(class: VertexAttrClass, attr_type: VertexAttrType, size: usize) -> Self {
+        VertexAttrDescriptor {
+            size,
+            class,
+            attr_type,
+            divisor: 0,
+            buffer_index: 0,
+            stride: 0,
+            offset: 0,
+        }
+    }
+}
+
+pub struct VertexBufferDescriptor {
+    pub index: u32,
+    pub divisor: u32,
+    pub vertex_attrs: Vec<VertexAttrDescriptor>,
+}
+
+impl VertexBufferDescriptor {
+    pub fn update_attrs(&mut self) {
+        let mut offset = 0;
+        for attr in self.vertex_attrs.iter_mut() {
+            attr.buffer_index = self.index;
+            attr.divisor = self.divisor;
+            attr.offset = offset;
+            offset += attr.size * attr.attr_type.get_size();
+        }
+
+        for attr in self.vertex_attrs.iter_mut() {
+            attr.stride = offset;
+        }
+    }
+
+    pub fn configure_vertex_attrs<D: Device>(&self, device: &D, vertex_array: &D::VertexArray, attrs: &[D::VertexAttr]) {
+        for (attr, descriptor) in attrs.iter().zip(self.vertex_attrs.iter()) {
+            device.configure_vertex_attr(vertex_array, attr, &descriptor);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VertexAttrClass {
     Float,
     FloatNorm,
