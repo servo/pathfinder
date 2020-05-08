@@ -5,16 +5,14 @@ header = """\
 #ifndef PF_PATHFINDER_H
 #define PF_PATHFINDER_H
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__OBJC__)
 #include <QuartzCore/QuartzCore.h>
+#else
+typedef struct CAMetalLayerPrivate CAMetalLayer;
 #endif
 
 #ifdef __cplusplus
 extern \"C\" {
-#endif
-
-#ifndef __APPLE__
-typedef struct CAMetalLayerPrivate CAMetalLayer;
 #endif
 """
 trailer = """\
