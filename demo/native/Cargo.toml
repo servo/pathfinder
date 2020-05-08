@@ -38,8 +38,8 @@ path = "../../resources"
 path = "../../simd"
 
 [dependencies.surfman]
-git = "https://github.com/pcwalton/surfman"
-rev = "616b9e020585dd650120fb1e6cceb0e2bb43199a"
+git = "https://github.com/servo/surfman"
+rev = "f3df871ac8c3926fe9106d86a3e51e20aa50d3cc"
 features = ["sm-winit", "sm-x11"]
 
 [dependencies.winit]

@@ -36,7 +36,8 @@ path = "../../renderer"
 path = "../../resources"
 
 [dependencies.surfman]
-version = "0.2"
+git = "https://github.com/servo/surfman"
+rev = "f3df871ac8c3926fe9106d86a3e51e20aa50d3cc"
 features = ["sm-winit", "sm-x11"]
 
 [dependencies.winit]
