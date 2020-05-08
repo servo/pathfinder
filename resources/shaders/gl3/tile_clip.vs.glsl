@@ -13,7 +13,10 @@
 
 
 precision highp float;
-precision highp sampler2D;
+
+
+
+
 
 in ivec2 aTileOffset;
 in ivec2 aDestTileOrigin;

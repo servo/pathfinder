@@ -13,7 +13,10 @@
 #extension GL_GOOGLE_include_directive : enable
 
 precision highp float;
+
+#ifdef GL_ES
 precision highp sampler2D;
+#endif
 
 #include "fill.inc.glsl"
 
