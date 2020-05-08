@@ -18,10 +18,11 @@ use gl::types::{GLuint, GLvoid};
 use half::f16;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps, ComputeDimensions, ComputeState};
-use pathfinder_gpu::{DepthFunc, Device, ImageAccess, ImageBinding, Primitive, ProgramKind, RenderOptions, RenderState, RenderTarget};
-use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureDataRef, TextureFormat};
-use pathfinder_gpu::{TextureSamplingFlags, UniformData, VertexAttrClass};
+use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
+use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, ImageAccess};
+use pathfinder_gpu::{ImageBinding, Primitive, ProgramKind, RenderOptions, RenderState};
+use pathfinder_gpu::{RenderTarget, ShaderKind, StencilFunc, TextureData, TextureDataRef};
+use pathfinder_gpu::{TextureFormat, TextureSamplingFlags, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
@@ -68,6 +69,7 @@ impl GLDevice {
         }
 
         render_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
+
         self.set_render_options(&render_state.options);
     }
 
@@ -81,6 +83,10 @@ impl GLDevice {
         }
 
         compute_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
+
+        for &(storage_buffer, buffer) in compute_state.storage_buffers {
+            self.set_storage_buffer(storage_buffer, buffer);
+        }
     }
 
     fn set_render_options(&self, render_options: &RenderOptions) {
@@ -196,6 +202,20 @@ impl GLDevice {
         }
     }
 
+    fn set_storage_buffer(&self, storage_buffer: &GLStorageBuffer, buffer: &GLBuffer) {
+        unsafe {
+            gl::BindBufferBase(gl::SHADER_STORAGE_BUFFER,
+                               storage_buffer.location as GLuint,
+                               buffer.gl_buffer);
+        }
+    }
+
+    fn unset_storage_buffer(&self, storage_buffer: &GLStorageBuffer) {
+        unsafe {
+            gl::BindBufferBase(gl::SHADER_STORAGE_BUFFER, storage_buffer.location as GLuint, 0);
+        }
+    }
+
     fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.reset_render_options(&render_state.options);
         for texture_unit in 0..(render_state.textures.len() as u32) {
@@ -207,6 +227,9 @@ impl GLDevice {
     }
 
     fn reset_compute_state(&self, compute_state: &ComputeState<GLDevice>) {
+        for &(storage_buffer, _) in compute_state.storage_buffers {
+            self.unset_storage_buffer(storage_buffer);
+        }
         for image_unit in 0..(compute_state.images.len() as u32) {
             self.unbind_image(image_unit);
         }
@@ -372,12 +395,7 @@ impl Device for GLDevice {
             }
         }
 
-        match shaders {
-            ProgramKind::Raster { vertex: vertex_shader, fragment: fragment_shader } => {
-                GLProgram { gl_program, vertex_shader, fragment_shader }
-            }
-            ProgramKind::Compute(_) => unimplemented!(),
-        }
+        GLProgram { gl_program, shaders }
     }
 
     #[inline]
@@ -774,18 +792,28 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn create_shader(
-        &self,
-        resources: &dyn ResourceLoader,
-        name: &str,
-        kind: ShaderKind,
-    ) -> Self::Shader {
+    fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
+                     -> Self::Shader {
+        match (self.version, kind) {
+            (GLVersion::GL3, ShaderKind::Compute) | (GLVersion::GLES3, ShaderKind::Compute) => {
+                panic!("Compute shaders are not supported on OpenGL versions prior to 4!")
+            }
+            (GLVersion::GL3, ShaderKind::Vertex) |
+            (GLVersion::GL3, ShaderKind::Fragment) |
+            (GLVersion::GLES3, ShaderKind::Vertex) |
+            (GLVersion::GLES3, ShaderKind::Fragment) |
+            (GLVersion::GL4, _) => {}
+        }
+        let directory = match self.version {
+            GLVersion::GL3 | GLVersion::GLES3 => "gl3",
+            GLVersion::GL4 => "gl4",
+        };
         let suffix = match kind {
             ShaderKind::Vertex => 'v',
             ShaderKind::Fragment => 'f',
             ShaderKind::Compute => 'c',
         };
-        let path = format!("shaders/gl3/{}.{}s.glsl", name, suffix);
+        let path = format!("shaders/{}/{}.{}s.glsl", directory, name, suffix);
         self.create_shader_from_source(name, &resources.slurp(&path).unwrap(), kind)
     }
 
@@ -1087,9 +1115,7 @@ pub struct GLStorageBuffer {
 pub struct GLProgram {
     pub gl_program: GLuint,
     #[allow(dead_code)]
-    vertex_shader: GLShader,
-    #[allow(dead_code)]
-    fragment_shader: GLShader,
+    shaders: ProgramKind<GLShader>,
 }
 
 impl Drop for GLProgram {
@@ -1329,7 +1355,7 @@ pub enum GLVersion {
     /// OpenGL ES 3.0+.
     GLES3 = 1,
     /// OpenGL 4.3+, core profile.
-    GL4_3 = 2,
+    GL4 = 2,
 }
 
 impl GLVersion {
@@ -1337,7 +1363,7 @@ impl GLVersion {
         match *self {
             GLVersion::GL3 => "330",
             GLVersion::GLES3 => "300 es",
-            GLVersion::GL4_3 => "430",
+            GLVersion::GL4 => "430",
         }
     }
 }
