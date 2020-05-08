@@ -37,7 +37,7 @@ path = "../../resources"
 
 [dependencies.surfman]
 version = "0.2"
-features = ["sm-winit"]
+features = ["sm-winit", "sm-x11"]
 
 [dependencies.winit]
 version = "<0.19.4" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
