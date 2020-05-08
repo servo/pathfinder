@@ -6,6 +6,7 @@ target
 /site/dist
 node_modules
 /examples/c_canvas_minimal/build
+/examples/c_canvas_glfw_minimal/build
 /shaders/build
 /c/build
 /examples/macos_app/Pathfinder\ Example.xcodeproj/project.xcworkspace/xcuserdata/*
