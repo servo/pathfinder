@@ -53,7 +53,7 @@ path = "../../simd"
 [dependencies.surfman]
 git = "https://github.com/pcwalton/surfman"
 rev = "bc29e7ae88ca7dd64d3b1c7e185604693290207f"
-features = ["sm-winit"]
+features = ["sm-winit", "sm-x11"]
 
 [dependencies.winit]
 version = "<0.19.4" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
