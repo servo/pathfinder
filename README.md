@@ -3,7 +3,7 @@
 ![Logo](https://github.com/servo/pathfinder/raw/master/resources/textures/pathfinder-logo.png)
 
 Pathfinder 3 is a fast, practical, GPU-based rasterizer for fonts and vector graphics using OpenGL
-3.0+, OpenGL ES 3.0+, or Metal.
+3.0+, OpenGL ES 3.0+, WebGL 2, and Metal.
 
 Please note that Pathfinder is under heavy development and is incomplete in various areas.
 
@@ -11,8 +11,8 @@ Please note that Pathfinder is under heavy development and is incomplete in vari
 
 Pathfinder contains a library that implements a subset of the
 [HTML canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API). You can quickly add
-vector rendering to any Rust app with it. See the `examples/canvas_minimal` for a small example of
-usage.
+vector rendering to any Rust app with it. The library is available on `crates.io`. See
+`examples/canvas_minimal` for a small example of usage.
 
 ### Demos
 
@@ -31,8 +31,11 @@ The project features:
 
 * Fast GPU rendering, even at small pixel sizes. Even on lower-end GPUs, Pathfinder typically
   matches or exceeds the performance of the best CPU rasterizers. The difference is particularly
-  pronounced at large sizes, where Pathfinder regularly achieves multi-factor speedups. All shaders
-  have no loops and minimal branching.
+  pronounced at large sizes, where Pathfinder regularly achieves multi-factor speedups.
+
+* GPU compute-based rendering, where available. Pathfinder can optionally use compute shaders to
+  achieve better performance than what the built-in GPU rasterization hardware can provide. Compute
+  shader capability is not required, and all features are available without it.
 
 * Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
   antialiasing on LCD screens. It can do stem darkening/font dilation like macOS and FreeType in
@@ -66,7 +69,16 @@ Pathfinder, the demo is under heavy development and has known bugs.)
 Running the demo is as simple as:
 
     $ cd demo/native
-    $ RUSTFLAGS="-C target-cpu=native" cargo run --release
+    $ cargo run --release
+
+Running examples (e.g. `canvas_nanovg`) can be done with:
+
+    $ cd examples/canvas_nanovg
+    $ cargo run --release
+
+Pathfinder libraries are available on `crates.io` with the `pathfinder_` prefix (e.g.
+`pathfinder_canvas`), but you may wish to use the `master` branch for the latest features and bug
+fixes.
 
 ## Community
 
