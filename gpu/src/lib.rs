@@ -38,6 +38,7 @@ pub trait Device: Sized {
     type VertexArray;
     type VertexAttr;
 
+    fn feature_level(&self) -> FeatureLevel;
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
                                 -> Self::Texture;
@@ -155,6 +156,14 @@ pub trait Device: Sized {
         let shaders = ProgramKind::Compute(name);
         self.create_program_from_shader_names(resources, name, shaders)
     }
+}
+
+/// These are rough analogues to D3D versions; don't expect them to represent exactly the feature
+/// set of the versions.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FeatureLevel {
+    D3D10,
+    D3D11,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

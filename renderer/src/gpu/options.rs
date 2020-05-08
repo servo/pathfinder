@@ -17,7 +17,7 @@ use pathfinder_gpu::Device;
 #[derive(Default)]
 pub struct RendererOptions {
     pub background_color: Option<ColorF>,
-    pub use_compute: bool,
+    pub no_compute: bool,
 }
 
 #[derive(Clone)]

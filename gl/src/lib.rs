@@ -19,11 +19,11 @@ use half::f16;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
-use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, ImageAccess};
-use pathfinder_gpu::{ImageBinding, Primitive, ProgramKind, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, ShaderKind, StencilFunc, TextureData, TextureDataRef};
-use pathfinder_gpu::{TextureFormat, TextureSamplingFlags, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, FeatureLevel};
+use pathfinder_gpu::{ImageAccess, ImageBinding, Primitive, ProgramKind, RenderOptions};
+use pathfinder_gpu::{RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData};
+use pathfinder_gpu::{TextureDataRef, TextureFormat, TextureSamplingFlags, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
@@ -275,6 +275,13 @@ impl Device for GLDevice {
     type Uniform = GLUniform;
     type VertexArray = GLVertexArray;
     type VertexAttr = GLVertexAttr;
+
+    fn feature_level(&self) -> FeatureLevel {
+        match self.version {
+            GLVersion::GL3 | GLVersion::GLES3 => FeatureLevel::D3D10,
+            GLVersion::GL4 => FeatureLevel::D3D11,
+        }
+    }
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> GLTexture {
         let mut texture = GLTexture { gl_texture: 0, size, format };

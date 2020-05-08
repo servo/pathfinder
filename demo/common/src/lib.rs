@@ -137,7 +137,7 @@ impl<W> DemoApp<W> where W: Window {
         let mut ui_model = DemoUIModel::new(&options);
         let render_options = RendererOptions {
             background_color: None,
-            use_compute: options.compute,
+            no_compute: options.no_compute,
         };
 
         let filter = build_filter(&ui_model);
@@ -625,7 +625,7 @@ pub struct Options {
     pub ui: UIVisibility,
     pub background_color: BackgroundColor,
     pub high_performance_gpu: bool,
-    pub compute: bool,
+    pub no_compute: bool,
     hidden_field_for_future_proofing: (),
 }
 
@@ -638,7 +638,7 @@ impl Default for Options {
             ui: UIVisibility::All,
             background_color: BackgroundColor::Light,
             high_performance_gpu: false,
-            compute: false,
+            no_compute: false,
             hidden_field_for_future_proofing: (),
         }
     }
@@ -692,10 +692,10 @@ impl Options {
                     .help("Use the high-performance (discrete) GPU, if available")
             )
             .arg(
-                Arg::with_name("compute")
+                Arg::with_name("no-compute")
                     .short("c")
-                    .long("compute")
-                    .help("Use compute shaders for certain tasks, if available")
+                    .long("no-compute")
+                    .help("Never use compute shaders")
             )
             .arg(
                 Arg::with_name("INPUT")
@@ -734,8 +734,8 @@ impl Options {
             self.high_performance_gpu = true;
         }
 
-        if matches.is_present("compute") {
-            self.compute = true;
+        if matches.is_present("no-compute") {
+            self.no_compute = true;
         }
 
         if let Some(path) = matches.value_of("INPUT") {

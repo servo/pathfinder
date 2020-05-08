@@ -11,8 +11,8 @@
 use crate::gpu::options::RendererOptions;
 use crate::gpu::renderer::{MASK_TILES_ACROSS, MASK_TILES_DOWN};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_gpu::{BufferTarget, BufferUploadMode, ComputeDimensions, Device, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BufferTarget, BufferUploadMode, ComputeDimensions, Device, FeatureLevel};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
@@ -391,10 +391,13 @@ pub enum FillProgram<D> where D: Device {
 impl<D> FillProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader, options: &RendererOptions)
                -> FillProgram<D> {
-        if options.use_compute {
-            FillProgram::Compute(FillComputeProgram::new(device, resources))
-        } else {
-            FillProgram::Raster(FillRasterProgram::new(device, resources))
+        match (options.no_compute, device.feature_level()) {
+            (false, FeatureLevel::D3D11) => {
+                FillProgram::Compute(FillComputeProgram::new(device, resources))
+            }
+            (_, FeatureLevel::D3D10) | (true, _) => {
+                FillProgram::Raster(FillRasterProgram::new(device, resources))
+            }
         }
     }
 }

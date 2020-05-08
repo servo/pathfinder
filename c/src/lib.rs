@@ -803,7 +803,7 @@ impl PFRendererOptions {
                 None
             },
             // TODO(pcwalton): Expose this in the C API.
-            use_compute: false,
+            no_compute: false,
         }
     }
 }

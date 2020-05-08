@@ -15,11 +15,12 @@ extern crate log;
 
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, RenderTarget};
-use pathfinder_gpu::{BufferUploadMode, ClearOps, ComputeDimensions, ComputeState, DepthFunc, Device, Primitive, ProgramKind};
-use pathfinder_gpu::{RenderOptions, RenderState, ShaderKind, StencilFunc, TextureData};
-use pathfinder_gpu::{TextureDataRef, TextureFormat, TextureSamplingFlags, UniformData};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
+use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, FeatureLevel, Primitive};
+use pathfinder_gpu::{ProgramKind, RenderOptions, RenderState, RenderTarget, ShaderKind};
+use pathfinder_gpu::{StencilFunc, TextureData, TextureDataRef, TextureFormat};
+use pathfinder_gpu::{TextureSamplingFlags, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use std::mem;
 use std::str;
@@ -423,6 +424,11 @@ impl Device for WebGlDevice {
     type Uniform = WebGlUniform;
     type VertexArray = WebGlVertexArray;
     type VertexAttr = WebGlVertexAttr;
+
+    #[inline]
+    fn feature_level(&self) -> FeatureLevel {
+        FeatureLevel::D3D10
+    }
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> WebGlTexture {
         let texture = self.context.create_texture().unwrap();
