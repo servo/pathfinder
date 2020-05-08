@@ -12,6 +12,10 @@ header = """\
 #ifdef __cplusplus
 extern \"C\" {
 #endif
+
+#ifndef __APPLE__
+typedef struct CAMetalLayerPrivate CAMetalLayer;
+#endif
 """
 trailer = """\
 #ifdef __cplusplus
