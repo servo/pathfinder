@@ -52,6 +52,35 @@ impl<D> BlitVertexArray<D> where D: Device {
     }
 }
 
+pub struct ClearVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
+}
+
+impl<D> ClearVertexArray<D> where D: Device {
+    pub fn new(device: &D,
+               clear_program: &ClearProgram<D>,
+               quad_vertex_positions_buffer: &D::Buffer,
+               quad_vertex_indices_buffer: &D::Buffer)
+               -> ClearVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let position_attr = device.get_vertex_attr(&clear_program.program, "Position").unwrap();
+
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: 4,
+            offset: 0,
+            divisor: 0,
+            buffer_index: 0,
+        });
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
+
+        ClearVertexArray { vertex_array }
+    }
+}
+
 pub struct FillVertexArray<D> where D: Device {
     pub vertex_array: D::VertexArray,
 }
@@ -334,6 +363,23 @@ impl<D> BlitProgram<D> where D: Device {
         let program = device.create_raster_program(resources, "blit");
         let src_uniform = device.get_uniform(&program, "Src");
         BlitProgram { program, src_uniform }
+    }
+}
+
+pub struct ClearProgram<D> where D: Device {
+    pub program: D::Program,
+    pub rect_uniform: D::Uniform,
+    pub framebuffer_size_uniform: D::Uniform,
+    pub color_uniform: D::Uniform,
+}
+
+impl<D> ClearProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> ClearProgram<D> {
+        let program = device.create_raster_program(resources, "clear");
+        let rect_uniform = device.get_uniform(&program, "Rect");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let color_uniform = device.get_uniform(&program, "Color");
+        ClearProgram { program, rect_uniform, framebuffer_size_uniform, color_uniform }
     }
 }
 

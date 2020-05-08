@@ -10,7 +10,7 @@
 
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu::shaders::{BlitProgram, BlitVertexArray, ClipTileProgram, ClipTileVertexArray};
+use crate::gpu::shaders::{BlitProgram, BlitVertexArray, ClearProgram, ClearVertexArray, ClipTileProgram, ClipTileVertexArray};
 use crate::gpu::shaders::{CopyTileProgram, CopyTileVertexArray, FillProgram, FillVertexArray};
 use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MAX_TILES_PER_BATCH, ReprojectionProgram};
 use crate::gpu::shaders::{ReprojectionVertexArray, StencilProgram, StencilVertexArray};
@@ -33,8 +33,9 @@ use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
-use pathfinder_gpu::{ClearOps, ComputeDimensions, ComputeState, DepthFunc, DepthState, Device, ImageAccess, ImageBinding, Primitive, RenderOptions};
-use pathfinder_gpu::{RenderState, RenderTarget, StencilFunc, StencilState, TextureDataRef};
+use pathfinder_gpu::{ClearOps, ComputeDimensions, ComputeState, DepthFunc, DepthState, Device};
+use pathfinder_gpu::{ImageAccess, ImageBinding, Primitive, RenderOptions, RenderState};
+use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureDataRef};
 use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
@@ -104,6 +105,7 @@ pub struct Renderer<D> where D: Device {
     dest_framebuffer: DestFramebuffer<D>,
     options: RendererOptions,
     blit_program: BlitProgram<D>,
+    clear_program: ClearProgram<D>,
     fill_program: FillProgram<D>,
     tile_program: TileProgram<D>,
     tile_copy_program: CopyTileProgram<D>,
@@ -143,6 +145,7 @@ pub struct Renderer<D> where D: Device {
 struct Frame<D> where D: Device {
     framebuffer_flags: FramebufferFlags,
     blit_vertex_array: BlitVertexArray<D>,
+    clear_vertex_array: ClearVertexArray<D>,
     fill_vertex_storage_allocator: StorageAllocator<D, FillVertexStorage<D>>,
     tile_vertex_storage_allocator: StorageAllocator<D, TileVertexStorage<D>>,
     quads_vertex_indices_buffer: D::Buffer,
@@ -163,6 +166,7 @@ impl<D> Renderer<D> where D: Device {
                options: RendererOptions)
                -> Renderer<D> {
         let blit_program = BlitProgram::new(&device, resources);
+        let clear_program = ClearProgram::new(&device, resources);
         let fill_program = FillProgram::new(&device, resources, &options);
         let tile_program = TileProgram::new(&device, resources);
         let tile_copy_program = CopyTileProgram::new(&device, resources);
@@ -191,6 +195,7 @@ impl<D> Renderer<D> where D: Device {
 
         let front_frame = Frame::new(&device,
                                      &blit_program,
+                                     &clear_program,
                                      &tile_clip_program,
                                      &reprojection_program,
                                      &stencil_program,
@@ -199,6 +204,7 @@ impl<D> Renderer<D> where D: Device {
                                      window_size);
         let back_frame = Frame::new(&device,
                                     &blit_program,
+                                    &clear_program,
                                     &tile_clip_program,
                                     &reprojection_program,
                                     &stencil_program,
@@ -212,6 +218,7 @@ impl<D> Renderer<D> where D: Device {
             dest_framebuffer,
             options,
             blit_program,
+            clear_program,
             fill_program,
             tile_program,
             tile_copy_program,
@@ -251,7 +258,7 @@ impl<D> Renderer<D> where D: Device {
     pub fn begin_scene(&mut self) {
         self.back_frame.framebuffer_flags = FramebufferFlags::empty();
         for alpha_tile_page in self.back_frame.alpha_tile_pages.values_mut() {
-            alpha_tile_page.must_preserve_framebuffer = false;
+            alpha_tile_page.framebuffer_is_dirty = false;
         }
 
         self.device.begin_commands();
@@ -311,6 +318,7 @@ impl<D> Renderer<D> where D: Device {
     }
 
     pub fn end_scene(&mut self) {
+        self.clear_dest_framebuffer_if_necessary();
         self.blit_intermediate_dest_framebuffer_if_necessary();
 
         let old_front_frame_fence = self.front_frame_fence.take();
@@ -641,7 +649,7 @@ impl<D> Renderer<D> where D: Device {
                                      BufferTarget::Vertex);
 
         let mut clear_color = None;
-        if !alpha_tile_page.must_preserve_framebuffer {
+        if !alpha_tile_page.framebuffer_is_dirty {
             clear_color = Some(ColorF::default());
         };
 
@@ -681,7 +689,7 @@ impl<D> Renderer<D> where D: Device {
         self.device.end_timer_query(&timer_query);
         self.current_timer.as_mut().unwrap().fill_times.push(TimerFuture::new(timer_query));
 
-        alpha_tile_page.must_preserve_framebuffer = true;
+        alpha_tile_page.framebuffer_is_dirty = true;
         buffered_fills.clear();
     }
 
@@ -783,7 +791,7 @@ impl<D> Renderer<D> where D: Device {
         self.device.end_timer_query(&timer_query);
         self.current_timer.as_mut().unwrap().fill_times.push(TimerFuture::new(timer_query));
 
-        alpha_tile_page.must_preserve_framebuffer = true;
+        alpha_tile_page.framebuffer_is_dirty = true;
         buffered_fills.clear();
     }
 
@@ -804,7 +812,7 @@ impl<D> Renderer<D> where D: Device {
         }
 
         let mut clear_color = None;
-        if !self.back_frame.alpha_tile_pages[&dest_page].must_preserve_framebuffer {
+        if !self.back_frame.alpha_tile_pages[&dest_page].framebuffer_is_dirty {
             clear_color = Some(ColorF::default());
         };
 
@@ -856,7 +864,7 @@ impl<D> Renderer<D> where D: Device {
             .alpha_tile_pages
             .get_mut(&dest_page)
             .unwrap()
-            .must_preserve_framebuffer = true;
+            .framebuffer_is_dirty = true;
     }
 
     fn tile_transform(&self) -> Transform4F {
@@ -1231,6 +1239,39 @@ impl<D> Renderer<D> where D: Device {
         ]);
     }
 
+    fn clear_dest_framebuffer_if_necessary(&mut self) {
+        let background_color = match self.options.background_color {
+            None => return,
+            Some(background_color) => background_color,
+        };
+
+        if self.back_frame
+               .framebuffer_flags
+               .contains(FramebufferFlags::DEST_FRAMEBUFFER_IS_DIRTY) {
+            return;
+        }
+
+        let main_viewport = self.main_viewport();
+        let uniforms = [
+            (&self.clear_program.rect_uniform, UniformData::Vec4(main_viewport.to_f32().0)),
+            (&self.clear_program.framebuffer_size_uniform,
+             UniformData::Vec2(main_viewport.size().to_f32().0)),
+            (&self.clear_program.color_uniform, UniformData::Vec4(background_color.0)),
+        ];
+
+        self.device.draw_elements(6, &RenderState {
+            target: &RenderTarget::Default,
+            program: &self.clear_program.program,
+            vertex_array: &self.back_frame.clear_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[],
+            images: &[],
+            uniforms: &uniforms[..],
+            viewport: main_viewport,
+            options: RenderOptions::default(),
+        });
+    }
+
     fn blit_intermediate_dest_framebuffer_if_necessary(&mut self) {
         if !self.flags.contains(RendererFlags::INTERMEDIATE_DEST_FRAMEBUFFER_NEEDED) {
             return;
@@ -1287,7 +1328,7 @@ impl<D> Renderer<D> where D: Device {
             None => {
                 self.back_frame
                     .framebuffer_flags
-                    .contains(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS)
+                    .contains(FramebufferFlags::DEST_FRAMEBUFFER_IS_DIRTY)
             }
         };
 
@@ -1312,7 +1353,7 @@ impl<D> Renderer<D> where D: Device {
             None => {
                 self.back_frame
                     .framebuffer_flags
-                    .insert(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS);
+                    .insert(FramebufferFlags::DEST_FRAMEBUFFER_IS_DIRTY);
             }
         }
     }
@@ -1360,6 +1401,7 @@ impl<D> Frame<D> where D: Device {
     // FIXME(pcwalton): This signature shouldn't be so big. Make a struct.
     fn new(device: &D,
            blit_program: &BlitProgram<D>,
+           clear_program: &ClearProgram<D>,
            tile_clip_program: &ClipTileProgram<D>,
            reprojection_program: &ReprojectionProgram<D>,
            stencil_program: &StencilProgram<D>,
@@ -1373,6 +1415,10 @@ impl<D> Frame<D> where D: Device {
                                                      &blit_program,
                                                      &quad_vertex_positions_buffer,
                                                      &quad_vertex_indices_buffer);
+        let clear_vertex_array = ClearVertexArray::new(device,
+                                                       &clear_program,
+                                                       &quad_vertex_positions_buffer,
+                                                       &quad_vertex_indices_buffer);
         let tile_clip_vertex_array = ClipTileVertexArray::new(device,
                                                               &tile_clip_program,
                                                               &quad_vertex_positions_buffer,
@@ -1399,6 +1445,7 @@ impl<D> Frame<D> where D: Device {
 
         Frame {
             blit_vertex_array,
+            clear_vertex_array,
             tile_vertex_storage_allocator,
             fill_vertex_storage_allocator,
             tile_clip_vertex_array,
@@ -1698,8 +1745,8 @@ impl Div<usize> for RenderTime {
 
 bitflags! {
     struct FramebufferFlags: u8 {
-        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x01;
-        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x02;
+        const MASK_FRAMEBUFFER_IS_DIRTY = 0x01;
+        const DEST_FRAMEBUFFER_IS_DIRTY = 0x02;
     }
 }
 
@@ -1912,7 +1959,7 @@ struct AlphaTilePage<D> where D: Device {
     buffered_fills: Vec<Fill>,
     pending_fills: Vec<Fill>,
     framebuffer: D::Framebuffer,
-    must_preserve_framebuffer: bool,
+    framebuffer_is_dirty: bool,
 }
 
 impl<D> AlphaTilePage<D> where D: Device {
@@ -1924,7 +1971,7 @@ impl<D> AlphaTilePage<D> where D: Device {
             buffered_fills: vec![],
             pending_fills: vec![],
             framebuffer,
-            must_preserve_framebuffer: false,
+            framebuffer_is_dirty: false,
         }
     }
 }
