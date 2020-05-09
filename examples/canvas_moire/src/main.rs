@@ -86,7 +86,6 @@ fn main() {
 
     // Create our renderers.
     let renderer = Renderer::new(pathfinder_device,
-                                 &FilesystemResourceLoader::locate(),
                                  &EmbeddedResourceLoader,
                                  DestFramebuffer::full_window(framebuffer_size),
                                  RendererOptions {
