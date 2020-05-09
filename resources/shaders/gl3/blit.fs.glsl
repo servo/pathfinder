@@ -13,7 +13,10 @@
 
 
 precision highp float;
-precision highp sampler2D;
+
+
+
+
 
 uniform sampler2D uSrc;
 

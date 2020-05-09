@@ -11,7 +11,10 @@
 // except according to those terms.
 
 precision highp float;
+
+#ifdef GL_ES
 precision highp sampler2D;
+#endif
 
 uniform vec2 uFramebufferSize;
 

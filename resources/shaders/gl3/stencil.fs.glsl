@@ -13,7 +13,10 @@
 
 
 precision highp float;
-precision highp sampler2D;
+
+
+
+
 
 out vec4 oFragColor;
 
