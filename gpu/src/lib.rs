@@ -178,8 +178,10 @@ pub enum TextureFormat {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VertexAttrType {
     F32,
+    I32,
     I16,
     I8,
+    U32,
     U16,
     U8,
 }
@@ -188,13 +190,35 @@ impl VertexAttrType {
     pub fn get_size(&self) -> usize {
         match *self {
             VertexAttrType::F32 => 4,
+            VertexAttrType::I32 => 4,
             VertexAttrType::I16 => 2,
             VertexAttrType::I8 => 1,
+            VertexAttrType::U32 => 4,
             VertexAttrType::U16 => 2,
             VertexAttrType::U8 => 1,
         }
     }
 }
+
+#[cfg(feature = "shader_alignment_32_bits")]
+pub const ALIGNED_U8_ATTR: VertexAttrType = VertexAttrType::U32;
+#[cfg(not(feature = "shader_alignment_32_bits"))]
+pub const ALIGNED_U8_ATTR: VertexAttrType = VertexAttrType::U8;
+
+#[cfg(feature = "shader_alignment_32_bits")]
+pub const ALIGNED_U16_ATTR: VertexAttrType = VertexAttrType::U32;
+#[cfg(not(feature = "shader_alignment_32_bits"))]
+pub const ALIGNED_U16_ATTR: VertexAttrType = VertexAttrType::U16;
+
+#[cfg(feature = "shader_alignment_32_bits")]
+pub const ALIGNED_I8_ATTR: VertexAttrType = VertexAttrType::I32;
+#[cfg(not(feature = "shader_alignment_32_bits"))]
+pub const ALIGNED_I8_ATTR: VertexAttrType = VertexAttrType::I8;
+
+#[cfg(feature = "shader_alignment_32_bits")]
+pub const ALIGNED_I16_ATTR: VertexAttrType = VertexAttrType::I32;
+#[cfg(not(feature = "shader_alignment_32_bits"))]
+pub const ALIGNED_I16_ATTR: VertexAttrType = VertexAttrType::I16;
 
 #[derive(Clone, Copy, Debug)]
 pub enum BufferData<'a, T> {

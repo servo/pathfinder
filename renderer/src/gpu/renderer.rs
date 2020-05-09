@@ -31,7 +31,7 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
+use pathfinder_geometry::{alignment::AlignedU16, vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i}};
 use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, ComputeDimensions, ComputeState, DepthFunc, DepthState, Device};
 use pathfinder_gpu::{ImageAccess, ImageBinding, Primitive, RenderOptions, RenderState};
@@ -47,7 +47,7 @@ use std::ops::{Add, Div};
 use std::time::Duration;
 use std::u32;
 
-static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
+static QUAD_VERTEX_POSITIONS: [AlignedU16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 pub(crate) const MASK_TILES_ACROSS: u32 = 256;
