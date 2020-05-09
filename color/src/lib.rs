@@ -25,17 +25,17 @@ pub struct ColorU {
 
 impl ColorU {
     #[inline]
-    pub fn new(r: u8, g: u8, b: u8, a: u8) -> ColorU {
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> ColorU {
         ColorU { r, g, b, a }
     }
 
     #[inline]
-    pub fn transparent_black() -> ColorU {
+    pub const fn transparent_black() -> ColorU {
         ColorU::from_u32(0)
     }
 
     #[inline]
-    pub fn from_u32(rgba: u32) -> ColorU {
+    pub const fn from_u32(rgba: u32) -> ColorU {
         ColorU {
             r: (rgba >> 24) as u8,
             g: ((rgba >> 16) & 0xff) as u8,
@@ -45,7 +45,7 @@ impl ColorU {
     }
 
     #[inline]
-    pub fn black() -> ColorU {
+    pub const fn black() -> ColorU {
         ColorU {
             r: 0,
             g: 0,
@@ -55,7 +55,7 @@ impl ColorU {
     }
 
     #[inline]
-    pub fn white() -> ColorU {
+    pub const fn white() -> ColorU {
         ColorU {
             r: 255,
             g: 255,
@@ -71,12 +71,12 @@ impl ColorU {
     }
 
     #[inline]
-    pub fn is_opaque(&self) -> bool {
+    pub const fn is_opaque(&self) -> bool {
         self.a == !0
     }
 
     #[inline]
-    pub fn is_fully_transparent(&self) -> bool {
+    pub const fn is_fully_transparent(&self) -> bool {
         self.a == 0
     }
 }
