@@ -20,7 +20,7 @@ use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::Renderer;
@@ -49,7 +49,7 @@ fn main() {
 
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
-                                     &FilesystemResourceLoader::locate(),
+                                     &EmbeddedResourceLoader,
                                      DestFramebuffer::full_window(window_size),
                                      RendererOptions {
                                          background_color: Some(ColorF::white()),
