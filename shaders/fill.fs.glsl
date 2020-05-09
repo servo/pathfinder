@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/fill.fs.glsl
 //
@@ -20,7 +20,8 @@ precision highp sampler2D;
 
 #include "fill.inc.glsl"
 
-uniform sampler2D uAreaLUT;
+layout(set=0, binding=2) uniform texture2D uAreaLUT;
+layout(set=0, binding=3) uniform sampler uSampler;
 
 in vec2 vFrom;
 in vec2 vTo;
@@ -28,5 +29,5 @@ in vec2 vTo;
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = computeCoverage(vFrom, vTo, uAreaLUT);
+    oFragColor = computeCoverage(vFrom, vTo, uAreaLUT, uSampler);
 }

@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/blit.vs.glsl
 //

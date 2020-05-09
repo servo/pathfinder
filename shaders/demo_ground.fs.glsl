@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/resources/shaders/demo_ground.fs.glsl
 //
@@ -16,8 +16,12 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform vec4 uGroundColor;
-uniform vec4 uGridlineColor;
+layout(set=0, binding=2) uniform uGroundColor {
+    vec4 groundColor;
+};
+layout(set=0, binding=3) uniform uGridlineColor {
+    vec4 gridlineColor;
+};
 
 in vec2 vTexCoord;
 
@@ -25,5 +29,5 @@ out vec4 oFragColor;
 
 void main() {
     vec2 texCoordPx = fract(vTexCoord) / fwidth(vTexCoord);
-    oFragColor = any(lessThanEqual(texCoordPx, vec2(1.0))) ? uGridlineColor : uGroundColor;
+    oFragColor = any(lessThanEqual(texCoordPx, vec2(1.0))) ? gridlineColor : groundColor;
 }

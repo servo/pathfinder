@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/reproject.vs.glsl
 //
@@ -16,7 +16,9 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform mat4 uNewTransform;
+layout(set=0, binding=0) uniform uNewTransform {
+    mat4 newTransform;
+};
 
 in ivec2 aPosition;
 
@@ -30,5 +32,5 @@ void main() {
     // FIXME(pcwalton): This is wrong.
     position.y = 1.0 - position.y;
 #endif
-    gl_Position = uNewTransform * vec4(position, 0.0, 1.0);
+    gl_Position = newTransform * vec4(position, 0.0, 1.0);
 }

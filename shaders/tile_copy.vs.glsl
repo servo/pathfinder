@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/tile_copy.vs.glsl
 //
@@ -16,12 +16,16 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform mat4 uTransform;
-uniform vec2 uTileSize;
+layout(set=0, binding=0) uniform uTransform {
+    mat4 transform;
+};
+layout(set=0, binding=1) uniform uTileSize {
+    vec2 tileSize;
+};
 
 in ivec2 aTilePosition;
 
 void main() {
-    vec2 position = vec2(aTilePosition) * uTileSize;
-    gl_Position = uTransform * vec4(position, 0.0, 1.0);
+    vec2 position = vec2(aTilePosition) * tileSize;
+    gl_Position = transform * vec4(position, 0.0, 1.0);
 }

@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-vec4 computeCoverage(vec2 from, vec2 to, sampler2D areaLUT) {
+vec4 computeCoverage(vec2 from, vec2 to, texture2D areaLUT, sampler areaLUTSampler) {
     // Determine winding, and sort into a consistent order so we only need to find one root below.
     vec2 left = from.x < to.x ? from : to, right = from.x < to.x ? to : from;
 
@@ -23,5 +23,5 @@ vec4 computeCoverage(vec2 from, vec2 to, sampler2D areaLUT) {
 
     // Look up area under that line, and scale horizontally to the window size.
     float dX = window.x - window.y;
-    return texture(areaLUT, vec2(y + 8.0, abs(d * dX)) / 16.0) * dX;
+    return texture(sampler2D(areaLUT, areaLUTSampler), vec2(y + 8.0, abs(d * dX)) / 16.0) * dX;
 }

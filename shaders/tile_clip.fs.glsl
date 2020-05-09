@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/tile_clip.fs.glsl
 //
@@ -16,7 +16,8 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform sampler2D uSrc;
+layout(set=0, binding=0) uniform texture2D uSrc;
+layout(set=0, binding=1) uniform sampler uSampler;
 
 in vec2 vTexCoord;
 in float vBackdrop;
@@ -24,5 +25,5 @@ in float vBackdrop;
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = clamp(abs(texture(uSrc, vTexCoord) + vBackdrop), 0.0, 1.0);
+    oFragColor = clamp(abs(texture(sampler2D(uSrc, uSampler), vTexCoord) + vBackdrop), 0.0, 1.0);
 }

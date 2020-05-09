@@ -4,15 +4,20 @@
 
 using namespace metal;
 
+struct uColor
+{
+    float4 color;
+};
+
 struct main0_out
 {
     float4 oFragColor [[color(0)]];
 };
 
-fragment main0_out main0(constant float4& uColor [[buffer(0)]])
+fragment main0_out main0(constant uColor& _12 [[buffer(0)]])
 {
     main0_out out = {};
-    out.oFragColor = float4(uColor.xyz, 1.0) * uColor.w;
+    out.oFragColor = float4(_12.color.xyz, 1.0) * _12.color.w;
     return out;
 }
 

@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/debug_solid.fs.glsl
 //
@@ -16,10 +16,12 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform vec4 uColor;
+layout(set=0, binding=1) uniform uColor {
+    vec4 color;
+};
 
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = vec4(uColor.rgb, 1.0) * uColor.a;
+    oFragColor = vec4(color.rgb, 1.0) * color.a;
 }

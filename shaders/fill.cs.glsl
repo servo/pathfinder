@@ -22,19 +22,22 @@ precision highp sampler2D;
 
 layout(local_size_x = 16, local_size_y = 4) in;
 
-uniform writeonly image2D uDest;
-uniform sampler2D uAreaLUT;
-uniform int uFirstTileIndex;
+layout (set=0, binding = 0) uniform writeonly image2D uDest;
+layout (set=0, binding = 1) uniform texture2D uAreaLUT;
+layout (set=0, binding = 2) uniform sampler uSampler;
+layout (set=0, binding = 3) uniform uFirstTileIndex {
+    int firstTileIndex;
+};
 
-layout(std430, binding = 0) buffer bFills {
+layout(std430, set=0, binding = 4) buffer bFills {
     restrict readonly uvec2 iFills[];
 };
 
-layout(std430, binding = 1) buffer bNextFills {
+layout(std430, set=0, binding = 5) buffer bNextFills {
     restrict readonly int iNextFills[];
 };
 
-layout(std430, binding = 2) buffer bFillTileMap {
+layout(std430, set=0, binding = 6) buffer bFillTileMap {
     restrict readonly int iFillTileMap[];
 };
 
@@ -42,7 +45,7 @@ void main() {
     ivec2 tileSubCoord = ivec2(gl_LocalInvocationID.xy) * ivec2(1, 4);
     uint tileIndexOffset = gl_WorkGroupID.z;
 
-    uint tileIndex = tileIndexOffset + uint(uFirstTileIndex);
+    uint tileIndex = tileIndexOffset + uint(firstTileIndex);
 
     int fillIndex = iFillTileMap[tileIndex];
     if (fillIndex < 0)
@@ -58,7 +61,7 @@ void main() {
 
         coverages += computeCoverage(from - (vec2(tileSubCoord) + vec2(0.5)),
                                      to   - (vec2(tileSubCoord) + vec2(0.5)),
-                                     uAreaLUT);
+                                     uAreaLUT, uSampler);
 
         fillIndex = iNextFills[fillIndex];
     } while (fillIndex >= 0);

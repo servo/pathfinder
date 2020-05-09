@@ -848,7 +848,7 @@ impl MetalDevice {
             None => panic!("get_uniform_index() called before reflection!"),
             Some(ref arguments) => arguments,
         };
-        let (main_name, sampler_name) = (format!("u{}", name), format!("u{}Smplr", name));
+        let (main_name, sampler_name) = (format!("u{}", name), format!("u{}Sampler", name));
         let (mut main_argument, mut sampler_argument) = (None, None);
         for argument_index in 0..arguments.len() {
             let argument = arguments.object_at(argument_index);
