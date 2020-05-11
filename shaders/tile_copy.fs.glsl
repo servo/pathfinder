@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/tile_copy.fs.glsl
 //
@@ -16,12 +16,15 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform vec2 uFramebufferSize;
-uniform sampler2D uSrc;
+layout(set=0, binding=2) uniform uFramebufferSize {
+    vec2 framebufferSize;
+};
+layout(set=0, binding=3) uniform texture2D uSrc;
+layout(set=0, binding=4) uniform sampler uSampler;
 
 out vec4 oFragColor;
 
 void main() {
-    vec2 texCoord = gl_FragCoord.xy / uFramebufferSize;
-    oFragColor = texture(uSrc, texCoord);
+    vec2 texCoord = gl_FragCoord.xy / framebufferSize;
+    oFragColor = texture(sampler2D(uSrc, uSampler), texCoord);
 }

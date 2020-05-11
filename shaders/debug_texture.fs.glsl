@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/debug_texture.fs.glsl
 //
@@ -16,14 +16,17 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform sampler2D uTexture;
-uniform vec4 uColor;
+layout(set=0, binding=2) uniform texture2D uTexture;
+layout(set=0, binding=3) uniform sampler uSampler;
+layout(set=0, binding=4) uniform uColor {
+    vec4 color;
+};
 
 in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
 void main() {
-    float alpha = texture(uTexture, vTexCoord).r * uColor.a;
-    oFragColor = alpha * vec4(uColor.rgb, 1.0);
+    float alpha = texture(sampler2D(uTexture, uSampler), vTexCoord).r * color.a;
+    oFragColor = alpha * vec4(color.rgb, 1.0);
 }

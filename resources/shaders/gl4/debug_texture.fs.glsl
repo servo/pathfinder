@@ -2,31 +2,15 @@
 // Automatically generated from files in pathfinder/shaders/. Do not edit!
 
 
+uniform vec4 uColor[1];
+layout(binding = 2) uniform sampler2D SPIRV_Cross_CombineduTextureuSampler;
 
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 0) out vec4 oFragColor;
 
-
-
-
-
-
-
-
-
-precision highp float;
-
-
-
-
-
-uniform sampler2D uTexture;
-uniform vec4 uColor;
-
-in vec2 vTexCoord;
-
-out vec4 oFragColor;
-
-void main(){
-    float alpha = texture(uTexture, vTexCoord). r * uColor . a;
-    oFragColor = alpha * vec4(uColor . rgb, 1.0);
+void main()
+{
+    float alpha = texture(SPIRV_Cross_CombineduTextureuSampler, vTexCoord).x * uColor[0].w;
+    oFragColor = vec4(uColor[0].xyz, 1.0) * alpha;
 }
 

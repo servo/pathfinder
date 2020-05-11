@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/debug_solid.vs.glsl
 //
@@ -16,11 +16,13 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform vec2 uFramebufferSize;
+layout(set=0, binding=0) uniform uFramebufferSize {
+    vec2 framebufferSize;
+};
 
 in ivec2 aPosition;
 
 void main() {
-    vec2 position = vec2(aPosition) / uFramebufferSize * 2.0 - 1.0;
+    vec2 position = vec2(aPosition) / framebufferSize * 2.0 - 1.0;
     gl_Position = vec4(position.x, -position.y, 0.0, 1.0);
 }

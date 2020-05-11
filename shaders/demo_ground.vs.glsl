@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/resources/shaders/demo_ground.vs.glsl
 //
@@ -16,14 +16,18 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform mat4 uTransform;
-uniform int uGridlineCount;
+layout(set=0, binding=0) uniform uTransform {
+    mat4 transform;
+};
+layout(set=0, binding=1) uniform uGridlineCount {
+    int gridlineCount;
+};
 
 in ivec2 aPosition;
 
 out vec2 vTexCoord;
 
 void main() {
-    vTexCoord = vec2(aPosition * uGridlineCount);
-    gl_Position = uTransform * vec4(ivec4(aPosition.x, 0, aPosition.y, 1));
+    vTexCoord = vec2(aPosition * gridlineCount);
+    gl_Position = transform * vec4(ivec4(aPosition.x, 0, aPosition.y, 1));
 }

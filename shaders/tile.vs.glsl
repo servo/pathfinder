@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/tile.vs.glsl
 //
@@ -16,10 +16,17 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform mat4 uTransform;
-uniform vec2 uTileSize;
-uniform sampler2D uTextureMetadata;
-uniform ivec2 uTextureMetadataSize;
+layout(set=0, binding=0) uniform uTransform {
+    mat4 transform; 
+};
+layout(set=0, binding=1) uniform uTileSize {
+    vec2 tileSize; 
+};
+layout(set=0, binding=2) uniform texture2D uTextureMetadata;
+layout(set=0, binding=3) uniform sampler uSampler;
+layout(set=0, binding=4) uniform uTextureMetadataSize {
+    ivec2 textureMetadataSize; 
+};
 
 in ivec2 aTileOffset;
 in ivec2 aTileOrigin;
@@ -35,22 +42,22 @@ out float vTileCtrl;
 
 void main() {
     vec2 tileOrigin = vec2(aTileOrigin), tileOffset = vec2(aTileOffset);
-    vec2 position = (tileOrigin + tileOffset) * uTileSize;
+    vec2 position = (tileOrigin + tileOffset) * tileSize;
 
-    vec2 maskTexCoord0 = (vec2(aMaskTexCoord0) + tileOffset) * uTileSize;
+    vec2 maskTexCoord0 = (vec2(aMaskTexCoord0) + tileOffset) * tileSize;
 
-    vec2 textureMetadataScale = vec2(1.0) / vec2(uTextureMetadataSize);
+    vec2 textureMetadataScale = vec2(1.0) / vec2(textureMetadataSize);
     vec2 metadataEntryCoord = vec2(aColor % 128 * 4, aColor / 128);
     vec2 colorTexMatrix0Coord = (metadataEntryCoord + vec2(0.5, 0.5)) * textureMetadataScale;
     vec2 colorTexOffsetsCoord = (metadataEntryCoord + vec2(1.5, 0.5)) * textureMetadataScale;
     vec2 baseColorCoord = (metadataEntryCoord + vec2(2.5, 0.5)) * textureMetadataScale;
-    vec4 colorTexMatrix0 = texture(uTextureMetadata, colorTexMatrix0Coord);
-    vec4 colorTexOffsets = texture(uTextureMetadata, colorTexOffsetsCoord);
-    vec4 baseColor = texture(uTextureMetadata, baseColorCoord);
+    vec4 colorTexMatrix0 = texture(sampler2D(uTextureMetadata, uSampler), colorTexMatrix0Coord);
+    vec4 colorTexOffsets = texture(sampler2D(uTextureMetadata, uSampler), colorTexOffsetsCoord);
+    vec4 baseColor = texture(sampler2D(uTextureMetadata, uSampler), baseColorCoord);
 
     vColorTexCoord0 = mat2(colorTexMatrix0) * position + colorTexOffsets.xy;
     vMaskTexCoord0 = vec3(maskTexCoord0, float(aMaskBackdrop.x));
     vBaseColor = baseColor;
     vTileCtrl = float(aTileCtrl);
-    gl_Position = uTransform * vec4(position, 0.0, 1.0);
+    gl_Position = transform * vec4(position, 0.0, 1.0);
 }

@@ -1,4 +1,4 @@
-#version 330
+#version 450
 
 // pathfinder/shaders/fill.vs.glsl
 //
@@ -16,8 +16,12 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform vec2 uFramebufferSize;
-uniform vec2 uTileSize;
+layout(std140, set=0, binding=0) uniform uFramebufferSize {
+    vec2 framebufferSize;
+};
+layout(std140, set=0, binding=1) uniform uTileSize {
+    vec2 tileSize;
+};
 
 in uvec2 aTessCoord;
 in uint aFromPx;
@@ -30,13 +34,13 @@ out vec2 vFrom;
 out vec2 vTo;
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
-    uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
+    uint tilesPerRow = uint(stencilTextureWidth / tileSize.x);
     uvec2 tileOffset = uvec2(tileIndex % tilesPerRow, tileIndex / tilesPerRow);
-    return vec2(tileOffset) * uTileSize * vec2(1.0, 0.25);
+    return vec2(tileOffset) * tileSize * vec2(1.0, 0.25);
 }
 
 void main() {
-    vec2 tileOrigin = computeTileOffset(aTileIndex, uFramebufferSize.x);
+    vec2 tileOrigin = computeTileOffset(aTileIndex, framebufferSize.x);
 
     vec2 from = vec2(aFromPx & 15u, aFromPx >> 4u) + aFromSubpx;
     vec2 to = vec2(aToPx & 15u, aToPx >> 4u) + aToSubpx;
@@ -49,7 +53,7 @@ void main() {
     if (aTessCoord.y == 0u)
         position.y = floor(min(from.y, to.y));
     else
-        position.y = uTileSize.y;
+        position.y = tileSize.y;
     position.y = floor(position.y * 0.25);
 
     // Since each fragment corresponds to 4 pixels on a scanline, the varying interpolation will
@@ -60,7 +64,7 @@ void main() {
     vFrom = from + offset;
     vTo = to + offset;
 
-    vec2 globalPosition = (tileOrigin + position) / uFramebufferSize * 2.0 - 1.0;
+    vec2 globalPosition = (tileOrigin + position) / framebufferSize * 2.0 - 1.0;
 #ifdef PF_ORIGIN_UPPER_LEFT
     globalPosition.y = -globalPosition.y;
 #endif

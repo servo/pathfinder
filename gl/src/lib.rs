@@ -148,16 +148,16 @@ impl GLDevice {
         unsafe {
             match *data {
                 UniformData::Float(value) => {
-                    gl::Uniform1f(uniform.location, value); ck();
+                    gl::Uniform4f(uniform.location, value, 0.0, 0.0, 0.0); ck();
                 }
                 UniformData::IVec2(value) => {
-                    gl::Uniform2i(uniform.location, value[0], value[1]); ck();
+                    gl::Uniform4i(uniform.location, value[0], value[1], 0, 0); ck();
                 }
                 UniformData::IVec3(value) => {
-                    gl::Uniform3i(uniform.location, value[0], value[1], value[2]); ck();
+                    gl::Uniform4i(uniform.location, value[0], value[1], value[2], 0); ck();
                 }
                 UniformData::Int(value) => {
-                    gl::Uniform1i(uniform.location, value); ck();
+                    gl::Uniform4i(uniform.location, value, 0, 0, 0); ck();
                 }
                 UniformData::Mat2(data) => {
                     assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
@@ -168,17 +168,16 @@ impl GLDevice {
                 }
                 UniformData::Mat4(data) => {
                     assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
-                    let data_ptr: *const F32x4 = data.as_ptr();
-                    gl::UniformMatrix4fv(uniform.location,
-                                         1,
-                                         gl::FALSE,
-                                         data_ptr as *const GLfloat);
+                    gl::Uniform4f(uniform.location, data[0].x(), data[0].y(), data[0].z(), data[0].w()); ck();
+                    gl::Uniform4f(uniform.location + 1, data[1].x(), data[1].y(), data[1].z(), data[1].w()); ck();
+                    gl::Uniform4f(uniform.location + 2, data[2].x(), data[2].y(), data[2].z(), data[2].w()); ck();
+                    gl::Uniform4f(uniform.location + 3, data[3].x(), data[3].y(), data[3].z(), data[3].w()); ck();
                 }
                 UniformData::Vec2(data) => {
-                    gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
+                    gl::Uniform4f(uniform.location, data.x(), data.y(), 0.0, 0.0); ck();
                 }
                 UniformData::Vec3(data) => {
-                    gl::Uniform3f(uniform.location, data[0], data[1], data[2]); ck();
+                    gl::Uniform4f(uniform.location, data[0], data[1], data[2], 0.0); ck();
                 }
                 UniformData::Vec4(data) => {
                     gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
@@ -432,10 +431,17 @@ impl Device for GLDevice {
     }
 
     fn get_uniform(&self, program: &GLProgram, name: &str) -> GLUniform {
-        let name = CString::new(format!("u{}", name)).unwrap();
-        let location = unsafe {
-            gl::GetUniformLocation(program.gl_program, name.as_ptr() as *const GLchar)
+        let uniform_name = CString::new(format!("u{}", name)).unwrap();
+        let mut location = unsafe {
+            gl::GetUniformLocation(program.gl_program, uniform_name.as_ptr() as *const GLchar)
         }; ck();
+        if location < 0 {
+            let uniform_name = CString::new(format!("SPIRV_Cross_Combinedu{}uSampler", name)).unwrap();
+            location = unsafe {
+                gl::GetUniformLocation(program.gl_program, uniform_name.as_ptr() as *const GLchar)
+            };
+            ck();
+        };
         GLUniform { location }
     }
 
