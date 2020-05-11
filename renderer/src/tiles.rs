@@ -15,11 +15,9 @@ use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{Contour, Outline, PointIndex};
 use pathfinder_content::segment::Segment;
-use pathfinder_content::sorted_vector::SortedVector;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
-use std::cmp::Ordering;
 use std::mem;
 
 // TODO(pcwalton): Make this configurable.
@@ -34,8 +32,9 @@ pub(crate) struct Tiler<'a, 'b> {
     outline: &'a Outline,
     path_info: TilingPathInfo<'a>,
 
-    point_queue: SortedVector<QueuedEndpoint>,
-    active_edges: SortedVector<ActiveEdge>,
+    point_queue: Vec<QueuedEndpoint>,
+    next_point_queue: Vec<QueuedEndpoint>,
+    active_edges: Vec<ActiveEdge>,
     old_active_edges: Vec<ActiveEdge>,
 }
 
@@ -75,9 +74,10 @@ impl<'a, 'b> Tiler<'a, 'b> {
             outline,
             path_info,
 
-            point_queue: SortedVector::new(),
-            active_edges: SortedVector::new(),
-            old_active_edges: vec![],
+            point_queue: Vec::new(),
+            next_point_queue: Vec::new(),
+            active_edges: Vec::new(),
+            old_active_edges: Vec::new(),
         }
     }
 
@@ -108,17 +108,18 @@ impl<'a, 'b> Tiler<'a, 'b> {
 
         // Add new active edges.
         let strip_max_y = ((i32::from(strip_origin_y) + 1) * TILE_HEIGHT as i32) as f32;
-        while let Some(queued_endpoint) = self.point_queue.peek() {
-            // We're done when we see an endpoint that belongs to the next tile strip.
-            //
+        while let Some(queued_endpoint) = self.point_queue.pop() {
             // Note that this test must be `>`, not `>=`, in order to make sure we don't miss
             // active edges that lie precisely on the tile strip boundary.
             if queued_endpoint.y > strip_max_y {
-                break;
+                self.next_point_queue.push(queued_endpoint);
+                continue;
             }
 
-            self.add_new_active_edge(strip_origin_y);
+            self.add_new_active_edge(strip_origin_y, queued_endpoint);
         }
+
+        mem::swap(&mut self.point_queue, &mut self.next_point_queue);
     }
 
     fn pack_and_cull(&mut self) {
@@ -180,7 +181,7 @@ impl<'a, 'b> Tiler<'a, 'b> {
         let mut current_winding = 0;
 
         debug_assert!(self.old_active_edges.is_empty());
-        mem::swap(&mut self.old_active_edges, &mut self.active_edges.array);
+        mem::swap(&mut self.old_active_edges, &mut self.active_edges);
 
         // FIXME(pcwalton): Yuck.
         let mut last_segment_x = -9999.0;
@@ -190,6 +191,7 @@ impl<'a, 'b> Tiler<'a, 'b> {
         debug!("---------- tile y {}({}) ----------", tile_y, tile_top);
         debug!("old active edges: {:#?}", self.old_active_edges);
 
+        self.old_active_edges.sort_unstable_by(|a, b| a.crossing.x().partial_cmp(&b.crossing.x()).unwrap());
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.
             let segment_x = active_edge.crossing.x();
@@ -287,9 +289,9 @@ impl<'a, 'b> Tiler<'a, 'b> {
         }
     }
 
-    fn add_new_active_edge(&mut self, tile_y: i32) {
+    fn add_new_active_edge(&mut self, tile_y: i32, queued_endpoint: QueuedEndpoint) {
         let outline = &self.outline;
-        let point_index = self.point_queue.pop().unwrap().point_index;
+        let point_index = queued_endpoint.point_index;
 
         let contour = &outline.contours()[point_index.contour() as usize];
 
@@ -523,7 +525,7 @@ pub fn round_rect_out_to_tile_bounds(rect: RectF) -> RectI {
 fn process_active_segment(
     contour: &Contour,
     from_endpoint_index: u32,
-    active_edges: &mut SortedVector<ActiveEdge>,
+    active_edges: &mut Vec<ActiveEdge>,
     builder: &SceneBuilder,
     object_builder: &mut ObjectBuilder,
     tile_y: i32,
@@ -539,19 +541,9 @@ fn process_active_segment(
 
 // Queued endpoints
 
-#[derive(PartialEq)]
 struct QueuedEndpoint {
     point_index: PointIndex,
     y: f32,
-}
-
-impl Eq for QueuedEndpoint {}
-
-impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
-    fn partial_cmp(&self, other: &QueuedEndpoint) -> Option<Ordering> {
-        // NB: Reversed!
-        (other.y, other.point_index).partial_cmp(&(self.y, self.point_index))
-    }
 }
 
 // Active edges
@@ -679,12 +671,6 @@ impl ActiveEdge {
         object_builder.generate_fill_primitives_for_line(builder, upper_part, tile_y);
         self.crossing = lower_part.upper_point();
         Some(lower_part)
-    }
-}
-
-impl PartialOrd<ActiveEdge> for ActiveEdge {
-    fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
-        self.crossing.x().partial_cmp(&other.crossing.x())
     }
 }
 

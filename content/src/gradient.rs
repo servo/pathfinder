@@ -8,7 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::sorted_vector::SortedVector;
 use crate::util;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -24,10 +23,10 @@ use std::mem;
 #[derive(Clone, PartialEq, Debug)]
 pub struct Gradient {
     pub geometry: GradientGeometry,
-    stops: SortedVector<ColorStop>,
+    stops: Vec<ColorStop>,
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ColorStop {
     pub offset: f32,
     pub color: ColorU,
@@ -91,7 +90,7 @@ impl Hash for ColorStop {
 impl Gradient {
     #[inline]
     pub fn linear(line: LineSegment2F) -> Gradient {
-        Gradient { geometry: GradientGeometry::Linear(line), stops: SortedVector::new() }
+        Gradient { geometry: GradientGeometry::Linear(line), stops: Vec::new() }
     }
 
     #[inline]
@@ -104,13 +103,16 @@ impl Gradient {
         let transform = Transform2F::default();
         Gradient {
             geometry: GradientGeometry::Radial { line: line.to_line(), radii, transform },
-            stops: SortedVector::new(),
+            stops: Vec::new(),
         }
     }
 
     #[inline]
     pub fn add(&mut self, stop: ColorStop) {
-        self.stops.push(stop);
+        let index = self.stops.binary_search_by(|other| {
+            other.offset.partial_cmp(&stop.offset).unwrap()
+        }).unwrap_or_else(convert::identity);
+        self.stops.insert(index, stop);
     }
 
     /// A convenience method to add a color stop.
@@ -121,12 +123,12 @@ impl Gradient {
 
     #[inline]
     pub fn stops(&self) -> &[ColorStop] {
-        &self.stops.array
+        &self.stops
     }
 
     #[inline]
     pub fn stops_mut(&mut self) -> &mut [ColorStop] {
-        &mut self.stops.array
+        &mut self.stops
     }
 
     pub fn sample(&self, mut t: f32) -> ColorU {
@@ -141,8 +143,8 @@ impl Gradient {
         }).unwrap_or_else(convert::identity).min(last_index);
         let lower_index = if upper_index > 0 { upper_index - 1 } else { upper_index };
 
-        let lower_stop = &self.stops.array[lower_index];
-        let upper_stop = &self.stops.array[upper_index];
+        let lower_stop = &self.stops[lower_index];
+        let upper_stop = &self.stops[upper_index];
 
         let denom = upper_stop.offset - lower_stop.offset;
         if denom == 0.0 {
@@ -157,12 +159,12 @@ impl Gradient {
 
     #[inline]
     pub fn is_opaque(&self) -> bool {
-        self.stops.array.iter().all(|stop| stop.color.is_opaque())
+        self.stops.iter().all(|stop| stop.color.is_opaque())
     }
 
     #[inline]
     pub fn is_fully_transparent(&self) -> bool {
-        self.stops.array.iter().all(|stop| stop.color.is_fully_transparent())
+        self.stops.iter().all(|stop| stop.color.is_fully_transparent())
     }
 
     pub fn apply_transform(&mut self, new_transform: Transform2F) {
