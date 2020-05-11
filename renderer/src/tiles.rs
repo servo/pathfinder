@@ -107,7 +107,7 @@ impl<'a, 'b> Tiler<'a, 'b> {
         self.process_old_active_edges(strip_origin_y);
 
         // Add new active edges.
-        let strip_max_y = ((i32::from(strip_origin_y) + 1) * TILE_HEIGHT as i32) as f32;
+        let strip_max_y = ((strip_origin_y + 1) * TILE_HEIGHT as i32) as f32;
         while let Some(queued_endpoint) = self.point_queue.pop() {
             // Note that this test must be `>`, not `>=`, in order to make sure we don't miss
             // active edges that lie precisely on the tile strip boundary.
@@ -186,7 +186,7 @@ impl<'a, 'b> Tiler<'a, 'b> {
         // FIXME(pcwalton): Yuck.
         let mut last_segment_x = -9999.0;
 
-        let tile_top = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
+        let tile_top = (tile_y * TILE_HEIGHT as i32) as f32;
 
         debug!("---------- tile y {}({}) ----------", tile_y, tile_top);
         debug!("old active edges: {:#?}", self.old_active_edges);
@@ -226,8 +226,8 @@ impl<'a, 'b> Tiler<'a, 'b> {
             let segment_tile_x = f32::floor(segment_x) as i32 / TILE_WIDTH as i32;
             if current_tile_x < segment_tile_x && current_subtile_x > 0.0 {
                 let current_x =
-                    (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
-                let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
+                    (current_tile_x * TILE_WIDTH as i32) as f32 + current_subtile_x;
+                let tile_right_x = ((current_tile_x + 1) * TILE_WIDTH as i32) as f32;
                 let current_tile_coords = vec2i(current_tile_x, tile_y);
                 self.object_builder.add_active_fill(
                     self.scene_builder,
@@ -261,10 +261,10 @@ impl<'a, 'b> Tiler<'a, 'b> {
             // Do final subtile fill, if necessary.
             debug_assert_eq!(current_tile_x, segment_tile_x);
             let segment_subtile_x =
-                segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
+                segment_x - (current_tile_x * TILE_WIDTH as i32) as f32;
             if segment_subtile_x > current_subtile_x {
                 let current_x =
-                    (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
+                    (current_tile_x * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let current_tile_coords = vec2i(current_tile_x, tile_y);
                 self.object_builder.add_active_fill(
                     self.scene_builder,
@@ -573,7 +573,8 @@ impl ActiveEdge {
                builder: &SceneBuilder,
                object_builder: &mut ObjectBuilder,
                tile_y: i32) {
-        let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
+
+        let tile_bottom = ((tile_y + 1) * TILE_HEIGHT as i32) as f32;
         debug!(
             "process_active_edge({:#?}, tile_y={}({}))",
             self, tile_y, tile_bottom
@@ -617,11 +618,10 @@ impl ActiveEdge {
                 .as_cubic_segment()
                 .is_flat(FLATTENING_TOLERANCE)
             {
-                let next_t = 0.5 * split_t;
-                let (before, after) = oriented_segment.as_cubic_segment().split(next_t);
+                split_t *= 0.5;
+                let (before, after) = oriented_segment.as_cubic_segment().split(split_t);
                 before_segment = before;
                 after_segment = Some(after);
-                split_t = next_t;
             }
 
             debug!(
@@ -656,7 +656,7 @@ impl ActiveEdge {
         object_builder: &mut ObjectBuilder,
         tile_y: i32,
     ) -> Option<LineSegment2F> {
-        let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
+        let tile_bottom = ((tile_y + 1) * TILE_HEIGHT as i32) as f32;
         debug!(
             "process_line_segment({:?}, tile_y={}) tile_bottom={}",
             line_segment, tile_y, tile_bottom
