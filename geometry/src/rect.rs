@@ -12,7 +12,7 @@
 
 use crate::vector::{IntoVector2F, Vector2F, Vector2I};
 use pathfinder_simd::default::{F32x4, I32x4};
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct RectF(pub F32x4);
@@ -198,11 +198,25 @@ impl Add<Vector2F> for RectF {
     }
 }
 
+impl AddAssign<Vector2F> for RectF {
+    #[inline]
+    fn add_assign(&mut self, other: Vector2F) {
+        *self = *self + other
+    }
+}
+
 impl Add<f32> for RectF {
     type Output = RectF;
     #[inline]
     fn add(self, other: f32) -> RectF {
         RectF::new(self.origin() + other, self.size())
+    }
+}
+
+impl AddAssign<f32> for RectF {
+    #[inline]
+    fn add_assign(&mut self, other: f32) {
+        *self = *self + other
     }
 }
 
@@ -214,11 +228,25 @@ impl Mul<Vector2F> for RectF {
     }
 }
 
+impl MulAssign<Vector2F> for RectF {
+    #[inline]
+    fn mul_assign(&mut self, other: Vector2F) {
+        *self = *self * other
+    }
+}
+
 impl Mul<f32> for RectF {
     type Output = RectF;
     #[inline]
     fn mul(self, factor: f32) -> RectF {
         RectF(self.0 * F32x4::splat(factor))
+    }
+}
+
+impl MulAssign<f32> for RectF {
+    #[inline]
+    fn mul_assign(&mut self, other: f32) {
+        *self = *self * other
     }
 }
 
@@ -230,11 +258,25 @@ impl Sub<Vector2F> for RectF {
     }
 }
 
+impl SubAssign<Vector2F> for RectF {
+    #[inline]
+    fn sub_assign(&mut self, other: Vector2F) {
+        *self = *self - other
+    }
+}
+
 impl Sub<f32> for RectF {
     type Output = RectF;
     #[inline]
     fn sub(self, other: f32) -> RectF {
         RectF::new(self.origin() - other, self.size())
+    }
+}
+
+impl SubAssign<f32> for RectF {
+    #[inline]
+    fn sub_assign(&mut self, other: f32) {
+        *self = *self - other
     }
 }
 
