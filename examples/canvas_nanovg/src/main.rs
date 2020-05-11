@@ -34,7 +34,7 @@ use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::ResourceLoader;
-use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use pathfinder_simd::default::F32x2;
 use std::collections::VecDeque;
 use std::f32::consts::PI;
@@ -1501,7 +1501,7 @@ fn main() {
     let framebuffer_size = vec2i(physical_size.width as i32, physical_size.height as i32);
 
     // Load demo data.
-    let resources = FilesystemResourceLoader::locate();
+    let resources = EmbeddedResourceLoader;
     let font_data = vec![
         Handle::from_memory(Arc::new(resources.slurp("fonts/Roboto-Regular.ttf").unwrap()), 0),
         Handle::from_memory(Arc::new(resources.slurp("fonts/Roboto-Bold.ttf").unwrap()), 0),

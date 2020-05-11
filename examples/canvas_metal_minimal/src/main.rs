@@ -20,7 +20,7 @@ use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
-use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use sdl2::event::Event;
 use sdl2::hint;
 use sdl2::keyboard::Keycode;
@@ -47,7 +47,7 @@ fn main() {
 
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(MetalDevice::new(metal_layer),
-                                     &FilesystemResourceLoader::locate(),
+                                     &EmbeddedResourceLoader,
                                      DestFramebuffer::full_window(window_size),
                                      RendererOptions { background_color: Some(ColorF::white()) });
 

@@ -18,7 +18,7 @@ use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
-use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use std::f32::consts::PI;
 use std::f32;
 use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
@@ -86,7 +86,7 @@ fn main() {
 
     // Create our renderers.
     let renderer = Renderer::new(pathfinder_device,
-                                 &FilesystemResourceLoader::locate(),
+                                 &EmbeddedResourceLoader,
                                  DestFramebuffer::full_window(framebuffer_size),
                                  RendererOptions {
                                      background_color: Some(ColorF::white()),
