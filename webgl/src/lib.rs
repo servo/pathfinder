@@ -16,12 +16,13 @@ extern crate log;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
-use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, FeatureLevel, Primitive};
-use pathfinder_gpu::{ProgramKind, RenderOptions, RenderState, RenderTarget, ShaderKind};
-use pathfinder_gpu::{StencilFunc, TextureData, TextureDataRef, TextureFormat};
-use pathfinder_gpu::{TextureSamplingFlags, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, FeatureLevel};
+use pathfinder_gpu::{ImageBinding, Primitive, ProgramKind, RenderOptions, RenderState};
+use pathfinder_gpu::{RenderTarget, ShaderKind, StencilFunc, TextureBinding, TextureData};
+use pathfinder_gpu::{TextureDataRef, TextureFormat, TextureSamplingFlags, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
+use std::cell::RefCell;
 use std::mem;
 use std::str;
 use std::time::Duration;
@@ -170,12 +171,9 @@ impl WebGlDevice {
                 self.context.uniform3i(location, data[0], data[1], data[2]);
                 self.ck();
             }
-            UniformData::TextureUnit(unit) | UniformData::ImageUnit(unit) => {
-                self.context.uniform1i(location, unit as i32);
-                self.ck();
-            }
         }
     }
+
     fn set_render_state(&self, render_state: &RenderState<WebGlDevice>) {
         self.bind_render_target(render_state.target);
 
@@ -187,18 +185,33 @@ impl WebGlDevice {
             self.clear(&render_state.options.clear_ops);
         }
 
-        self.context
-            .use_program(Some(&render_state.program.gl_program));
-        self.context
-            .bind_vertex_array(Some(&render_state.vertex_array.gl_vertex_array));
-        for (texture_unit, texture) in render_state.textures.iter().enumerate() {
-            self.bind_texture(texture, texture_unit as u32);
-        }
+        self.context.use_program(Some(&render_state.program.gl_program));
+        self.context.bind_vertex_array(Some(&render_state.vertex_array.gl_vertex_array));
+
+        self.bind_textures_and_images(&render_state.program,
+                                      &render_state.textures,
+                                      &render_state.images);
 
         for (uniform, data) in render_state.uniforms {
             self.set_uniform(uniform, data);
         }
         self.set_render_options(&render_state.options);
+    }
+
+    fn bind_textures_and_images(
+            &self,
+            program: &WebGlProgram,
+            texture_bindings: &[TextureBinding<WebGlTextureParameter, WebGlTexture>],
+            _: &[ImageBinding<(), WebGlTexture>]) {
+        for &(texture_parameter, texture) in texture_bindings {
+            self.bind_texture(texture, texture_parameter.texture_unit);
+        }
+
+        let parameters = program.parameters.borrow();
+        for (texture_unit, uniform) in parameters.textures.iter().enumerate() {
+            self.context.uniform1i(uniform.location.as_ref(), texture_unit as i32);
+            self.ck();
+        }
     }
 
     fn set_render_options(&self, render_options: &RenderOptions) {
@@ -415,11 +428,13 @@ impl Device for WebGlDevice {
     type Buffer = WebGlBuffer;
     type Fence = ();
     type Framebuffer = WebGlFramebuffer;
+    type ImageParameter = ();
     type Program = WebGlProgram;
     type Shader = WebGlShader;
     type StorageBuffer = ();
     type Texture = WebGlTexture;
     type TextureDataReceiver = ();
+    type TextureParameter = WebGlTextureParameter;
     type TimerQuery = WebGlTimerQuery;
     type Uniform = WebGlUniform;
     type VertexArray = WebGlVertexArray;
@@ -566,9 +581,12 @@ impl Device for WebGlDevice {
             panic!("Program {:?} linking failed", name);
         }
 
+        let parameters = WebGlProgramParameters { textures: vec![] };
+
         WebGlProgram {
             context: self.context.clone(),
             gl_program,
+            parameters: RefCell::new(parameters),
         }
     }
 
@@ -596,11 +614,27 @@ impl Device for WebGlDevice {
 
     fn get_uniform(&self, program: &WebGlProgram, name: &str) -> WebGlUniform {
         let name = format!("u{}", name);
-        let location = self
-            .context
-            .get_uniform_location(&program.gl_program, &name);
+        let location = self.context.get_uniform_location(&program.gl_program, &name);
         self.ck();
         WebGlUniform { location: location }
+    }
+
+    fn get_texture_parameter(&self, program: &WebGlProgram, name: &str) -> WebGlTextureParameter {
+        let uniform = self.get_uniform(program, name);
+        let mut parameters = program.parameters.borrow_mut();
+        let index = match parameters.textures.iter().position(|u| *u == uniform) {
+            Some(index) => index,
+            None => {
+                let index = parameters.textures.len();
+                parameters.textures.push(uniform.clone());
+                index
+            }
+        };
+        WebGlTextureParameter { uniform, texture_unit: index as u32 }
+    }
+
+    fn get_image_parameter(&self, _: &WebGlProgram, _: &str) {
+        // TODO(pcwalton)
     }
 
     fn get_storage_buffer(&self, _: &Self::Program, _: &str, _: u32) {
@@ -988,20 +1022,32 @@ impl Drop for WebGlBuffer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WebGlUniform {
     location: Option<web_sys::WebGlUniformLocation>,
+}
+
+#[derive(Debug)]
+pub struct WebGlTextureParameter {
+    uniform: WebGlUniform,
+    texture_unit: u32,
 }
 
 pub struct WebGlProgram {
     context: web_sys::WebGl2RenderingContext,
     pub gl_program: web_sys::WebGlProgram,
+    parameters: RefCell<WebGlProgramParameters>,
 }
 
 impl Drop for WebGlProgram {
     fn drop(&mut self) {
         self.context.delete_program(Some(&self.gl_program));
     }
+}
+
+pub struct WebGlProgramParameters {
+    // Mapping from texture unit number to uniform location.
+    textures: Vec<WebGlUniform>,
 }
 
 pub struct WebGlShader {
