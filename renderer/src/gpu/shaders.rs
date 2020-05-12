@@ -136,8 +136,8 @@ where
                 index: 1,
                 divisor: 1,
                 vertex_attrs: vec![
-                    VertexAttrDescriptor::datatype_only(VertexAttrClass::FloatNorm, ALIGNED_U8_ATTR, 2),
-                    VertexAttrDescriptor::datatype_only(VertexAttrClass::FloatNorm, ALIGNED_U8_ATTR, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::FloatNorm, VertexAttrType::U8, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::FloatNorm, VertexAttrType::U8, 2),
                     VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 1),
                     VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 1),
                     VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U16_ATTR, 1),

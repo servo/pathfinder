@@ -302,8 +302,8 @@ pub struct LineSegmentU4 {
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct LineSegmentU8 {
-    pub from_x: AlignedU8,
-    pub from_y: AlignedU8,
-    pub to_x: AlignedU8,
-    pub to_y: AlignedU8,
+    pub from_x: u8,
+    pub from_y: u8,
+    pub to_x: u8,
+    pub to_y: u8,
 }

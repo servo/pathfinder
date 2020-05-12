@@ -651,10 +651,10 @@ impl ObjectBuilder {
             fill: Fill {
                 px: LineSegmentU4 { from: px[0] as AlignedU8, to: px[2] as AlignedU8 },
                 subpx: LineSegmentU8 {
-                    from_x: from_x as AlignedU8,
-                    from_y: from_y as AlignedU8,
-                    to_x:   to_x   as AlignedU8,
-                    to_y:   to_y   as AlignedU8,
+                    from_x: from_x as u8,
+                    from_y: from_y as u8,
+                    to_x:   to_x   as u8,
+                    to_y:   to_y   as u8,
                 },
                 alpha_tile_index: alpha_tile_id.tile() as AlignedU16,
             },
