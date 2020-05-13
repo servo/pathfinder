@@ -21,3 +21,5 @@ script:
 env:
   global:
     - HARFBUZZ_SYS_NO_PKG_CONFIG=true
+notifications:
+  webhooks: http://build.servo.org:54856/travis
