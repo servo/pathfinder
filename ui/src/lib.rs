@@ -412,13 +412,12 @@ impl<D> UIPresenter<D> where D: Device {
             program: &self.texture_program.program,
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            textures: &[&texture],
+            textures: &[(&self.texture_program.texture, &texture)],
             images: &[],
             uniforms: &[
                 (&self.texture_program.framebuffer_size_uniform,
                  UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
                 (&self.texture_program.color_uniform, get_color_uniform(color)),
-                (&self.texture_program.texture_uniform, UniformData::TextureUnit(0)),
                 (&self.texture_program.texture_size_uniform,
                  UniformData::Vec2(device.texture_size(&texture).0.to_f32x2()))
             ],
@@ -566,8 +565,8 @@ struct DebugTextureProgram<D> where D: Device {
     program: D::Program,
     framebuffer_size_uniform: D::Uniform,
     texture_size_uniform: D::Uniform,
-    texture_uniform: D::Uniform,
     color_uniform: D::Uniform,
+    texture: D::TextureParameter,
 }
 
 impl<D> DebugTextureProgram<D> where D: Device {
@@ -575,14 +574,14 @@ impl<D> DebugTextureProgram<D> where D: Device {
         let program = device.create_raster_program(resources, "debug_texture");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let texture_size_uniform = device.get_uniform(&program, "TextureSize");
-        let texture_uniform = device.get_uniform(&program, "Texture");
         let color_uniform = device.get_uniform(&program, "Color");
+        let texture = device.get_texture_parameter(&program, "Texture");
         DebugTextureProgram {
             program,
             framebuffer_size_uniform,
             texture_size_uniform,
-            texture_uniform,
             color_uniform,
+            texture,
         }
     }
 }

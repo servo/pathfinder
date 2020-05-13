@@ -10,7 +10,8 @@
 
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererOptions};
-use crate::gpu::shaders::{BlitProgram, BlitVertexArray, ClearProgram, ClearVertexArray, ClipTileProgram, ClipTileVertexArray};
+use crate::gpu::shaders::{BlitProgram, BlitVertexArray, ClearProgram, ClearVertexArray};
+use crate::gpu::shaders::{ClipTileProgram, ClipTileVertexArray};
 use crate::gpu::shaders::{CopyTileProgram, CopyTileVertexArray, FillProgram, FillVertexArray};
 use crate::gpu::shaders::{MAX_FILLS_PER_BATCH, MAX_TILES_PER_BATCH, ReprojectionProgram};
 use crate::gpu::shaders::{ReprojectionVertexArray, StencilProgram, StencilVertexArray};
@@ -34,9 +35,9 @@ use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendOp, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearOps, ComputeDimensions, ComputeState, DepthFunc, DepthState, Device};
-use pathfinder_gpu::{ImageAccess, ImageBinding, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureDataRef};
-use pathfinder_gpu::{TextureFormat, UniformData};
+use pathfinder_gpu::{ImageAccess, Primitive, RenderOptions, RenderState, RenderTarget};
+use pathfinder_gpu::{StencilFunc, StencilState, TextureBinding, TextureDataRef, TextureFormat};
+use pathfinder_gpu::{UniformBinding, UniformData};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
 use std::collections::VecDeque;
@@ -662,14 +663,13 @@ impl<D> Renderer<D> where D: Device {
             program: &fill_raster_program.program,
             vertex_array: &fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            textures: &[&self.area_lut_texture],
+            textures: &[(&fill_raster_program.area_lut_texture, &self.area_lut_texture)],
             uniforms: &[
                 (&fill_raster_program.framebuffer_size_uniform,
                  UniformData::Vec2(F32x2::new(MASK_FRAMEBUFFER_WIDTH as f32,
                                               MASK_FRAMEBUFFER_HEIGHT as f32))),
                 (&fill_raster_program.tile_size_uniform,
                  UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
-                (&fill_raster_program.area_lut_uniform, UniformData::TextureUnit(0)),
             ],
             images: &[],
             viewport: mask_viewport,
@@ -761,10 +761,7 @@ impl<D> Renderer<D> where D: Device {
                                      &self.fill_tile_map,
                                      BufferTarget::Storage);
 
-        let image_binding = ImageBinding {
-            texture: self.device.framebuffer_texture(&alpha_tile_page.framebuffer),
-            access: ImageAccess::Write,
-        };
+        let image_texture = self.device.framebuffer_texture(&alpha_tile_page.framebuffer);
 
         let timer_query = self.timer_query_cache.alloc(&self.device);
         self.device.begin_timer_query(&timer_query);
@@ -773,11 +770,9 @@ impl<D> Renderer<D> where D: Device {
         let dimensions = ComputeDimensions { x: 1, y: 1, z: fill_tile_count as u32 };
         self.device.dispatch_compute(dimensions, &ComputeState {
             program: &fill_compute_program.program,
-            textures: &[&self.area_lut_texture],
-            images: &[image_binding],
+            textures: &[(&fill_compute_program.area_lut_texture, &self.area_lut_texture)],
+            images: &[(&fill_compute_program.dest_image, image_texture, ImageAccess::Write)],
             uniforms: &[
-                (&fill_compute_program.area_lut_uniform, UniformData::TextureUnit(0)),
-                (&fill_compute_program.dest_uniform, UniformData::ImageUnit(0)),
                 (&fill_compute_program.first_tile_index_uniform,
                  UniformData::Int(first_fill_tile as i32)),
             ],
@@ -845,9 +840,9 @@ impl<D> Renderer<D> where D: Device {
                 program: &self.tile_clip_program.program,
                 vertex_array: &self.back_frame.tile_clip_vertex_array.vertex_array,
                 primitive: Primitive::Triangles,
-                textures: &[src_texture],
+                textures: &[(&self.tile_clip_program.src_texture, src_texture)],
                 images: &[],
-                uniforms: &[(&self.tile_clip_program.src_uniform, UniformData::TextureUnit(0))],
+                uniforms: &[],
                 viewport: mask_viewport,
                 options: RenderOptions {
                     blend,
@@ -893,7 +888,10 @@ impl<D> Renderer<D> where D: Device {
         let timer_query = self.timer_query_cache.alloc(&self.device);
         self.device.begin_timer_query(&timer_query);
 
-        let mut textures = vec![&self.back_frame.texture_metadata_texture];
+        let mut textures = vec![
+            (&self.tile_program.texture_metadata_texture,
+             &self.back_frame.texture_metadata_texture),
+        ];
         let mut uniforms = vec![
             (&self.tile_program.transform_uniform,
              UniformData::Mat4(self.tile_transform().to_columns())),
@@ -901,26 +899,23 @@ impl<D> Renderer<D> where D: Device {
              UniformData::Vec2(F32x2::new(TILE_WIDTH as f32, TILE_HEIGHT as f32))),
             (&self.tile_program.framebuffer_size_uniform,
              UniformData::Vec2(draw_viewport.size().to_f32().0)),
-            (&self.tile_program.texture_metadata_uniform, UniformData::TextureUnit(0)),
             (&self.tile_program.texture_metadata_size_uniform,
              UniformData::IVec2(I32x2::new(TEXTURE_METADATA_TEXTURE_WIDTH,
                                            TEXTURE_METADATA_TEXTURE_HEIGHT))),
         ];
 
         if needs_readable_framebuffer {
-            uniforms.push((&self.tile_program.dest_texture_uniform,
-                           UniformData::TextureUnit(textures.len() as u32)));
-            textures.push(self.device
-                              .framebuffer_texture(&self.back_frame.dest_blend_framebuffer));
+            textures.push((&self.tile_program.dest_texture,
+                           self.device
+                               .framebuffer_texture(&self.back_frame.dest_blend_framebuffer)));
         }
 
         if let Some(alpha_tile_page) = self.back_frame.alpha_tile_pages.get(&tile_page) {
-            uniforms.push((&self.tile_program.mask_texture_0_uniform,
-                           UniformData::TextureUnit(textures.len() as u32)));
             uniforms.push((&self.tile_program.mask_texture_size_0_uniform,
                            UniformData::Vec2(F32x2::new(MASK_FRAMEBUFFER_WIDTH as f32,
                                                         MASK_FRAMEBUFFER_HEIGHT as f32))));
-            textures.push(self.device.framebuffer_texture(&alpha_tile_page.framebuffer));
+            textures.push((&self.tile_program.mask_texture_0,
+                           self.device.framebuffer_texture(&alpha_tile_page.framebuffer)));
         }
 
         // TODO(pcwalton): Refactor.
@@ -930,12 +925,10 @@ impl<D> Renderer<D> where D: Device {
                 let color_texture_page = self.texture_page(color_texture.page);
                 let color_texture_size = self.device.texture_size(color_texture_page).to_f32();
                 self.device.set_texture_sampling_mode(color_texture_page,
-                                                    color_texture.sampling_flags);
-                uniforms.push((&self.tile_program.color_texture_0_uniform,
-                               UniformData::TextureUnit(textures.len() as u32)));
+                                                      color_texture.sampling_flags);
+                textures.push((&self.tile_program.color_texture_0, color_texture_page));
                 uniforms.push((&self.tile_program.color_texture_size_0_uniform,
                                UniformData::Vec2(color_texture_size.0)));
-                textures.push(color_texture_page);
 
                 ctrl |= color_texture.composite_op.to_combine_mode() <<
                     COMBINER_CTRL_COLOR_COMBINE_SHIFT;
@@ -1022,9 +1015,7 @@ impl<D> Renderer<D> where D: Device {
         };
         let draw_texture = self.device.framebuffer_texture(&draw_framebuffer);
 
-        uniforms.push((&self.tile_copy_program.src_uniform,
-                       UniformData::TextureUnit(textures.len() as u32)));
-        textures.push(draw_texture);
+        textures.push((&self.tile_copy_program.src_texture, draw_texture));
         uniforms.push((&self.tile_copy_program.framebuffer_size_uniform,
                        UniformData::Vec2(draw_viewport.size().to_f32().0)));
 
@@ -1106,14 +1097,13 @@ impl<D> Renderer<D> where D: Device {
             program: &self.reprojection_program.program,
             vertex_array: &self.back_frame.reprojection_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            textures: &[texture],
+            textures: &[(&self.reprojection_program.texture, texture)],
             images: &[],
             uniforms: &[
                 (&self.reprojection_program.old_transform_uniform,
                  UniformData::from_transform_3d(old_transform)),
                 (&self.reprojection_program.new_transform_uniform,
                  UniformData::from_transform_3d(new_transform)),
-                (&self.reprojection_program.texture_uniform, UniformData::TextureUnit(0)),
             ],
             viewport: self.draw_viewport(),
             options: RenderOptions {
@@ -1181,15 +1171,15 @@ impl<D> Renderer<D> where D: Device {
         ]);
     }
 
-    fn set_uniforms_for_text_filter<'a>(&'a self,
-                                        textures: &mut Vec<&'a D::Texture>,
-                                        uniforms: &mut Vec<(&'a D::Uniform, UniformData)>,
-                                        fg_color: ColorF,
-                                        bg_color: ColorF,
-                                        defringing_kernel: Option<DefringingKernel>,
-                                        gamma_correction: bool) {
-        let gamma_lut_texture_unit = textures.len() as u32;
-        textures.push(&self.gamma_lut_texture);
+    fn set_uniforms_for_text_filter<'a>(
+            &'a self,
+            textures: &mut Vec<TextureBinding<'a, D::TextureParameter, D::Texture>>,
+            uniforms: &mut Vec<UniformBinding<'a, D::Uniform>>,
+            fg_color: ColorF,
+            bg_color: ColorF,
+            defringing_kernel: Option<DefringingKernel>,
+            gamma_correction: bool) {
+        textures.push((&self.tile_program.gamma_lut_texture, &self.gamma_lut_texture));
 
         match defringing_kernel {
             Some(ref kernel) => {
@@ -1206,12 +1196,9 @@ impl<D> Renderer<D> where D: Device {
         params_2.set_w(gamma_correction as i32 as f32);
 
         uniforms.extend_from_slice(&[
-            (&self.tile_program.gamma_lut_uniform,
-             UniformData::TextureUnit(gamma_lut_texture_unit)),
             (&self.tile_program.filter_params_1_uniform, UniformData::Vec4(bg_color.0)),
             (&self.tile_program.filter_params_2_uniform, UniformData::Vec4(params_2)),
         ]);
-
     }
 
     fn set_uniforms_for_blur_filter<'a>(&'a self,
@@ -1279,9 +1266,9 @@ impl<D> Renderer<D> where D: Device {
 
         let main_viewport = self.main_viewport();
 
-        let uniforms = [(&self.blit_program.src_uniform, UniformData::TextureUnit(0))];
         let textures = [
-            (self.device.framebuffer_texture(&self.back_frame.intermediate_dest_framebuffer))
+            (&self.blit_program.src_texture,
+             self.device.framebuffer_texture(&self.back_frame.intermediate_dest_framebuffer))
         ];
 
         self.device.draw_elements(6, &RenderState {
@@ -1291,7 +1278,7 @@ impl<D> Renderer<D> where D: Device {
             primitive: Primitive::Triangles,
             textures: &textures[..],
             images: &[],
-            uniforms: &uniforms[..],
+            uniforms: &[],
             viewport: main_viewport,
             options: RenderOptions {
                 clear_ops: ClearOps {

@@ -222,6 +222,18 @@ pub struct MetalUniform {
 }
 
 #[derive(Clone)]
+pub struct MetalTextureParameter {
+    indices: RefCell<Option<MetalTextureIndices>>,
+    name: String,
+}
+
+#[derive(Clone)]
+pub struct MetalImageParameter {
+    indices: RefCell<Option<MetalImageIndices>>,
+    name: String,
+}
+
+#[derive(Clone)]
 pub struct MetalStorageBuffer {
     indices: RefCell<Option<MetalStorageBufferIndices>>,
     name: String,
@@ -231,13 +243,28 @@ pub struct MetalStorageBuffer {
 pub struct MetalUniformIndices(ProgramKind<Option<MetalUniformIndex>>);
 
 #[derive(Clone, Copy, Debug)]
-pub struct MetalUniformIndex {
+pub struct MetalUniformIndex(u64);
+
+#[derive(Clone, Copy)]
+pub struct MetalTextureIndices(ProgramKind<Option<MetalTextureIndex>>);
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalTextureIndex {
     main: u64,
-    sampler: Option<u64>,
+    sampler: u64,
 }
 
 #[derive(Clone, Copy)]
-pub struct MetalStorageBufferIndices(ProgramKind<Option<u64>>);
+pub struct MetalImageIndices(ProgramKind<Option<MetalImageIndex>>);
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalImageIndex(u64);
+
+#[derive(Clone, Copy)]
+pub struct MetalStorageBufferIndices(ProgramKind<Option<MetalStorageBufferIndex>>);
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalStorageBufferIndex(u64);
 
 #[derive(Clone)]
 pub struct MetalFence(Arc<MetalFenceInfo>);
@@ -263,11 +290,13 @@ impl Device for MetalDevice {
     type Buffer = MetalBuffer;
     type Fence = MetalFence;
     type Framebuffer = MetalFramebuffer;
+    type ImageParameter = MetalImageParameter;
     type Program = MetalProgram;
     type Shader = MetalShader;
     type StorageBuffer = MetalStorageBuffer;
     type Texture = MetalTexture;
     type TextureDataReceiver = MetalTextureDataReceiver;
+    type TextureParameter = MetalTextureParameter;
     type TimerQuery = MetalTimerQuery;
     type Uniform = MetalUniform;
     type VertexArray = MetalVertexArray;
@@ -395,6 +424,14 @@ impl Device for MetalDevice {
 
     fn get_uniform(&self, _: &Self::Program, name: &str) -> MetalUniform {
         MetalUniform { indices: RefCell::new(None), name: name.to_owned() }
+    }
+
+    fn get_texture_parameter(&self, _: &Self::Program, name: &str) -> MetalTextureParameter {
+        MetalTextureParameter { indices: RefCell::new(None), name: name.to_owned() }
+    }
+
+    fn get_image_parameter(&self, _: &Self::Program, name: &str) -> MetalImageParameter {
+        MetalImageParameter { indices: RefCell::new(None), name: name.to_owned() }
     }
 
     fn get_storage_buffer(&self, _: &Self::Program, name: &str, _: u32) -> MetalStorageBuffer {
@@ -848,6 +885,23 @@ impl MetalDevice {
             None => panic!("get_uniform_index() called before reflection!"),
             Some(ref arguments) => arguments,
         };
+        let main_name = format!("u{}", name);
+        for argument_index in 0..arguments.len() {
+            let argument = arguments.object_at(argument_index);
+            let argument_name = argument.name();
+            if argument_name == &main_name {
+                return Some(MetalUniformIndex(argument.index()))
+            }
+        }
+        None
+    }
+
+    fn get_texture_index(&self, shader: &MetalShader, name: &str) -> Option<MetalTextureIndex> {
+        let arguments = shader.arguments.borrow();
+        let arguments = match *arguments {
+            None => panic!("get_texture_index() called before reflection!"),
+            Some(ref arguments) => arguments,
+        };
         let (main_name, sampler_name) = (format!("u{}", name), format!("u{}Smplr", name));
         let (mut main_argument, mut sampler_argument) = (None, None);
         for argument_index in 0..arguments.len() {
@@ -859,14 +913,31 @@ impl MetalDevice {
                 sampler_argument = Some(argument.index());
             }
         }
-        let uniform_index = match main_argument {
-            None => None,
-            Some(main) => Some(MetalUniformIndex { main, sampler: sampler_argument }),
-        };
-        uniform_index
+        match (main_argument, sampler_argument) {
+            (Some(main), Some(sampler)) => Some(MetalTextureIndex { main, sampler }),
+            _ => None,
+        }
     }
 
-    fn get_storage_buffer_index(&self, shader: &MetalShader, name: &str) -> Option<u64> {
+    fn get_image_index(&self, shader: &MetalShader, name: &str) -> Option<MetalImageIndex> {
+        let uniforms = shader.arguments.borrow();
+        let arguments = match *uniforms {
+            None => panic!("get_image_index() called before reflection!"),
+            Some(ref arguments) => arguments,
+        };
+        let main_name = format!("u{}", name);
+        for argument_index in 0..arguments.len() {
+            let argument = arguments.object_at(argument_index);
+            let argument_name = argument.name();
+            if argument_name == &main_name {
+                return Some(MetalImageIndex(argument.index()))
+            }
+        }
+        None
+    }
+
+    fn get_storage_buffer_index(&self, shader: &MetalShader, name: &str)
+                                -> Option<MetalStorageBufferIndex> {
         let uniforms = shader.arguments.borrow();
         let arguments = match *uniforms {
             None => panic!("get_storage_buffer_index() called before reflection!"),
@@ -889,11 +960,7 @@ impl MetalDevice {
                 main_argument = Some(argument.index());
             }
         }
-        let storage_buffer_index = match main_argument {
-            None => None,
-            Some(main) => Some(main),
-        };
-        storage_buffer_index
+        main_argument.map(MetalStorageBufferIndex)
     }
 
     fn populate_uniform_indices_if_necessary(&self,
@@ -917,6 +984,56 @@ impl MetalDevice {
             MetalProgram::Compute(MetalComputeProgram { ref shader, .. }) => {
                 let uniform_index = self.get_uniform_index(shader, &uniform.name);
                 Some(MetalUniformIndices(ProgramKind::Compute(uniform_index)))
+            }
+        }
+    }
+
+    fn populate_texture_indices_if_necessary(&self,
+                                             texture_parameter: &MetalTextureParameter,
+                                             program: &MetalProgram) {
+        let mut indices = texture_parameter.indices.borrow_mut();
+        if indices.is_some() {
+            return;
+        }
+
+        *indices = match program {
+            MetalProgram::Raster(MetalRasterProgram {
+                ref vertex_shader,
+                ref fragment_shader,
+            }) => {
+                Some(MetalTextureIndices(ProgramKind::Raster {
+                    vertex: self.get_texture_index(vertex_shader, &texture_parameter.name),
+                    fragment: self.get_texture_index(fragment_shader, &texture_parameter.name),
+                }))
+            }
+            MetalProgram::Compute(MetalComputeProgram { ref shader, .. }) => {
+                let image_index = self.get_texture_index(shader, &texture_parameter.name);
+                Some(MetalTextureIndices(ProgramKind::Compute(image_index)))
+            }
+        }
+    }
+
+    fn populate_image_indices_if_necessary(&self,
+                                           image_parameter: &MetalImageParameter,
+                                           program: &MetalProgram) {
+        let mut indices = image_parameter.indices.borrow_mut();
+        if indices.is_some() {
+            return;
+        }
+
+        *indices = match program {
+            MetalProgram::Raster(MetalRasterProgram {
+                ref vertex_shader,
+                ref fragment_shader,
+            }) => {
+                Some(MetalImageIndices(ProgramKind::Raster {
+                    vertex: self.get_image_index(vertex_shader, &image_parameter.name),
+                    fragment: self.get_image_index(fragment_shader, &image_parameter.name),
+                }))
+            }
+            MetalProgram::Compute(MetalComputeProgram { ref shader, .. }) => {
+                let image_index = self.get_image_index(shader, &image_parameter.name);
+                Some(MetalImageIndices(ProgramKind::Compute(image_index)))
             }
         }
     }
@@ -976,7 +1093,7 @@ impl MetalDevice {
 
         // FIXME(pcwalton): Is this necessary?
         let mut blit_command_encoder = None;
-        for texture in render_state.textures {
+        for &(_, texture) in render_state.textures {
             if !texture.dirty.get() {
                 continue;
             }
@@ -1078,8 +1195,9 @@ impl MetalDevice {
             return;
         }
 
+        // Set uniforms.
         let uniform_buffer = self.create_uniform_buffer(&render_state.uniforms);
-        for (&(uniform, ref uniform_data), buffer_range) in
+        for (&(uniform, _), buffer_range) in
                 render_state.uniforms.iter().zip(uniform_buffer.ranges.iter()) {
             self.populate_uniform_indices_if_necessary(uniform, &render_state.program);
 
@@ -1092,19 +1210,58 @@ impl MetalDevice {
 
             if let Some(vertex_index) = *vertex_indices {
                 self.set_vertex_uniform(vertex_index,
-                                        uniform_data,
                                         &uniform_buffer.data,
                                         buffer_range,
-                                        render_command_encoder,
-                                        render_state);
+                                        render_command_encoder);
             }
             if let Some(fragment_index) = *fragment_indices {
                 self.set_fragment_uniform(fragment_index,
-                                          uniform_data,
                                           &uniform_buffer.data,
                                           buffer_range,
-                                          render_command_encoder,
-                                          render_state);
+                                          render_command_encoder);
+            }
+        }
+
+        // Set textures.
+        for &(texture_param, texture) in render_state.textures {
+            self.populate_texture_indices_if_necessary(texture_param, &render_state.program);
+
+            let indices = texture_param.indices.borrow_mut();
+            let indices = indices.as_ref().unwrap();
+            let (vertex_indices, fragment_indices) = match indices.0 {
+                ProgramKind::Raster { ref vertex, ref fragment } => (vertex, fragment),
+                _ => unreachable!(),
+            };
+
+            if let Some(vertex_index) = *vertex_indices {
+                self.encode_vertex_texture_parameter(vertex_index,
+                                                     render_command_encoder,
+                                                     texture);
+            }
+            if let Some(fragment_index) = *fragment_indices {
+                self.encode_fragment_texture_parameter(fragment_index,
+                                                       render_command_encoder,
+                                                       texture);
+            }
+        }
+
+        // Set images.
+        for &(image_param, image, _) in render_state.images {
+            self.populate_image_indices_if_necessary(image_param, &render_state.program);
+
+            let indices = image_param.indices.borrow_mut();
+            let indices = indices.as_ref().unwrap();
+            let (vertex_indices, fragment_indices) = match indices.0 {
+                ProgramKind::Raster { ref vertex, ref fragment } => (vertex, fragment),
+                _ => unreachable!(),
+            };
+
+            if let Some(vertex_index) = *vertex_indices {
+                render_command_encoder.set_vertex_texture(vertex_index.0, Some(&image.texture));
+            }
+            if let Some(fragment_index) = *fragment_indices {
+                render_command_encoder.set_fragment_texture(fragment_index.0,
+                                                            Some(&image.texture));
             }
         }
     }
@@ -1112,8 +1269,9 @@ impl MetalDevice {
     fn set_compute_uniforms(&self,
                             compute_command_encoder: &ComputeCommandEncoderRef,
                             compute_state: &ComputeState<MetalDevice>) {
+        // Set uniforms.
         let uniform_buffer = self.create_uniform_buffer(&compute_state.uniforms);
-        for (&(uniform, ref uniform_data), buffer_range) in
+        for (&(uniform, _), buffer_range) in
                 compute_state.uniforms.iter().zip(uniform_buffer.ranges.iter()) {
             self.populate_uniform_indices_if_necessary(uniform, &compute_state.program);
 
@@ -1124,13 +1282,43 @@ impl MetalDevice {
                 _ => unreachable!(),
             };
 
-            if let Some(index) = *indices {
-                self.set_compute_uniform(index,
-                                         uniform_data,
+            if let Some(indices) = *indices {
+                self.set_compute_uniform(indices,
                                          &uniform_buffer.data,
                                          buffer_range,
-                                         compute_command_encoder,
-                                         compute_state);
+                                         compute_command_encoder);
+            }
+        }
+
+        // Set textures.
+        for &(texture_param, texture) in compute_state.textures {
+            self.populate_texture_indices_if_necessary(texture_param, &compute_state.program);
+
+            let indices = texture_param.indices.borrow_mut();
+            let indices = indices.as_ref().unwrap();
+            let indices = match indices.0 {
+                ProgramKind::Compute(ref indices) => indices,
+                _ => unreachable!(),
+            };
+
+            if let Some(indices) = *indices {
+                self.encode_compute_texture_parameter(indices, compute_command_encoder, texture);
+            }
+        }
+
+        // Set images.
+        for &(image_param, image, _) in compute_state.images {
+            self.populate_image_indices_if_necessary(image_param, &compute_state.program);
+
+            let indices = image_param.indices.borrow_mut();
+            let indices = indices.as_ref().unwrap();
+            let indices = match indices.0 {
+                ProgramKind::Compute(ref indices) => indices,
+                _ => unreachable!(),
+            };
+
+            if let Some(indices) = *indices {
+                compute_command_encoder.set_texture(indices.0, Some(&image.texture));
             }
         }
 
@@ -1148,7 +1336,7 @@ impl MetalDevice {
 
             if let Some(index) = *indices {
                 if let Some(ref buffer) = *storage_buffer_binding.buffer.borrow() {
-                    compute_command_encoder.set_buffer(index, Some(buffer), 0);
+                    compute_command_encoder.set_buffer(index.0, Some(buffer), 0);
                 }
             }
 
@@ -1204,7 +1392,6 @@ impl MetalDevice {
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.z()).unwrap();
                     uniform_buffer_data.write_f32::<NativeEndian>(vector.w()).unwrap();
                 }
-                UniformData::TextureUnit(_) | UniformData::ImageUnit(_) => {}
             }
             let end_index = uniform_buffer_data.len();
             while uniform_buffer_data.len() % 256 != 0 {
@@ -1221,119 +1408,62 @@ impl MetalDevice {
 
     fn set_vertex_uniform(&self,
                           argument_index: MetalUniformIndex,
-                          uniform_data: &UniformData,
                           buffer: &[u8],
                           buffer_range: &Range<usize>,
-                          render_command_encoder: &RenderCommandEncoderRef,
-                          render_state: &RenderState<MetalDevice>) {
-        match *uniform_data {
-            UniformData::TextureUnit(unit) => {
-                let texture = render_state.textures[unit as usize];
-                self.encode_vertex_texture_uniform(argument_index,
-                                                   render_command_encoder,
-                                                   texture);
-            }
-            UniformData::ImageUnit(unit) => {
-                let image = &render_state.images[unit as usize];
-                render_command_encoder.set_vertex_texture(argument_index.main,
-                                                          Some(&image.texture.texture));
-            }
-            _ => {
-                render_command_encoder.set_vertex_bytes(
-                    argument_index.main,
-                    (buffer_range.end - buffer_range.start) as u64,
-                    &buffer[buffer_range.start as usize] as *const u8 as *const _)
-            }
-        }
+                          render_command_encoder: &RenderCommandEncoderRef) {
+        render_command_encoder.set_vertex_bytes(
+            argument_index.0,
+            (buffer_range.end - buffer_range.start) as u64,
+            &buffer[buffer_range.start as usize] as *const u8 as *const _)
     }
 
     fn set_fragment_uniform(&self,
                             argument_index: MetalUniformIndex,
-                            uniform_data: &UniformData,
                             buffer: &[u8],
                             buffer_range: &Range<usize>,
-                            render_command_encoder: &RenderCommandEncoderRef,
-                            render_state: &RenderState<MetalDevice>) {
-        match *uniform_data {
-            UniformData::TextureUnit(unit) => {
-                let texture = render_state.textures[unit as usize];
-                self.encode_fragment_texture_uniform(argument_index,
-                                                     render_command_encoder,
-                                                     texture);
-            }
-            UniformData::ImageUnit(unit) => {
-                let image = &render_state.images[unit as usize];
-                render_command_encoder.set_fragment_texture(argument_index.main,
-                                                            Some(&image.texture.texture));
-            }
-            _ => {
-                render_command_encoder.set_fragment_bytes(
-                    argument_index.main,
-                    (buffer_range.end - buffer_range.start) as u64,
-                    &buffer[buffer_range.start as usize] as *const u8 as *const _)
-            }
-        }
+                            render_command_encoder: &RenderCommandEncoderRef) {
+        render_command_encoder.set_fragment_bytes(
+            argument_index.0,
+            (buffer_range.end - buffer_range.start) as u64,
+            &buffer[buffer_range.start as usize] as *const u8 as *const _)
     }
 
     fn set_compute_uniform(&self,
                            argument_index: MetalUniformIndex,
-                           uniform_data: &UniformData,
                            buffer: &[u8],
                            buffer_range: &Range<usize>,
-                           compute_command_encoder: &ComputeCommandEncoderRef,
-                           compute_state: &ComputeState<MetalDevice>) {
-        match *uniform_data {
-            UniformData::TextureUnit(unit) => {
-                let texture = compute_state.textures[unit as usize];
-                self.encode_compute_texture_uniform(argument_index,
-                                                    compute_command_encoder,
-                                                    texture);
-            }
-            UniformData::ImageUnit(unit) => {
-                let image = &compute_state.images[unit as usize];
-                compute_command_encoder.set_texture(argument_index.main,
-                                                    Some(&image.texture.texture));
-            }
-            _ => {
-                compute_command_encoder.set_bytes(
-                    argument_index.main,
-                    (buffer_range.end - buffer_range.start) as u64,
-                    &buffer[buffer_range.start as usize] as *const u8 as *const _)
-            }
-        }
+                           compute_command_encoder: &ComputeCommandEncoderRef) {
+        compute_command_encoder.set_bytes(
+            argument_index.0,
+            (buffer_range.end - buffer_range.start) as u64,
+            &buffer[buffer_range.start as usize] as *const u8 as *const _)
     }
 
-    fn encode_vertex_texture_uniform(&self,
-                                     argument_index: MetalUniformIndex,
-                                     render_command_encoder: &RenderCommandEncoderRef,
-                                     texture: &MetalTexture) {
-        render_command_encoder.set_vertex_texture(argument_index.main, Some(&texture.texture));
-        if let Some(sampler_index) = argument_index.sampler {
-            let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
-            render_command_encoder.set_vertex_sampler_state(sampler_index, Some(sampler));
-        }
-    }
-
-    fn encode_fragment_texture_uniform(&self,
-                                       argument_index: MetalUniformIndex,
+    fn encode_vertex_texture_parameter(&self,
+                                       argument_index: MetalTextureIndex,
                                        render_command_encoder: &RenderCommandEncoderRef,
                                        texture: &MetalTexture) {
-        render_command_encoder.set_fragment_texture(argument_index.main, Some(&texture.texture));
-        if let Some(sampler_index) = argument_index.sampler {
-            let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
-            render_command_encoder.set_fragment_sampler_state(sampler_index, Some(sampler));
-        }
+        render_command_encoder.set_vertex_texture(argument_index.main, Some(&texture.texture));
+        let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
+        render_command_encoder.set_vertex_sampler_state(argument_index.sampler, Some(sampler));
     }
 
-    fn encode_compute_texture_uniform(&self,
-                                      argument_index: MetalUniformIndex,
-                                      compute_command_encoder: &ComputeCommandEncoderRef,
-                                      texture: &MetalTexture) {
+    fn encode_fragment_texture_parameter(&self,
+                                         argument_index: MetalTextureIndex,
+                                         render_command_encoder: &RenderCommandEncoderRef,
+                                         texture: &MetalTexture) {
+        render_command_encoder.set_fragment_texture(argument_index.main, Some(&texture.texture));
+        let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
+        render_command_encoder.set_fragment_sampler_state(argument_index.sampler, Some(sampler));
+    }
+
+    fn encode_compute_texture_parameter(&self,
+                                        argument_index: MetalTextureIndex,
+                                        compute_command_encoder: &ComputeCommandEncoderRef,
+                                        texture: &MetalTexture) {
         compute_command_encoder.set_texture(argument_index.main, Some(&texture.texture));
-        if let Some(sampler_index) = argument_index.sampler {
-            let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
-            compute_command_encoder.set_sampler_state(sampler_index, Some(sampler));
-        }
+        let sampler = &self.samplers[texture.sampling_flags.get().bits() as usize];
+        compute_command_encoder.set_sampler_state(argument_index.sampler, Some(sampler));
     }
 
     fn prepare_pipeline_color_attachment_for_render(
@@ -1691,40 +1821,39 @@ impl StencilFuncExt for StencilFunc {
 }
 
 trait UniformDataExt {
-    fn as_bytes(&self) -> Option<&[u8]>;
+    fn as_bytes(&self) -> &[u8];
 }
 
 impl UniformDataExt for UniformData {
-    fn as_bytes(&self) -> Option<&[u8]> {
+    fn as_bytes(&self) -> &[u8] {
         unsafe {
             match *self {
-                UniformData::TextureUnit(_) | UniformData::ImageUnit(_) => None,
                 UniformData::Float(ref data) => {
-                    Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 1))
+                    slice::from_raw_parts(data as *const f32 as *const u8, 4 * 1)
                 }
                 UniformData::IVec2(ref data) => {
-                    Some(slice::from_raw_parts(data as *const I32x2 as *const u8, 4 * 3))
+                    slice::from_raw_parts(data as *const I32x2 as *const u8, 4 * 3)
                 }
                 UniformData::IVec3(ref data) => {
-                    Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 3))
+                    slice::from_raw_parts(data as *const i32 as *const u8, 4 * 3)
                 }
                 UniformData::Int(ref data) => {
-                    Some(slice::from_raw_parts(data as *const i32 as *const u8, 4 * 1))
+                    slice::from_raw_parts(data as *const i32 as *const u8, 4 * 1)
                 }
                 UniformData::Mat2(ref data) => {
-                    Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4))
+                    slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4)
                 }
                 UniformData::Mat4(ref data) => {
-                    Some(slice::from_raw_parts(&data[0] as *const F32x4 as *const u8, 4 * 16))
+                    slice::from_raw_parts(&data[0] as *const F32x4 as *const u8, 4 * 16)
                 }
                 UniformData::Vec2(ref data) => {
-                    Some(slice::from_raw_parts(data as *const F32x2 as *const u8, 4 * 2))
+                    slice::from_raw_parts(data as *const F32x2 as *const u8, 4 * 2)
                 }
                 UniformData::Vec3(ref data) => {
-                    Some(slice::from_raw_parts(data as *const f32 as *const u8, 4 * 3))
+                    slice::from_raw_parts(data as *const f32 as *const u8, 4 * 3)
                 }
                 UniformData::Vec4(ref data) => {
-                    Some(slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4))
+                    slice::from_raw_parts(data as *const F32x4 as *const u8, 4 * 4)
                 }
             }
         }

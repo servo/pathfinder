@@ -355,14 +355,14 @@ impl<D> ClipTileVertexArray<D> where D: Device {
 
 pub struct BlitProgram<D> where D: Device {
     pub program: D::Program,
-    pub src_uniform: D::Uniform,
+    pub src_texture: D::TextureParameter,
 }
 
 impl<D> BlitProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> BlitProgram<D> {
         let program = device.create_raster_program(resources, "blit");
-        let src_uniform = device.get_uniform(&program, "Src");
-        BlitProgram { program, src_uniform }
+        let src_texture = device.get_texture_parameter(&program, "Src");
+        BlitProgram { program, src_texture }
     }
 }
 
@@ -406,7 +406,7 @@ pub struct FillRasterProgram<D> where D: Device {
     pub program: D::Program,
     pub framebuffer_size_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
-    pub area_lut_uniform: D::Uniform,
+    pub area_lut_texture: D::TextureParameter,
 }
 
 impl<D> FillRasterProgram<D> where D: Device {
@@ -414,20 +414,20 @@ impl<D> FillRasterProgram<D> where D: Device {
         let program = device.create_raster_program(resources, "fill");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let area_lut_uniform = device.get_uniform(&program, "AreaLUT");
+        let area_lut_texture = device.get_texture_parameter(&program, "AreaLUT");
         FillRasterProgram {
             program,
             framebuffer_size_uniform,
             tile_size_uniform,
-            area_lut_uniform,
+            area_lut_texture,
         }
     }
 }
 
 pub struct FillComputeProgram<D> where D: Device {
     pub program: D::Program,
-    pub dest_uniform: D::Uniform,
-    pub area_lut_uniform: D::Uniform,
+    pub dest_image: D::ImageParameter,
+    pub area_lut_texture: D::TextureParameter,
     pub first_tile_index_uniform: D::Uniform,
     pub fills_storage_buffer: D::StorageBuffer,
     pub next_fills_storage_buffer: D::StorageBuffer,
@@ -440,8 +440,8 @@ impl<D> FillComputeProgram<D> where D: Device {
         let local_size = ComputeDimensions { x: TILE_WIDTH, y: TILE_HEIGHT / 4, z: 1 };
         device.set_compute_program_local_size(&mut program, local_size);
 
-        let dest_uniform = device.get_uniform(&program, "Dest");
-        let area_lut_uniform = device.get_uniform(&program, "AreaLUT");
+        let dest_image = device.get_image_parameter(&program, "Dest");
+        let area_lut_texture = device.get_texture_parameter(&program, "AreaLUT");
         let first_tile_index_uniform = device.get_uniform(&program, "FirstTileIndex");
         let fills_storage_buffer = device.get_storage_buffer(&program, "Fills", 0);
         let next_fills_storage_buffer = device.get_storage_buffer(&program, "NextFills", 1);
@@ -449,8 +449,8 @@ impl<D> FillComputeProgram<D> where D: Device {
 
         FillComputeProgram {
             program,
-            dest_uniform,
-            area_lut_uniform,
+            dest_image,
+            area_lut_texture,
             first_tile_index_uniform,
             fills_storage_buffer,
             next_fills_storage_buffer,
@@ -463,15 +463,15 @@ pub struct TileProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
-    pub texture_metadata_uniform: D::Uniform,
+    pub texture_metadata_texture: D::TextureParameter,
     pub texture_metadata_size_uniform: D::Uniform,
-    pub dest_texture_uniform: D::Uniform,
-    pub color_texture_0_uniform: D::Uniform,
+    pub dest_texture: D::TextureParameter,
+    pub color_texture_0: D::TextureParameter,
     pub color_texture_size_0_uniform: D::Uniform,
-    pub color_texture_1_uniform: D::Uniform,
-    pub mask_texture_0_uniform: D::Uniform,
+    pub color_texture_1: D::TextureParameter,
+    pub mask_texture_0: D::TextureParameter,
     pub mask_texture_size_0_uniform: D::Uniform,
-    pub gamma_lut_uniform: D::Uniform,
+    pub gamma_lut_texture: D::TextureParameter,
     pub filter_params_0_uniform: D::Uniform,
     pub filter_params_1_uniform: D::Uniform,
     pub filter_params_2_uniform: D::Uniform,
@@ -484,15 +484,15 @@ impl<D> TileProgram<D> where D: Device {
         let program = device.create_raster_program(resources, "tile");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
-        let texture_metadata_uniform = device.get_uniform(&program, "TextureMetadata");
+        let texture_metadata_texture = device.get_texture_parameter(&program, "TextureMetadata");
         let texture_metadata_size_uniform = device.get_uniform(&program, "TextureMetadataSize");
-        let dest_texture_uniform = device.get_uniform(&program, "DestTexture");
-        let color_texture_0_uniform = device.get_uniform(&program, "ColorTexture0");
+        let dest_texture = device.get_texture_parameter(&program, "DestTexture");
+        let color_texture_0 = device.get_texture_parameter(&program, "ColorTexture0");
         let color_texture_size_0_uniform = device.get_uniform(&program, "ColorTextureSize0");
-        let color_texture_1_uniform = device.get_uniform(&program, "ColorTexture1");
-        let mask_texture_0_uniform = device.get_uniform(&program, "MaskTexture0");
+        let color_texture_1 = device.get_texture_parameter(&program, "ColorTexture1");
+        let mask_texture_0 = device.get_texture_parameter(&program, "MaskTexture0");
         let mask_texture_size_0_uniform = device.get_uniform(&program, "MaskTextureSize0");
-        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
+        let gamma_lut_texture = device.get_texture_parameter(&program, "GammaLUT");
         let filter_params_0_uniform = device.get_uniform(&program, "FilterParams0");
         let filter_params_1_uniform = device.get_uniform(&program, "FilterParams1");
         let filter_params_2_uniform = device.get_uniform(&program, "FilterParams2");
@@ -502,15 +502,15 @@ impl<D> TileProgram<D> where D: Device {
             program,
             transform_uniform,
             tile_size_uniform,
-            texture_metadata_uniform,
+            texture_metadata_texture,
             texture_metadata_size_uniform,
-            dest_texture_uniform,
-            color_texture_0_uniform,
+            dest_texture,
+            color_texture_0,
             color_texture_size_0_uniform,
-            color_texture_1_uniform,
-            mask_texture_0_uniform,
+            color_texture_1,
+            mask_texture_0,
             mask_texture_size_0_uniform,
-            gamma_lut_uniform,
+            gamma_lut_texture,
             filter_params_0_uniform,
             filter_params_1_uniform,
             filter_params_2_uniform,
@@ -525,7 +525,7 @@ pub struct CopyTileProgram<D> where D: Device {
     pub transform_uniform: D::Uniform,
     pub tile_size_uniform: D::Uniform,
     pub framebuffer_size_uniform: D::Uniform,
-    pub src_uniform: D::Uniform,
+    pub src_texture: D::TextureParameter,
 }
 
 impl<D> CopyTileProgram<D> where D: Device {
@@ -534,27 +534,27 @@ impl<D> CopyTileProgram<D> where D: Device {
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
-        let src_uniform = device.get_uniform(&program, "Src");
+        let src_texture = device.get_texture_parameter(&program, "Src");
         CopyTileProgram {
             program,
             transform_uniform,
             tile_size_uniform,
             framebuffer_size_uniform,
-            src_uniform,
+            src_texture,
         }
     }
 }
 
 pub struct ClipTileProgram<D> where D: Device {
     pub program: D::Program,
-    pub src_uniform: D::Uniform,
+    pub src_texture: D::TextureParameter,
 }
 
 impl<D> ClipTileProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> ClipTileProgram<D> {
         let program = device.create_raster_program(resources, "tile_clip");
-        let src_uniform = device.get_uniform(&program, "Src");
-        ClipTileProgram { program, src_uniform }
+        let src_texture = device.get_texture_parameter(&program, "Src");
+        ClipTileProgram { program, src_texture }
     }
 }
 
@@ -611,32 +611,20 @@ where
     }
 }
 
-pub struct ReprojectionProgram<D>
-where
-    D: Device,
-{
+pub struct ReprojectionProgram<D> where D: Device {
     pub program: D::Program,
     pub old_transform_uniform: D::Uniform,
     pub new_transform_uniform: D::Uniform,
-    pub texture_uniform: D::Uniform,
+    pub texture: D::TextureParameter,
 }
 
-impl<D> ReprojectionProgram<D>
-where
-    D: Device,
-{
+impl<D> ReprojectionProgram<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
         let program = device.create_raster_program(resources, "reproject");
         let old_transform_uniform = device.get_uniform(&program, "OldTransform");
         let new_transform_uniform = device.get_uniform(&program, "NewTransform");
-        let texture_uniform = device.get_uniform(&program, "Texture");
-
-        ReprojectionProgram {
-            program,
-            old_transform_uniform,
-            new_transform_uniform,
-            texture_uniform,
-        }
+        let texture = device.get_texture_parameter(&program, "Texture");
+        ReprojectionProgram { program, old_transform_uniform, new_transform_uniform, texture }
     }
 }
 

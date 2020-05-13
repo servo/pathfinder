@@ -28,10 +28,12 @@ pub trait Device: Sized {
     type Buffer;
     type Fence;
     type Framebuffer;
+    type ImageParameter;
     type Program;
     type Shader;
     type StorageBuffer;
     type Texture;
+    type TextureParameter;
     type TextureDataReceiver;
     type TimerQuery;
     type Uniform;
@@ -57,6 +59,8 @@ pub trait Device: Sized {
                                       local_size: ComputeDimensions);
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<Self::VertexAttr>;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
+    fn get_texture_parameter(&self, program: &Self::Program, name: &str) -> Self::TextureParameter;
+    fn get_image_parameter(&self, program: &Self::Program, name: &str) -> Self::ImageParameter;
     fn get_storage_buffer(&self, program: &Self::Program, name: &str, binding: u32)
                           -> Self::StorageBuffer;
     fn bind_buffer(&self,
@@ -237,8 +241,6 @@ pub enum UniformData {
     Vec2(F32x2),
     Vec3([f32; 3]),
     Vec4(F32x4),
-    TextureUnit(u32),
-    ImageUnit(u32),
 }
 
 #[derive(Clone, Copy)]
@@ -253,9 +255,9 @@ pub struct RenderState<'a, D> where D: Device {
     pub program: &'a D::Program,
     pub vertex_array: &'a D::VertexArray,
     pub primitive: Primitive,
-    pub uniforms: &'a [(&'a D::Uniform, UniformData)],
-    pub textures: &'a [&'a D::Texture],
-    pub images: &'a [ImageBinding<'a, D>],
+    pub uniforms: &'a [UniformBinding<'a, D::Uniform>],
+    pub textures: &'a [TextureBinding<'a, D::TextureParameter, D::Texture>],
+    pub images: &'a [ImageBinding<'a, D::ImageParameter, D::Texture>],
     pub viewport: RectI,
     pub options: RenderOptions,
 }
@@ -263,17 +265,17 @@ pub struct RenderState<'a, D> where D: Device {
 #[derive(Clone)]
 pub struct ComputeState<'a, D> where D: Device {
     pub program: &'a D::Program,
-    pub uniforms: &'a [(&'a D::Uniform, UniformData)],
-    pub textures: &'a [&'a D::Texture],
-    pub images: &'a [ImageBinding<'a, D>],
+    pub uniforms: &'a [UniformBinding<'a, D::Uniform>],
+    pub textures: &'a [TextureBinding<'a, D::TextureParameter, D::Texture>],
+    pub images: &'a [ImageBinding<'a, D::ImageParameter, D::Texture>],
     pub storage_buffers: &'a [(&'a D::StorageBuffer, &'a D::Buffer)],
 }
 
-#[derive(Clone, Debug)]
-pub struct ImageBinding<'a, D> where D: Device {
-    pub texture: &'a D::Texture,
-    pub access: ImageAccess,
-}
+pub type UniformBinding<'a, U> = (&'a U, UniformData);
+
+pub type TextureBinding<'a, TP, T> = (&'a TP, &'a T);
+
+pub type ImageBinding<'a, IP, T> = (&'a IP, &'a T, ImageAccess);
 
 #[derive(Clone, Debug)]
 pub struct RenderOptions {
