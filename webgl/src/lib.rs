@@ -1175,8 +1175,10 @@ impl VertexAttrTypeExt for VertexAttrType {
     fn to_gl_type(self) -> u32 {
         match self {
             VertexAttrType::F32 => WebGl::FLOAT,
+            VertexAttrType::I32 => WebGl::INT,
             VertexAttrType::I16 => WebGl::SHORT,
             VertexAttrType::I8 => WebGl::BYTE,
+            VertexAttrType::U32 => WebGl::UNSIGNED_INT,
             VertexAttrType::U16 => WebGl::UNSIGNED_SHORT,
             VertexAttrType::U8 => WebGl::UNSIGNED_BYTE,
         }

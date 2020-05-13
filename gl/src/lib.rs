@@ -1427,8 +1427,10 @@ impl VertexAttrTypeExt for VertexAttrType {
     fn to_gl_type(self) -> GLuint {
         match self {
             VertexAttrType::F32 => gl::FLOAT,
+            VertexAttrType::I32 => gl::INT,
             VertexAttrType::I16 => gl::SHORT,
             VertexAttrType::I8  => gl::BYTE,
+            VertexAttrType::U32 => gl::UNSIGNED_INT,
             VertexAttrType::U16 => gl::UNSIGNED_SHORT,
             VertexAttrType::U8  => gl::UNSIGNED_BYTE,
         }

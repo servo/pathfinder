@@ -11,14 +11,11 @@
 use crate::gpu::options::RendererOptions;
 use crate::gpu::renderer::{MASK_TILES_ACROSS, MASK_TILES_DOWN};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_gpu::{BufferTarget, BufferUploadMode, ComputeDimensions, Device, FeatureLevel};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BufferTarget, BufferUploadMode, ComputeDimensions, Device, FeatureLevel, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType, VertexBufferDescriptor};
+use pathfinder_gpu::{ALIGNED_I16_ATTR, ALIGNED_I8_ATTR, ALIGNED_U8_ATTR, ALIGNED_U16_ATTR};
 use pathfinder_resources::ResourceLoader;
-
-// TODO(pcwalton): Replace with `mem::size_of` calls?
-pub(crate) const TILE_INSTANCE_SIZE: usize = 12;
-const FILL_INSTANCE_SIZE: usize = 8;
-const CLIP_TILE_INSTANCE_SIZE: usize = 8;
+use once_cell::sync::Lazy;
 
 pub const MAX_FILLS_PER_BATCH: usize = 0x10000;
 pub const MAX_TILES_PER_BATCH: usize = MASK_TILES_ACROSS as usize * MASK_TILES_DOWN as usize;
@@ -34,18 +31,24 @@ impl<D> BlitVertexArray<D> where D: Device {
                quad_vertex_indices_buffer: &D::Buffer)
                -> BlitVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&blit_program.program, "Position").unwrap();
+        let position_attrs= &[
+            device.get_vertex_attr(&blit_program.program, "Position").unwrap(),
+        ];
+
+        static POSITION_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 2),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        POSITION_BUFFER.configure_vertex_attrs(device, &vertex_array, position_attrs);
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         BlitVertexArray { vertex_array }
@@ -63,18 +66,24 @@ impl<D> ClearVertexArray<D> where D: Device {
                quad_vertex_indices_buffer: &D::Buffer)
                -> ClearVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&clear_program.program, "Position").unwrap();
+        let position_attrs= &[
+            device.get_vertex_attr(&clear_program.program, "Position").unwrap(),
+        ];
+
+        static POSITION_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 2),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        POSITION_BUFFER.configure_vertex_attrs(device, &vertex_array, position_attrs);
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         ClearVertexArray { vertex_array }
@@ -98,69 +107,50 @@ where
     ) -> FillVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
-        let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord").unwrap();
-        let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx").unwrap();
-        let to_px_attr = device.get_vertex_attr(&fill_program.program, "ToPx").unwrap();
-        let from_subpx_attr = device.get_vertex_attr(&fill_program.program, "FromSubpx").unwrap();
-        let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx").unwrap();
-        let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex").unwrap();
+        let tess_coord_attrs= &[
+            device.get_vertex_attr(&fill_program.program, "TessCoord").unwrap()
+        ];
+
+        static TESS_COORD_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U16_ATTR, 2),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
+
+        let fill_attrs= &[
+            device.get_vertex_attr(&fill_program.program, "FromSubpx").unwrap(),
+            device.get_vertex_attr(&fill_program.program, "ToSubpx").unwrap(),
+            device.get_vertex_attr(&fill_program.program, "FromPx").unwrap(),
+            device.get_vertex_attr(&fill_program.program, "ToPx").unwrap(),
+            device.get_vertex_attr(&fill_program.program, "TileIndex").unwrap(),
+        ];
+
+        static FILL_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 1,
+                divisor: 1,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::FloatNorm, VertexAttrType::U8, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::FloatNorm, VertexAttrType::U8, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 1),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 1),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U16_ATTR, 1),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        TESS_COORD_BUFFER.configure_vertex_attrs(device, &vertex_array, tess_coord_attrs);
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &from_subpx_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &to_subpx_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 2,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &from_px_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 4,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &to_px_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 5,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
-            stride: FILL_INSTANCE_SIZE,
-            offset: 6,
-            divisor: 1,
-            buffer_index: 1,
-        });
+        FILL_BUFFER.configure_vertex_attrs(device, &vertex_array, fill_attrs);
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         FillVertexArray { vertex_array }
@@ -180,73 +170,51 @@ impl<D> TileVertexArray<D> where D: Device {
                -> TileVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
-        let tile_offset_attr =
-            device.get_vertex_attr(&tile_program.program, "TileOffset").unwrap();
-        let tile_origin_attr =
-            device.get_vertex_attr(&tile_program.program, "TileOrigin").unwrap();
-        let mask_0_tex_coord_attr =
-            device.get_vertex_attr(&tile_program.program, "MaskTexCoord0").unwrap();
-        let mask_backdrop_attr =
-            device.get_vertex_attr(&tile_program.program, "MaskBackdrop").unwrap();
-        let color_attr = device.get_vertex_attr(&tile_program.program, "Color").unwrap();
-        let tile_ctrl_attr = device.get_vertex_attr(&tile_program.program, "TileCtrl").unwrap();
+        let tile_offset_attrs = &[
+            device.get_vertex_attr(&tile_program.program, "TileOffset").unwrap(),
+        ];
+
+        static TILE_OFFSET_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U16_ATTR, 2),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
+
+        let tile_buffer_attrs = &[
+            device.get_vertex_attr(&tile_program.program, "TileOrigin").unwrap(),
+            device.get_vertex_attr(&tile_program.program, "MaskTexCoord0").unwrap(),
+            device.get_vertex_attr(&tile_program.program, "MaskBackdrop").unwrap(),
+            device.get_vertex_attr(&tile_program.program, "Color").unwrap(),
+            device.get_vertex_attr(&tile_program.program, "TileCtrl").unwrap(),
+        ];
+
+        static TILE_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 1,
+                divisor: 1,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I8_ATTR, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 1),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 1),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+
+        });
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_offset_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        TILE_OFFSET_BUFFER.configure_vertex_attrs(device, &vertex_array, tile_offset_attrs);
         device.bind_buffer(&vertex_array, tile_vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &mask_0_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 4,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &mask_backdrop_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I8,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 6,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &color_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 8,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &tile_ctrl_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 10,
-            divisor: 1,
-            buffer_index: 1,
-        });
+        TILE_BUFFER.configure_vertex_attrs(device, &vertex_array, tile_buffer_attrs);
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         TileVertexArray { vertex_array }
@@ -266,19 +234,24 @@ impl<D> CopyTileVertexArray<D> where D: Device {
     ) -> CopyTileVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
-        let tile_position_attr =
-            device.get_vertex_attr(&copy_tile_program.program, "TilePosition").unwrap();
+        let copy_tile_attrs = &[
+            device.get_vertex_attr(&copy_tile_program.program, "TilePosition").unwrap(),
+        ];
+
+        static COPY_TILE_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor {
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 2),
+                ],
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
 
         device.bind_buffer(&vertex_array, copy_tile_vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        COPY_TILE_BUFFER.configure_vertex_attrs(device, &vertex_array, copy_tile_attrs);
         device.bind_buffer(&vertex_array, quads_vertex_indices_buffer, BufferTarget::Index);
 
         CopyTileVertexArray { vertex_array }
@@ -298,54 +271,46 @@ impl<D> ClipTileVertexArray<D> where D: Device {
                -> ClipTileVertexArray<D> {
         let vertex_array = device.create_vertex_array();
         let vertex_buffer = device.create_buffer(BufferUploadMode::Dynamic);
+        let tile_offset_attrs = &[
+            device.get_vertex_attr(&clip_tile_program.program, "TileOffset").unwrap(),
+        ];
 
-        let tile_offset_attr =
-            device.get_vertex_attr(&clip_tile_program.program, "TileOffset").unwrap();
-        let dest_tile_origin_attr =
-            device.get_vertex_attr(&clip_tile_program.program, "DestTileOrigin").unwrap();
-        let src_tile_origin_attr =
-            device.get_vertex_attr(&clip_tile_program.program, "SrcTileOrigin").unwrap();
-        let src_backdrop_attr =
-            device.get_vertex_attr(&clip_tile_program.program, "SrcBackdrop").unwrap();
+        static TILE_OFFSET_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 2),
+                ],
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
+
+        let clip_tile_attrs = &[
+            device.get_vertex_attr(&clip_tile_program.program, "DestTileOrigin").unwrap(),
+            device.get_vertex_attr(&clip_tile_program.program, "SrcTileOrigin").unwrap(),
+            device.get_vertex_attr(&clip_tile_program.program, "SrcBackdrop").unwrap(),
+        ];
+
+        static CLIP_TILE_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 1,
+                divisor: 1,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_U8_ATTR, 2),
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I8_ATTR, 1),
+                ],
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &tile_offset_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        TILE_OFFSET_BUFFER.configure_vertex_attrs(device, &vertex_array, tile_offset_attrs);
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &dest_tile_origin_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: CLIP_TILE_INSTANCE_SIZE,
-            offset: 0,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &src_tile_origin_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: CLIP_TILE_INSTANCE_SIZE,
-            offset: 2,
-            divisor: 1,
-            buffer_index: 1,
-        });
-        device.configure_vertex_attr(&vertex_array, &src_backdrop_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I8,
-            stride: CLIP_TILE_INSTANCE_SIZE,
-            offset: 4,
-            divisor: 1,
-            buffer_index: 1,
-        });
+        CLIP_TILE_BUFFER.configure_vertex_attrs(device, &vertex_array, clip_tile_attrs);
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         ClipTileVertexArray { vertex_array, vertex_buffer }
@@ -646,19 +611,24 @@ where
         quad_vertex_indices_buffer: &D::Buffer,
     ) -> ReprojectionVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position")
-                                  .unwrap();
+        let position_attrs = &[
+            device.get_vertex_attr(&reprojection_program.program, "Position")
+                                  .unwrap(),
+        ];
+        static POSITION_BUFFER: Lazy<VertexBufferDescriptor> = Lazy::new(|| {
+            let mut descriptor = VertexBufferDescriptor{
+                index: 0,
+                divisor: 0,
+                vertex_attrs: vec![
+                    VertexAttrDescriptor::datatype_only(VertexAttrClass::Int, ALIGNED_I16_ATTR, 2),
+                ]
+            };
+            descriptor.update_attrs();
+            descriptor
+        });
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: 4,
-            offset: 0,
-            divisor: 0,
-            buffer_index: 0,
-        });
+        POSITION_BUFFER.configure_vertex_attrs(device, &vertex_array, position_attrs);
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         ReprojectionVertexArray { vertex_array }

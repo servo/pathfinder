@@ -19,6 +19,7 @@ extern crate serde_derive;
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::alignment::{AlignedU16, AlignedI16};
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
 use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
 use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, TextureFormat};
@@ -678,19 +679,19 @@ impl<D> DebugSolidProgram<D> where D: Device {
 #[allow(dead_code)]
 #[repr(C)]
 struct DebugTextureVertex {
-    position_x: i16,
-    position_y: i16,
-    tex_coord_x: u16,
-    tex_coord_y: u16,
+    position_x: AlignedI16,
+    position_y: AlignedI16,
+    tex_coord_x: AlignedU16,
+    tex_coord_y: AlignedU16,
 }
 
 impl DebugTextureVertex {
     fn new(position: Vector2I, tex_coord: Vector2I) -> DebugTextureVertex {
         DebugTextureVertex {
-            position_x: position.x() as i16,
-            position_y: position.y() as i16,
-            tex_coord_x: tex_coord.x() as u16,
-            tex_coord_y: tex_coord.y() as u16,
+            position_x: position.x() as AlignedI16,
+            position_y: position.y() as AlignedI16,
+            tex_coord_x: tex_coord.x() as AlignedU16,
+            tex_coord_y: tex_coord.y() as AlignedU16,
         }
     }
 }
@@ -699,13 +700,13 @@ impl DebugTextureVertex {
 #[allow(dead_code)]
 #[repr(C)]
 struct DebugSolidVertex {
-    position_x: i16,
-    position_y: i16,
+    position_x: AlignedI16,
+    position_y: AlignedI16,
 }
 
 impl DebugSolidVertex {
     fn new(position: Vector2I) -> DebugSolidVertex {
-        DebugSolidVertex { position_x: position.x() as i16, position_y: position.y() as i16 }
+        DebugSolidVertex { position_x: position.x() as AlignedI16, position_y: position.y() as AlignedI16 }
     }
 }
 
