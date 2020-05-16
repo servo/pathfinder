@@ -44,7 +44,7 @@ use std::time::Instant;
 use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
 use surfman::{SurfaceAccess, SurfaceType};
 use winit::dpi::LogicalSize;
-use winit::{Event, EventsLoop, WindowBuilder, WindowEvent};
+use winit::{Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowBuilder, WindowEvent};
 
 #[cfg(not(windows))]
 use jemallocator;
@@ -1586,7 +1586,13 @@ fn main() {
         event_loop.poll_events(|event| {
             match event {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
-                Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => exit = true,
+                Event::WindowEvent {
+                    event: WindowEvent::KeyboardInput {
+                        input: KeyboardInput { virtual_keycode: Some(VirtualKeyCode::Escape), .. },
+                        ..
+                    },
+                    ..
+                } => exit = true,
                 Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                     mouse_position = vec2f(position.x as f32, position.y as f32);
                 }
