@@ -228,9 +228,6 @@ impl Scene {
             outline.dilate(options.dilation);
         }
 
-        // TODO(pcwalton): Fold this into previous passes to avoid unnecessary clones during
-        // monotonic conversion.
-        outline.prepare_for_tiling(self.effective_view_box(options));
         outline
     }
 
