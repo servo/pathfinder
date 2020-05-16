@@ -25,5 +25,6 @@ pub mod scene;
 mod allocator;
 mod builder;
 mod tile_map;
+mod tiler;
 mod tiles;
 mod z_buffer;

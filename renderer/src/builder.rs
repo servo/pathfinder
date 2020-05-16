@@ -20,16 +20,16 @@ use crate::options::{PreparedBuildOptions, PreparedRenderTransform, RenderComman
 use crate::paint::{PaintInfo, PaintMetadata};
 use crate::scene::{DisplayItem, Scene};
 use crate::tile_map::DenseTileMap;
-use crate::tiles::{self, DrawTilingPathInfo, PackedTile, TILE_HEIGHT, TILE_WIDTH};
-use crate::tiles::{Tiler, TilingPathInfo};
+use crate::tiler::Tiler;
+use crate::tiles::{self, DrawTilingPathInfo, PackedTile, TILE_HEIGHT, TILE_WIDTH, TilingPathInfo};
 use crate::z_buffer::{DepthMetadata, ZBuffer};
 use pathfinder_content::effects::{BlendMode, Filter};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
+use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_gpu::TextureSamplingFlags;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::AtomicUsize;
@@ -49,6 +49,8 @@ pub(crate) struct SceneBuilder<'a, 'b> {
 #[derive(Debug)]
 pub(crate) struct ObjectBuilder {
     pub built_path: BuiltPath,
+    /// During tiling, this stores the sum of backdrops for tile columns above the viewport.
+    pub current_backdrops: Vec<i8>,
     pub fills: Vec<FillBatchEntry>,
     pub bounds: RectF,
 }
@@ -593,24 +595,15 @@ impl ObjectBuilder {
                       fill_rule: FillRule,
                       tiling_path_info: &TilingPathInfo)
                       -> ObjectBuilder {
-        ObjectBuilder {
-            built_path: BuiltPath::new(path_bounds, view_box_bounds, fill_rule, tiling_path_info),
-            bounds: path_bounds,
-            fills: vec![],
-        }
+        let built_path = BuiltPath::new(path_bounds, view_box_bounds, fill_rule, tiling_path_info);
+        let current_backdrops = vec![0; built_path.tiles.rect.width() as usize];
+        ObjectBuilder { built_path, bounds: path_bounds, current_backdrops, fills: vec![] }
     }
 
-    #[inline]
-    pub(crate) fn tile_rect(&self) -> RectI {
-        self.built_path.tiles.rect
-    }
-
-    fn add_fill(
-        &mut self,
-        scene_builder: &SceneBuilder,
-        segment: LineSegment2F,
-        tile_coords: Vector2I,
-    ) {
+    pub(crate) fn add_fill(&mut self,
+                           scene_builder: &SceneBuilder,
+                           segment: LineSegment2F,
+                           tile_coords: Vector2I) {
         debug!("add_fill({:?} ({:?}))", segment, tile_coords);
 
         // Ensure this fill is in bounds. If not, cull it.
@@ -676,87 +669,6 @@ impl ObjectBuilder {
         alpha_tile_id
     }
 
-    pub(crate) fn add_active_fill(
-        &mut self,
-        scene_builder: &SceneBuilder,
-        left: f32,
-        right: f32,
-        mut winding: i32,
-        tile_coords: Vector2I,
-    ) {
-        let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
-        let left = vec2f(left, tile_origin_y);
-        let right = vec2f(right, tile_origin_y);
-
-        let segment = if winding < 0 {
-            LineSegment2F::new(left, right)
-        } else {
-            LineSegment2F::new(right, left)
-        };
-
-        debug!(
-            "... emitting active fill {} -> {} winding {} @ tile {:?}",
-            left.x(),
-            right.x(),
-            winding,
-            tile_coords
-        );
-
-        while winding != 0 {
-            self.add_fill(scene_builder, segment, tile_coords);
-            if winding < 0 {
-                winding += 1
-            } else {
-                winding -= 1
-            }
-        }
-    }
-
-    pub(crate) fn generate_fill_primitives_for_line(
-        &mut self,
-        scene_builder: &SceneBuilder,
-        mut segment: LineSegment2F,
-        tile_y: i32,
-    ) {
-        debug!(
-            "... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
-            segment,
-            tile_y,
-            tile_y as f32 * TILE_HEIGHT as f32,
-            (tile_y + 1) as f32 * TILE_HEIGHT as f32
-        );
-
-        let winding = segment.from_x() > segment.to_x();
-        let (segment_left, segment_right) = if !winding {
-            (segment.from_x(), segment.to_x())
-        } else {
-            (segment.to_x(), segment.from_x())
-        };
-
-        let mut subsegment_x = (segment_left as i32 & !(TILE_WIDTH as i32 - 1)) as f32;
-        while subsegment_x < segment_right {
-            let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
-            let subsegment_x_next = subsegment_x + TILE_WIDTH as f32;
-            if subsegment_x_next < segment_right {
-                let x = subsegment_x_next;
-                let point = Vector2F::new(x, segment.solve_y_for_x(x));
-                if !winding {
-                    fill_to = point;
-                    segment = LineSegment2F::new(point, segment.to());
-                } else {
-                    fill_from = point;
-                    segment = LineSegment2F::new(segment.from(), point);
-                }
-            }
-
-            let fill_segment = LineSegment2F::new(fill_from, fill_to);
-            let fill_tile_coords = vec2i(subsegment_x as i32 / TILE_WIDTH as i32, tile_y);
-            self.add_fill(scene_builder, fill_segment, fill_tile_coords);
-
-            subsegment_x = subsegment_x_next;
-        }
-    }
-
     #[inline]
     pub(crate) fn tile_coords_to_local_index(&self, coords: Vector2I) -> Option<u32> {
         self.built_path.tiles.coords_to_index(coords).map(|index| index as u32)
@@ -765,6 +677,23 @@ impl ObjectBuilder {
     #[inline]
     pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Vector2I {
         self.built_path.tiles.index_to_coords(tile_index as usize)
+    }
+
+    #[inline]
+    pub(crate) fn adjust_alpha_tile_backdrop(&mut self, tile_coords: Vector2I, delta: i8) {
+        let tile_offset = tile_coords - self.built_path.tiles.rect.origin();
+        if tile_offset.x() < 0 || tile_offset.x() >= self.built_path.tiles.rect.width() ||
+                tile_offset.y() >= self.built_path.tiles.rect.height() {
+            return;
+        }
+
+        if tile_offset.y() < 0 {
+            self.current_backdrops[tile_offset.x() as usize] += delta;
+            return;
+        }
+
+        let local_tile_index = self.built_path.tiles.coords_to_index_unchecked(tile_coords);
+        self.built_path.tiles.data[local_tile_index].backdrop += delta;
     }
 }
 
