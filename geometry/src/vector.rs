@@ -131,6 +131,12 @@ impl Vector2F {
         Vector2F(self.0.yx())
     }
 
+    /// Returns the vector (|x|, |y|).
+    #[inline]
+    pub fn abs(self) -> Vector2F {
+        Vector2F(self.0.abs())
+    }
+
     /// Returns the coefficient when the given vector `a` is projected onto this one.
     ///
     /// That is, if this vector is `v` and this function returns `c`, then `proj_v a = cv`. In
