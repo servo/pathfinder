@@ -43,7 +43,7 @@ pub(crate) struct SceneBuilder<'a, 'b> {
     scene: &'a mut Scene,
     built_options: &'b PreparedBuildOptions,
     next_alpha_tile_indices: [AtomicUsize; ALPHA_TILE_LEVEL_COUNT],
-    pub(crate) listener: Box<dyn RenderCommandListener>,
+    pub(crate) listener: Box<dyn RenderCommandListener + 'a>,
 }
 
 #[derive(Debug)]
@@ -102,8 +102,9 @@ impl<'a, 'b> SceneBuilder<'a, 'b> {
     pub(crate) fn new(
         scene: &'a mut Scene,
         built_options: &'b PreparedBuildOptions,
-        listener: Box<dyn RenderCommandListener>,
+        listener: Box<dyn RenderCommandListener + 'a>,
     ) -> SceneBuilder<'a, 'b> {
+        let effective_view_box = scene.effective_view_box(built_options);
         SceneBuilder {
             scene,
             built_options,
