@@ -808,6 +808,16 @@ impl Shr<I32x4> for I32x4 {
 pub struct U32x2(pub [u32; 2]);
 
 impl U32x2 {
+    #[inline]
+    pub fn new(x: u32, y: u32) -> U32x2 {
+        U32x2([x, y])
+    }
+
+    #[inline]
+    pub fn splat(x: u32) -> U32x2 {
+        U32x2::new(x, x)
+    }
+
     /// Returns true if both booleans in this vector are true.
     ///
     /// The result is *undefined* if both values in this vector are not booleans. A boolean is a
@@ -824,6 +834,11 @@ impl U32x2 {
     #[inline]
     pub fn all_false(&self) -> bool {
         self[0] == 0 && self[1] == 0
+    }
+
+    #[inline]
+    pub fn to_i32x2(self) -> I32x2 {
+        I32x2::new(self[0] as i32, self[1] as i32)
     }
 }
 
