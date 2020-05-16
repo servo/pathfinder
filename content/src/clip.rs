@@ -41,38 +41,6 @@ impl TEdge for Edge {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum AxisAlignedEdge {
-    Left(f32),
-    Top(f32),
-    Right(f32),
-    Bottom(f32),
-}
-
-impl TEdge for AxisAlignedEdge {
-    #[inline]
-    fn point_is_inside(&self, point: Vector2F) -> bool {
-        match *self {
-            AxisAlignedEdge::Left(x) => point.x() >= x,
-            AxisAlignedEdge::Top(y) => point.y() >= y,
-            AxisAlignedEdge::Right(x) => point.x() <= x,
-            AxisAlignedEdge::Bottom(y) => point.y() <= y,
-        }
-    }
-
-    fn intersect_line_segment(&self, segment: LineSegment2F) -> ArrayVec<[f32; 3]> {
-        let mut results = ArrayVec::new();
-        let t = match *self {
-            AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x) => segment.solve_t_for_x(x),
-            AxisAlignedEdge::Top(y) | AxisAlignedEdge::Bottom(y) => segment.solve_t_for_y(y),
-        };
-        if t >= 0.0 && t <= 1.0 {
-            results.push(t);
-        }
-        results
-    }
-}
-
 trait TEdge: Debug {
     fn point_is_inside(&self, point: Vector2F) -> bool;
     fn intersect_line_segment(&self, segment: LineSegment2F) -> ArrayVec<[f32; 3]>;
@@ -338,42 +306,6 @@ enum EdgeRelativeLocation {
     Intersecting,
     Inside,
     Outside,
-}
-
-// Fast axis-aligned box 2D clipping
-
-pub(crate) struct ContourRectClipper {
-    clip_rect: RectF,
-    contour: Contour,
-}
-
-impl ContourClipper for ContourRectClipper {
-    type Edge = AxisAlignedEdge;
-
-    #[inline]
-    fn contour_mut(&mut self) -> &mut Contour {
-        &mut self.contour
-    }
-}
-
-impl ContourRectClipper {
-    #[inline]
-    pub(crate) fn new(clip_rect: RectF, contour: Contour) -> ContourRectClipper {
-        ContourRectClipper { clip_rect, contour }
-    }
-
-    pub(crate) fn clip(mut self) -> Contour {
-        if self.clip_rect.contains_rect(self.contour.bounds()) {
-            return self.contour;
-        }
-
-        self.clip_against(AxisAlignedEdge::Left(self.clip_rect.min_x()));
-        self.clip_against(AxisAlignedEdge::Top(self.clip_rect.min_y()));
-        self.clip_against(AxisAlignedEdge::Right(self.clip_rect.max_x()));
-        self.clip_against(AxisAlignedEdge::Bottom(self.clip_rect.max_y()));
-
-        self.contour
-    }
 }
 
 // 3D quad clipping

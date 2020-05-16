@@ -34,7 +34,7 @@ use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::ResourceLoader;
-use pathfinder_resources::embedded::EmbeddedResourceLoader;
+use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x2;
 use std::collections::VecDeque;
 use std::f32::consts::PI;
@@ -44,7 +44,7 @@ use std::time::Instant;
 use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
 use surfman::{SurfaceAccess, SurfaceType};
 use winit::dpi::LogicalSize;
-use winit::{Event, EventsLoop, WindowBuilder, WindowEvent};
+use winit::{Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowBuilder, WindowEvent};
 
 #[cfg(not(windows))]
 use jemallocator;
@@ -1501,7 +1501,7 @@ fn main() {
     let framebuffer_size = vec2i(physical_size.width as i32, physical_size.height as i32);
 
     // Load demo data.
-    let resources = EmbeddedResourceLoader;
+    let resources = FilesystemResourceLoader::locate();
     let font_data = vec![
         Handle::from_memory(Arc::new(resources.slurp("fonts/Roboto-Regular.ttf").unwrap()), 0),
         Handle::from_memory(Arc::new(resources.slurp("fonts/Roboto-Bold.ttf").unwrap()), 0),
@@ -1586,7 +1586,13 @@ fn main() {
         event_loop.poll_events(|event| {
             match event {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
-                Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => exit = true,
+                Event::WindowEvent {
+                    event: WindowEvent::KeyboardInput {
+                        input: KeyboardInput { virtual_keycode: Some(VirtualKeyCode::Escape), .. },
+                        ..
+                    },
+                    ..
+                } => exit = true,
                 Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                     mouse_position = vec2f(position.x as f32, position.y as f32);
                 }

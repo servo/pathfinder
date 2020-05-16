@@ -411,3 +411,19 @@ impl RectI {
         RectF(self.0.to_f32x4())
     }
 }
+
+impl Mul<Vector2I> for RectI {
+    type Output = RectI;
+    #[inline]
+    fn mul(self, factors: Vector2I) -> RectI {
+        RectI(self.0 * factors.0.concat_xy_xy(factors.0))
+    }
+}
+
+impl Mul<i32> for RectI {
+    type Output = RectI;
+    #[inline]
+    fn mul(self, factor: i32) -> RectI {
+        RectI(self.0 * I32x4::splat(factor))
+    }
+}

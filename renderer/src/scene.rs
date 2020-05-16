@@ -185,8 +185,6 @@ impl Scene {
         original_outline: &Outline,
         options: &PreparedBuildOptions,
     ) -> Outline {
-        let effective_view_box = self.effective_view_box(options);
-
         let mut outline;
         match options.transform {
             PreparedRenderTransform::Perspective {
@@ -220,7 +218,6 @@ impl Scene {
                     }
                     outline.transform(&transform);
                 }
-                outline.clip_against_rect(effective_view_box);
             }
         }
 
@@ -228,9 +225,6 @@ impl Scene {
             outline.dilate(options.dilation);
         }
 
-        // TODO(pcwalton): Fold this into previous passes to avoid unnecessary clones during
-        // monotonic conversion.
-        outline.prepare_for_tiling(self.effective_view_box(options));
         outline
     }
 
