@@ -19,6 +19,7 @@ use pathfinder_content::segment::Segment;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
+use pathfinder_simd::default::{F32x2, U32x2};
 
 const FLATTENING_TOLERANCE: f32 = 0.25;
 
@@ -157,12 +158,17 @@ fn process_line_segment(line_segment: LineSegment2F,
     let from_tile_coords = Vector2I(tile_line_segment.xy());
     let to_tile_coords = Vector2I(tile_line_segment.zw());
 
+    // Compute `vector_is_negative = vec2i(vector.x < 0 ? -1 : 0, vector.y < 0 ? -1 : 0)`.
     let vector = line_segment.vector();
-    let step = vec2f(vector.x().signum(), vector.y().signum()).to_i32();
+    let vector_is_negative = vector.0.packed_lt(F32x2::default());
 
-    let first_tile_crossing =
-        (from_tile_coords + vec2i(if step.x() <= 0 { 0 } else { 1 },
-                                  if step.y() <= 0 { 0 } else { 1 })).to_f32() * tile_size;
+    // Compute `step = vec2f(vector.x < 0 ? -1 : 1, vector.y < 0 ? -1 : 1)`.
+    let step = Vector2I((vector_is_negative | U32x2::splat(1)).to_i32x2());
+
+    // Compute `first_tile_crossing = (from_tile_coords + vec2i(vector.x > 0 ? 1 : 0,
+    // vector.y > 0 ? 1 : 0)) * tile_size`.
+    let first_tile_crossing = (from_tile_coords +
+        Vector2I((!vector_is_negative & U32x2::splat(1)).to_i32x2())).to_f32() * tile_size;
 
     let mut t_max = (first_tile_crossing - line_segment.from()) / vector;
     let t_delta = (tile_size / vector).abs();

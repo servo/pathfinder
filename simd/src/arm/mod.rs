@@ -13,7 +13,7 @@ use std::arch::aarch64::{uint32x2_t, uint32x4_t};
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Shr, Sub};
+use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Not, Shr, Sub};
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
@@ -723,6 +723,16 @@ impl Shr<I32x4> for I32x4 {
 pub struct U32x2(pub uint32x2_t);
 
 impl U32x2 {
+    #[inline]
+    pub fn new(x: u32, y: u32) -> U32x2 {
+        unsafe { U32x2(mem::transmute([x, y])) }
+    }
+
+    #[inline]
+    pub fn splat(x: u32) -> U32x2 {
+        U32x2::new(x, x)
+    }
+
     /// Returns true if both booleans in this vector are true.
     ///
     /// The result is *undefined* if both values in this vector are not booleans. A boolean is a
@@ -740,6 +750,11 @@ impl U32x2 {
     pub fn all_false(&self) -> bool {
         unsafe { aarch64::vmaxv_u32(self.0) == 0 }
     }
+
+    #[inline]
+    pub fn to_i32x2(self) -> I32x2 {
+        unsafe { I32x2(simd_cast(self.0)) }
+    }
 }
 
 impl Index<usize> for U32x2 {
@@ -753,6 +768,32 @@ impl Index<usize> for U32x2 {
         }
     }
 }
+
+impl Not for U32x2 {
+    type Output = U32x2;
+    #[inline]
+    fn not(self) -> U32x2 {
+        // FIXME(pcwalton): Is there a better way to do this?
+        unsafe { U32x2(simd_xor(self.0, U32x2::splat(!0).0)) }
+    }
+}
+
+impl BitAnd<U32x2> for U32x2 {
+    type Output = U32x2;
+    #[inline]
+    fn bitand(self, other: U32x2) -> U32x2 {
+        unsafe { U32x2(simd_and(self.0, other.0)) }
+    }
+}
+
+impl BitOr<U32x2> for U32x2 {
+    type Output = U32x2;
+    #[inline]
+    fn bitor(self, other: U32x2) -> U32x2 {
+        unsafe { U32x2(simd_or(self.0, other.0)) }
+    }
+}
+
 
 // Four 32-bit unsigned integers
 
@@ -803,6 +844,7 @@ extern "platform-intrinsic" {
 
     fn simd_and<T>(x: T, y: T) -> T;
     fn simd_or<T>(x: T, y: T) -> T;
+    fn simd_xor<T>(x: T, y: T) -> T;
 
     fn simd_fmin<T>(x: T, y: T) -> T;
     fn simd_fmax<T>(x: T, y: T) -> T;
