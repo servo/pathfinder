@@ -218,6 +218,20 @@ impl Outline {
     pub fn close_all_contours(&mut self) {
         self.contours.iter_mut().for_each(|contour| contour.close());
     }
+
+    pub fn merge(&mut self, other: Outline) {
+        if other.len() == 0 {
+            return;
+        }
+
+        if self.len() == 0 {
+            self.bounds = other.bounds;
+        } else {
+            self.bounds = self.bounds.union_rect(other.bounds);
+        }
+
+        self.contours.extend(other.contours);
+    }
 }
 
 impl Debug for Outline {
