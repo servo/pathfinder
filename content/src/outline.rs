@@ -218,6 +218,26 @@ impl Outline {
     pub fn close_all_contours(&mut self) {
         self.contours.iter_mut().for_each(|contour| contour.close());
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.contours.iter().all(Contour::is_empty)
+    }
+
+    /// Appends the contours in another outline to this one.
+    pub fn push_outline(&mut self, other: Outline) {
+        if other.is_empty() {
+            return;
+        }
+
+        if self.is_empty() {
+            self.bounds = other.bounds;
+        } else {
+            self.bounds = self.bounds.union_rect(other.bounds);
+        }
+
+        self.contours.extend(other.contours);
+    }
 }
 
 impl Debug for Outline {
