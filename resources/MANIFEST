@@ -57,6 +57,7 @@ shaders/metal/debug_texture.fs.metal
 shaders/metal/debug_texture.vs.metal
 shaders/metal/demo_ground.fs.metal
 shaders/metal/demo_ground.vs.metal
+shaders/metal/fill.cs.metal
 shaders/metal/fill.fs.metal
 shaders/metal/fill.vs.metal
 shaders/metal/reproject.fs.metal
