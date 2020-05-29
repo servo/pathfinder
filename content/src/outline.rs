@@ -178,6 +178,11 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
+    pub fn transformed(mut self, transform: &Transform2F) -> Outline {
+        self.transform(transform);
+        self
+    }
+
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         let mut new_bounds = None;
         for contour in &mut self.contours {
@@ -612,6 +617,12 @@ impl Contour {
             *point = *transform * *point;
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
+    }
+
+    #[inline]
+    pub fn transformed(mut self, transform: &Transform2F) -> Contour {
+        self.transform(transform);
+        self
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
