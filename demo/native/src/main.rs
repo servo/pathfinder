@@ -18,7 +18,7 @@ extern crate objc;
 
 use euclid::default::Size2D;
 use nfd::Response;
-use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
+use pathfinder_demo::window::{Event, Keycode, DataPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2I, vec2i};
@@ -140,7 +140,7 @@ struct EventQueue {
 #[derive(Clone)]
 enum CustomEvent {
     User { message_type: u32, message_data: u32 },
-    OpenSVG(PathBuf),
+    OpenData(PathBuf),
 }
 
 impl Window for WindowImpl {
@@ -212,10 +212,10 @@ impl Window for WindowImpl {
     }
 
     fn present_open_svg_dialog(&mut self) {
-        if let Ok(Response::Okay(path)) = nfd::open_file_dialog(Some("svg"), None) {
+        if let Ok(Response::Okay(path)) = nfd::open_file_dialog(Some("svg,pdf"), None) {
             let mut event_queue = EVENT_QUEUE.lock().unwrap();
             let event_queue = event_queue.as_mut().unwrap();
-            event_queue.pending_custom_events.push_back(CustomEvent::OpenSVG(PathBuf::from(path)));
+            event_queue.pending_custom_events.push_back(CustomEvent::OpenData(PathBuf::from(path)));
             drop(event_queue.event_loop_proxy.wakeup());
         }
     }
@@ -423,7 +423,7 @@ fn convert_winit_event(winit_event: WinitEvent,
             match event_queue.pending_custom_events
                              .pop_front()
                              .expect("`Awakened` with no pending custom event!") {
-                CustomEvent::OpenSVG(svg_path) => Some(Event::OpenSVG(SVGPath::Path(svg_path))),
+                CustomEvent::OpenData(data_path) => Some(Event::OpenData(DataPath::Path(data_path))),
                 CustomEvent::User { message_data, message_type } => {
                     Some(Event::User { message_data, message_type })
                 }

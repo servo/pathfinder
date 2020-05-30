@@ -71,7 +71,7 @@ pub enum Event {
         yaw: f32,
     },
     SetEyeTransforms(Vec<OcularTransform>),
-    OpenSVG(SVGPath),
+    OpenData(DataPath),
     User {
         message_type: u32,
         message_data: u32,
@@ -114,7 +114,7 @@ pub struct OcularTransform {
 }
 
 #[derive(Clone)]
-pub enum SVGPath {
+pub enum DataPath {
     Default,
     Resource(String),
     Path(PathBuf),
