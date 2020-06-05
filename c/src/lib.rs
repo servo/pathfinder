@@ -11,7 +11,6 @@
 //! C bindings to Pathfinder.
 
 use font_kit::handle::Handle;
-use foreign_types::ForeignTypeRef;
 use gl;
 use pathfinder_canvas::{Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_canvas::{Path2D, TextAlign, TextMetrics};
@@ -42,6 +41,8 @@ use std::str;
 use metal::{CAMetalLayer, CoreAnimationLayerRef, Device};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use foreign_types::ForeignTypeRef;
 
 // Constants
 
