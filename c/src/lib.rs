@@ -289,18 +289,20 @@ pub unsafe extern "C" fn PFCanvasSetLineWidth(canvas: PFCanvasRef, new_line_widt
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineCap(canvas: PFCanvasRef, new_line_cap: PFLineCap) {
     (*canvas).set_line_cap(match new_line_cap {
+        PF_LINE_CAP_BUTT   => LineCap::Butt,
         PF_LINE_CAP_SQUARE => LineCap::Square,
         PF_LINE_CAP_ROUND  => LineCap::Round,
-        _                  => LineCap::Butt,
+        _ => panic!("invalid new_line_cap {}, must be one of:\nPF_LINE_CAP_BUTT\nPF_LINE_CAP_SQUARE\nPF_LINE_CAP_ROUND", new_line_cap)
     });
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineJoin(canvas: PFCanvasRef, new_line_join: PFLineJoin) {
     (*canvas).set_line_join(match new_line_join {
+        PF_LINE_JOIN_MITER => LineJoin::Miter,
         PF_LINE_JOIN_BEVEL => LineJoin::Bevel,
         PF_LINE_JOIN_ROUND => LineJoin::Round,
-        _                  => LineJoin::Miter,
+        _ => panic!("invalid new_line_join {}, must be one of:\nPF_LINE_JOIN_MITER\nPF_LINE_JOIN_BEVEL\nPF_LINE_JOIN_ROUND", new_line_join)
     });
 }
 
@@ -438,7 +440,11 @@ pub unsafe extern "C" fn PFPathArc(path: PFPathRef,
                                    start_angle: f32,
                                    end_angle: f32,
                                    direction: PFArcDirection) {
-    let direction = if direction == 0 { ArcDirection::CW } else { ArcDirection::CCW };
+    let direction = match direction {
+        PF_ARC_DIRECTION_CW => ArcDirection::CW,
+        PF_ARC_DIRECTION_CCW => ArcDirection::CCW,
+        _ => panic!("invalid direction {}, must be one of:\nPF_ARC_DIRECTION_CW\nPF_ARC_DIRECTION_CCW", direction)
+    };
     (*path).arc((*center).to_rust(), radius, start_angle, end_angle, direction)
 }
 
