@@ -35,6 +35,7 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
+use std::path::PathBuf;
 use std::slice;
 use std::str;
 
@@ -484,6 +485,14 @@ pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
 #[no_mangle]
 pub unsafe extern "C" fn PFFilesystemResourceLoaderLocate() -> PFResourceLoaderRef {
     let loader = Box::new(FilesystemResourceLoader::locate());
+    Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFFilesystemResourceLoaderFromPath(path: *const c_char) -> PFResourceLoaderRef {
+    let string = to_rust_string(&path, 0);
+    let directory = PathBuf::from(string);
+    let loader = Box::new(FilesystemResourceLoader { directory });
     Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
 }
 
