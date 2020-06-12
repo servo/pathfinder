@@ -35,10 +35,12 @@ include = [
     "pathfinder_gpu",
     "pathfinder_metal",
     "pathfinder_renderer",
+    "pathfinder_svg",
 ]
 
 [export.rename]
 "BuildOptions" = "PFBuildOptionsPrivate"
+"BuiltSVG" = "PFBuiltSVGPrivate"
 "CanvasFontContext" = "PFCanvasFontContextPrivate"
 "CanvasRenderingContext2D" = "PFCanvasRenderingContext2DPrivate"
 "DestFramebuffer_GLDevice" = "PFDestFramebufferGLDevicePrivate"

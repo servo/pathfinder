@@ -13,6 +13,7 @@ font-kit = "0.6"
 foreign-types = "0.3"
 gl = "0.14"
 libc = "0.2"
+usvg = "0.9"
 
 [dependencies.pathfinder_canvas]
 features = ["pf-text"]
@@ -41,6 +42,9 @@ path = "../resources"
 
 [dependencies.pathfinder_simd]
 path = "../simd"
+
+[dependencies.pathfinder_svg]
+path = "../svg"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = "0.17"

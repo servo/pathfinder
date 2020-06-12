@@ -33,10 +33,12 @@ use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_simd::default::F32x4;
+use pathfinder_svg::BuiltSVG;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::slice;
 use std::str;
+use usvg::{Options as UsvgOptions, Tree};
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use metal::{CAMetalLayer, CoreAnimationLayerRef, Device};
@@ -154,6 +156,9 @@ pub struct PFPerspective {
     pub transform: PFTransform4F,
     pub window_size: PFVector2I,
 }
+
+// `svg`
+pub type PFBuiltSVGRef = *mut BuiltSVG;
 
 // `gl`
 pub type PFGLDeviceRef = *mut GLDevice;
@@ -477,6 +482,33 @@ pub unsafe extern "C" fn PFFillStyleCreateColor(color: *const PFColorU) -> PFFil
 #[no_mangle]
 pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
     drop(Box::from_raw(fill_style))
+}
+
+// `svg`
+
+#[no_mangle]
+pub unsafe extern "C" fn PFSVGLoadSceneFromString(string: *const c_char,
+                                                  string_len: usize) -> PFBuiltSVGRef {
+    let data = std::slice::from_raw_parts(string as *const _, string_len);
+    let tree = Tree::from_data(data, &UsvgOptions::default()).expect("Failed to parse the SVG!");
+    let built_svg = BuiltSVG::from_tree(&tree);
+    // TODO: maybe return tree too?
+    Box::into_raw(Box::new(built_svg))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFSVGLoadSceneFromPath(path: *const c_char) -> PFBuiltSVGRef {
+    let string = to_rust_string(&path, 0);
+    let path = PathBuf::from(string);
+    let tree = Tree::from_file(path, &UsvgOptions::default()).expect("Failed to parse the SVG!");
+    let built_svg = BuiltSVG::from_tree(&tree);
+    // TODO: maybe return tree too?
+    Box::into_raw(Box::new(built_svg))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFBuiltSVGCreateScene(svg: PFBuiltSVGRef) -> PFSceneRef {
+    Box::into_raw(Box::new((*Box::from_raw(svg)).scene))
 }
 
 // `gl`
