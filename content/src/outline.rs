@@ -20,6 +20,7 @@ use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::unit_vector::UnitVector;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
+use pathfinder_geometry::util::reflection;
 use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -343,6 +344,11 @@ impl Contour {
     }
 
     #[inline]
+    pub fn first_position(&self) -> Option<Vector2F> {
+        self.points.first().cloned()
+    }
+
+    #[inline]
     pub fn last_position(&self) -> Option<Vector2F> {
         self.points.last().cloned()
     }
@@ -627,6 +633,31 @@ impl Contour {
             None => self.bounds,
             Some(bounds) => bounds.union_rect(self.bounds),
         })
+    }
+    
+    pub fn mirror_and_close(&mut self) {
+        if self.points.len() < 2 {
+            return;
+        }
+        let a = self.first_position().unwrap();
+        let b = self.last_position().unwrap();
+        if a == b {
+            self.close();
+            return;
+        }
+        let tr = reflection(a, b);
+
+        let mut segments: Vec<_> = self
+            .iter(ContourIterFlags::empty())
+            .map(|segment| segment.reversed().transform(&tr))
+            .collect();
+        segments.reverse();
+        
+        for segment in &segments {
+            self.push_segment(segment, PushSegmentFlags::UPDATE_BOUNDS);
+        }
+
+        self.close();
     }
 }
 
