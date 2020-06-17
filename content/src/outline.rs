@@ -128,6 +128,18 @@ impl Outline {
     }
 
     #[inline]
+    pub fn from_rect_rounded(rect: RectF, radius: Vector2F) -> Outline {
+        let mut outline = Outline::new();
+        outline.push_contour(Contour::from_rect_rounded(rect, radius));
+        outline
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.contours.len()
+    }
+    
+    #[inline]
     pub fn bounds(&self) -> RectF {
         self.bounds
     }
