@@ -160,6 +160,29 @@ impl Vector2F {
     pub fn to_i32(self) -> Vector2I {
         Vector2I(self.0.to_i32x2())
     }
+
+    /// Returns the inverse vector
+    ///
+    /// `v · v.inv() = (1.0, 1.0)`
+    #[inline]
+    pub fn inv(self) -> Vector2F {
+        Vector2F::new(1.0 / self.x(), 1.0 / self.y())
+    }
+
+    /// Returns the angle of the vector
+    /// 
+    /// The angle will be in [-PI, PI]
+    #[inline]
+    pub fn phi(self) -> f32 {
+        self.y().atan2(self.x())
+    }
+
+    /// Compute the angle between `self` and `other`
+    /// 
+    /// The angle will be in [-PI, PI]
+    pub fn angle_to(self, other: Vector2F) -> f32 {
+        (self.dot(other) / (self.square_length() * other.square_length()).sqrt()).acos() * self.det(other).signum()
+    }
 }
 
 /// A convenience alias for `Vector2F::new()`.
