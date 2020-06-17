@@ -63,6 +63,14 @@ impl Outline {
     }
 
     #[inline]
+    pub fn with_capacity(capacity: usize) -> Outline {
+        Outline {
+            contours: Vec::with_capacity(capacity),
+            bounds: RectF::default(),
+        }
+    }
+
+    #[inline]
     pub fn from_segments<I>(segments: I) -> Outline
     where
         I: Iterator<Item = Segment>,
@@ -275,7 +283,7 @@ impl Contour {
 
     #[inline]
     pub fn from_rect(rect: RectF) -> Contour {
-        let mut contour = Contour::new();
+        let mut contour = Contour::with_capacity(4);
         contour.push_point(rect.origin(), PointFlags::empty(), false);
         contour.push_point(rect.upper_right(), PointFlags::empty(), false);
         contour.push_point(rect.lower_right(), PointFlags::empty(), false);
@@ -612,6 +620,12 @@ impl Contour {
             *point = *transform * *point;
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
+    }
+
+    #[inline]
+    pub fn transformed(mut self, transform: &Transform2F) -> Contour {
+        self.transform(transform);
+        self
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
