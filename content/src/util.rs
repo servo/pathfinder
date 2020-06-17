@@ -45,3 +45,12 @@ pub(crate) fn hash_f32x4<H>(vector: F32x4, state: &mut H) where H: Hasher {
         data.hash(state);
     }
 }
+
+#[inline]
+pub(crate) fn safe_sqrt(x: f32) -> f32 {
+    if x <= 0.0 {
+        0.0
+    } else {
+        x.sqrt()
+    }
+}

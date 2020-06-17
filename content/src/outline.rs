@@ -14,13 +14,14 @@ use crate::clip::{self, ContourPolygonClipper};
 use crate::dilation::ContourDilator;
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
+use crate::util::safe_sqrt;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
-use pathfinder_geometry::transform2d::Transform2F;
+use pathfinder_geometry::transform2d::{Transform2F, Matrix2x2F};
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::unit_vector::UnitVector;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
-use pathfinder_geometry::util::reflection;
+use pathfinder_geometry::util::{reflection};
 use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -293,6 +294,75 @@ impl Contour {
         contour
     }
 
+    #[inline]
+    pub fn from_rect_rounded(rect: RectF, radius: Vector2F) -> Contour {
+        use std::f32::consts::SQRT_2;
+        const QUARTER_ARC_CP_FROM_OUTSIDE: f32 = (3.0 - 4.0 * (SQRT_2 - 1.0)) / 3.0;
+
+        if radius.is_zero() {
+            return Contour::from_rect(rect);
+        }
+        let radius = radius.min(rect.size() * 0.5);
+        let contol_point_offset = radius * QUARTER_ARC_CP_FROM_OUTSIDE;
+
+        let mut contour = Contour::with_capacity(8);
+
+        // upper left corner
+        {
+            let p0 = rect.origin();
+            let p1 = p0 + contol_point_offset;
+            let p2 = p0 + radius;
+            contour.push_endpoint(vec2f(p0.x(), p2.y()));
+            contour.push_cubic(
+                vec2f(p0.x(), p1.y()),
+                vec2f(p1.x(), p0.y()),
+                vec2f(p2.x(), p0.y())
+            );
+        }
+
+        // upper right
+        {
+            let p0 = rect.upper_right();
+            let p1 = p0 + contol_point_offset * vec2f(-1.0, 1.0);
+            let p2 = p0 + radius * vec2f(-1.0, 1.0);
+            contour.push_endpoint(vec2f(p2.x(), p0.y()));
+            contour.push_cubic(
+                vec2f(p1.x(), p0.y()),
+                vec2f(p0.x(), p1.y()),
+                vec2f(p0.x(), p2.y())
+            );
+        }
+
+        // lower right
+        {
+            let p0 = rect.lower_right();
+            let p1 = p0 + contol_point_offset * vec2f(-1.0, -1.0);
+            let p2 = p0 + radius * vec2f(-1.0, -1.0);
+            contour.push_endpoint(vec2f(p0.x(), p2.y()));
+            contour.push_cubic(
+                vec2f(p0.x(), p1.y()),
+                vec2f(p1.x(), p0.y()),
+                vec2f(p2.x(), p0.y())
+            );
+        }
+
+        // lower left
+        {
+            let p0 = rect.lower_left();
+            let p1 = p0 + contol_point_offset * vec2f(1.0, -1.0);
+            let p2 = p0 + radius * vec2f(1.0, -1.0);
+            contour.push_endpoint(vec2f(p2.x(), p0.y()));
+            contour.push_cubic(
+                vec2f(p1.x(), p0.y()),
+                vec2f(p0.x(), p1.y()),
+                vec2f(p0.x(), p2.y())
+            );
+        }
+
+        contour.close();
+        contour
+    }
+
     // Replaces this contour with a new one, with arrays preallocated to match `self`.
     #[inline]
     pub(crate) fn take(&mut self) -> Contour {
@@ -494,6 +564,64 @@ impl Contour {
         }
 
         const EPSILON: f32 = 0.001;
+    }
+
+    /// Push a SVG arc
+    ///
+    /// Draws an ellipse section with radii given in `radius` rotated by `x_axis_rotation` to 'to' in the given `direction`.
+    /// If `large_arc` is true, draws an arc bigger than a 180°, otherwise smaller than 180°.
+    /// note that `x_axis_rotation` is in radians.
+    pub fn push_svg_arc(&mut self, radius: Vector2F, x_axis_rotation: f32, large_arc: bool, direction: ArcDirection, to: Vector2F) {
+        let r = radius;
+        let p = to;
+        let last = self.last_position().unwrap_or_default();
+
+        if r.x().is_finite() & r.y().is_finite() {
+            let r = r.abs();
+            let r_inv = r.inv();
+            let sign = match (large_arc, direction) {
+                (false, ArcDirection::CW) | (true, ArcDirection::CCW) => 1.0,
+                (false, ArcDirection::CCW) | (true, ArcDirection::CW) => -1.0
+            };
+            let rot = Matrix2x2F::from_rotation(x_axis_rotation);
+            // x'
+            let q = rot.adjugate() * (last - p) * 0.5;
+            let q2 = q * q;
+
+            let gamma = q2 * r_inv * r_inv;
+            let gamma = gamma.x() + gamma.y();
+
+            let (a, b, c) = if gamma <= 1.0 {
+                // normal case
+                let r2 = r * r;
+
+                let r2_prod = r2.x() * r2.y(); // r_x^2 r_y^2
+
+                let rq2 = r2 * q2.yx(); // (r_x^2 q_y^2, r_y^2 q_x^2)
+                let rq2_sum = rq2.x() + rq2.y(); // r_x^2 q_y^2 + r_y^2 q_x^2
+                // c'
+                let s = vec2f(1., -1.) * r * (q * r_inv).yx() * safe_sqrt((r2_prod - rq2_sum) / rq2_sum) * sign;
+                let c = rot * s + (last + p) * 0.5;
+                
+                let a = (q - s) * r_inv;
+                let b = -(q + s) * r_inv;
+                (a, b, c)
+            } else {
+                let c = (last + p) * 0.5;
+                let a = q * r_inv;
+                let b = -a;
+                (a, b, c)
+            };
+            
+            let transform = Transform2F {
+                matrix: rot,
+                vector: c
+            } * Transform2F::from_scale(r);
+            let chord = LineSegment2F::new(a, b);
+            self.push_arc_from_unit_chord(&transform, chord, direction);
+        } else {
+            self.push_endpoint(p);
+        }
     }
 
     pub fn push_ellipse(&mut self, transform: &Transform2F) {
