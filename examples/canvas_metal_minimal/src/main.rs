@@ -10,14 +10,14 @@
 
 use foreign_types::ForeignTypeRef;
 use metal::{CAMetalLayer, CoreAnimationLayerRef};
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::{Canvas, CanvasFontContext, Path2D};
 use pathfinder_color::ColorF;
-use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
+use pathfinder_geometry::vector::{vec2f, vec2i};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_metal::MetalDevice;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
@@ -46,14 +46,18 @@ fn main() {
     };
 
     // Create a Pathfinder renderer.
-    let mut renderer = Renderer::new(MetalDevice::new(metal_layer),
-                                     &EmbeddedResourceLoader,
-                                     DestFramebuffer::full_window(window_size),
-                                     RendererOptions { background_color: Some(ColorF::white()) });
+    let device = MetalDevice::new(metal_layer);
+    let mode = RendererMode::default_for_device(&device);
+    let options = RendererOptions {
+        dest: DestFramebuffer::full_window(window_size),
+        background_color: Some(ColorF::white()),
+        ..RendererOptions::default()
+    };
+    let mut renderer = Renderer::new(device, &EmbeddedResourceLoader, mode, options);
 
     // Make a canvas. We're going to draw a house.
-    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::from_system_source(),
-                                                   window_size.to_f32());
+    let canvas = Canvas::new(window_size.to_f32());
+    let mut canvas = canvas.get_context_2d(CanvasFontContext::from_system_source());
 
     // Set line width.
     canvas.set_line_width(10.0);
@@ -73,9 +77,11 @@ fn main() {
     canvas.stroke_path(path);
 
     // Render the canvas to screen.
-    let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
+    let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
+                                           renderer.mode().level,
+                                           RayonExecutor);
     scene.build_and_render(&mut renderer, BuildOptions::default());
-    renderer.device.present_drawable();
+    renderer.device().present_drawable();
 
     // Wait for a keypress.
     let mut event_pump = sdl_context.event_pump().unwrap();

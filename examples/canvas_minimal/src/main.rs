@@ -16,7 +16,7 @@ use pathfinder_geometry::vector::{vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
@@ -72,13 +72,14 @@ fn main() {
     let pathfinder_device = GLDevice::new(GLVersion::GL3, default_framebuffer);
 
     // Create a Pathfinder renderer.
-    let mut renderer = Renderer::new(pathfinder_device,
-                                     &EmbeddedResourceLoader::new(),
-                                     DestFramebuffer::full_window(framebuffer_size),
-                                     RendererOptions {
-                                         background_color: Some(ColorF::white()),
-                                         ..RendererOptions::default()
-                                     });
+    let mode = RendererMode::default_for_device(&pathfinder_device);
+    let options = RendererOptions {
+        dest: DestFramebuffer::full_window(framebuffer_size),
+        background_color: Some(ColorF::white()),
+        ..RendererOptions::default()
+    };
+    let resource_loader = EmbeddedResourceLoader::new();
+    let mut renderer = Renderer::new(pathfinder_device, &resource_loader, mode, options);
 
     // Make a canvas. We're going to draw a house.
     let font_context = CanvasFontContext::from_system_source();
@@ -102,7 +103,9 @@ fn main() {
     canvas.stroke_path(path);
 
     // Render the canvas to screen.
-    let scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(), RayonExecutor);
+    let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
+                                           renderer.mode().level,
+                                           RayonExecutor);
     scene.build_and_render(&mut renderer, BuildOptions::default());
 
     // Present the surface.

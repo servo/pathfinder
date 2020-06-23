@@ -9,12 +9,12 @@
 // except according to those terms.
 
 use crate::allocator::{AllocationMode, TextureAllocator};
-use crate::gpu_data::{RenderCommand, TextureLocation, TextureMetadataEntry, TexturePageDescriptor};
+use crate::gpu_data::{ColorCombineMode, RenderCommand, TextureLocation, TextureMetadataEntry, TexturePageDescriptor};
 use crate::gpu_data::{TexturePageId, TileBatchTexture};
 use crate::scene::{RenderTarget, SceneId};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
-use pathfinder_content::effects::{Filter, PatternFilter};
+use pathfinder_content::effects::{BlendMode, Filter, PatternFilter};
 use pathfinder_content::gradient::{Gradient, GradientGeometry};
 use pathfinder_content::pattern::{Pattern, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
@@ -285,6 +285,7 @@ pub struct PaintMetadata {
     pub color_texture_metadata: Option<PaintColorTextureMetadata>,
     /// The base color that the color texture gets mixed into.
     pub base_color: ColorU,
+    pub blend_mode: BlendMode,
     /// True if this paint is fully opaque.
     pub is_opaque: bool,
 }
@@ -435,6 +436,8 @@ impl Palette {
                 color_texture_metadata,
                 is_opaque: paint.is_opaque(),
                 base_color: paint.base_color(),
+                // FIXME(pcwalton)
+                blend_mode: BlendMode::SrcOver,
             });
         }
 
@@ -496,7 +499,14 @@ impl Palette {
                     None => Transform2F::default(),
                     Some(ref color_texture_metadata) => color_texture_metadata.transform,
                 },
+                color_0_combine_mode: if paint_metadata.color_texture_metadata.is_some() {
+                    ColorCombineMode::SrcIn
+                } else {
+                    ColorCombineMode::None
+                },
                 base_color: paint_metadata.base_color,
+                filter: paint_metadata.filter(),
+                blend_mode: paint_metadata.blend_mode,
             }
         }).collect();
         let mut render_commands = vec![RenderCommand::UploadTextureMetadata(texture_metadata)];

@@ -22,6 +22,7 @@ use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, Vector4F};
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::options::RenderTransform;
+use std::mem;
 use std::path::PathBuf;
 
 const GROUND_SOLID_COLOR: ColorU = ColorU {
@@ -46,59 +47,58 @@ impl<W> DemoApp<W> where W: Window {
         let view = self.ui_model.mode.view(0);
         self.window.make_current(view);
 
-        // Set up framebuffers.
-        let window_size = self.window_size.device_size();
-        let mode = self.camera.mode();
-        let scene_count = match mode {
-            Mode::VR => {
-                let viewport = self.window.viewport(View::Stereo(0));
-                if self.scene_framebuffer.is_none()
-                    || self.renderer.device.texture_size(
-                        &self
-                            .renderer
-                            .device
-                            .framebuffer_texture(self.scene_framebuffer.as_ref().unwrap()),
-                    ) != viewport.size()
-                {
-                    let scene_texture = self
-                        .renderer
-                        .device
-                        .create_texture(TextureFormat::RGBA8, viewport.size());
-                    self.scene_framebuffer =
-                        Some(self.renderer.device.create_framebuffer(scene_texture));
-                }
-                self.renderer
-                    .replace_dest_framebuffer(DestFramebuffer::Other(
-                        self.scene_framebuffer.take().unwrap(),
-                    ));
-                2
-            }
-            _ => {
-                self.renderer
-                    .replace_dest_framebuffer(DestFramebuffer::Default {
-                        viewport: self.window.viewport(View::Mono),
-                        window_size,
-                    });
-                1
-            }
-        };
-
         // Clear to the appropriate color.
+        let mode = self.camera.mode();
         let clear_color = match mode {
             Mode::TwoD => Some(self.ui_model.background_color().to_f32()),
             Mode::ThreeD => None,
             Mode::VR => Some(ColorF::transparent_black()),
         };
-        self.renderer.set_options(RendererOptions {
-            background_color: clear_color,
-            no_compute: self.options.no_compute,
-        });
+
+        // Set up framebuffers.
+        let window_size = self.window_size.device_size();
+        let scene_count = match mode {
+            Mode::VR => {
+                let viewport = self.window.viewport(View::Stereo(0));
+                if self.scene_framebuffer.is_none()
+                    || self.renderer.device().texture_size(
+                        &self.renderer.device().framebuffer_texture(self.scene_framebuffer
+                                                                        .as_ref()
+                                                                        .unwrap()),
+                    ) != viewport.size()
+                {
+                    let scene_texture = self
+                        .renderer
+                        .device()
+                        .create_texture(TextureFormat::RGBA8, viewport.size());
+                    self.scene_framebuffer =
+                        Some(self.renderer.device().create_framebuffer(scene_texture));
+                }
+                *self.renderer.options_mut() = RendererOptions {
+                    dest: DestFramebuffer::Other(self.scene_framebuffer.take().unwrap()),
+                    background_color: clear_color,
+                    show_debug_ui: self.options.ui != UIVisibility::None,
+                };
+                2
+            }
+            _ => {
+                *self.renderer.options_mut() = RendererOptions {
+                    dest: DestFramebuffer::Default {
+                        viewport: self.window.viewport(View::Mono),
+                        window_size,
+                    },
+                    background_color: clear_color,
+                    show_debug_ui: self.options.ui != UIVisibility::None,
+                };
+                1
+            }
+        };
 
         scene_count
     }
 
     pub fn draw_scene(&mut self) {
-        self.renderer.device.begin_commands();
+        self.renderer.device().begin_commands();
 
         let view = self.ui_model.mode.view(0);
         self.window.make_current(view);
@@ -107,26 +107,29 @@ impl<W> DemoApp<W> where W: Window {
             self.draw_environment(0);
         }
 
-        self.renderer.device.end_commands();
+        self.renderer.device().end_commands();
 
         self.render_vector_scene();
 
         // Reattach default framebuffer.
         if self.camera.mode() == Mode::VR {
-            if let DestFramebuffer::Other(scene_framebuffer) =
-                self.renderer
-                    .replace_dest_framebuffer(DestFramebuffer::Default {
-                        viewport: self.window.viewport(View::Mono),
-                        window_size: self.window_size.device_size(),
-                    })
-            {
+            let new_options = RendererOptions {
+                dest: DestFramebuffer::Default {
+                    viewport: self.window.viewport(View::Mono),
+                    window_size: self.window_size.device_size(),
+                },
+                ..*self.renderer.options()
+            };
+            if let DestFramebuffer::Other(scene_framebuffer) = mem::replace(self.renderer
+                                                                                .options_mut(),
+                                                                            new_options).dest {
                 self.scene_framebuffer = Some(scene_framebuffer);
             }
         }
     }
 
     pub fn begin_compositing(&mut self) {
-        self.renderer.device.begin_commands();
+        self.renderer.device().begin_commands();
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {
@@ -153,15 +156,15 @@ impl<W> DemoApp<W> where W: Window {
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
         self.window.make_current(View::Stereo(render_scene_index));
 
-        self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+        self.renderer.options_mut().dest = DestFramebuffer::Default {
             viewport,
             window_size: self.window_size.device_size(),
-        });
+        };
 
         self.draw_environment(render_scene_index);
 
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
-        let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
+        let scene_texture = self.renderer.device().framebuffer_texture(scene_framebuffer);
 
         let mut quad_scale = self.scene_metadata.view_box.size().to_4d();
         quad_scale.set_z(1.0);
@@ -226,13 +229,14 @@ impl<W> DemoApp<W> where W: Window {
             None
         };
 
-        self.renderer.device.draw_elements(6, &RenderState {
+        self.renderer.device().draw_elements(6, &RenderState {
             target: &self.renderer.draw_render_target(),
             program: &self.ground_program.program,
             vertex_array: &self.ground_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             textures: &[],
             images: &[],
+            storage_buffers: &[],
             uniforms: &[
                 (&self.ground_program.transform_uniform,
                  UniformData::from_transform_3d(&transform)),
@@ -258,27 +262,16 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.enable_depth();
         }
 
-        self.renderer.begin_scene();
-
         // Issue render commands!
-        for command in self.render_command_stream.as_mut().unwrap() {
-            self.renderer.render_command(&command);
-        }
-
-        self.current_frame
-            .as_mut()
-            .unwrap()
-            .scene_stats
-            .push(self.renderer.stats);
-        self.renderer.end_scene();
+        self.scene_proxy.render(&mut self.renderer);
     }
 
     pub fn take_raster_screenshot(&mut self, path: PathBuf) {
         let drawable_size = self.window_size.device_size();
         let viewport = RectI::new(Vector2I::default(), drawable_size);
         let texture_data_receiver =
-            self.renderer.device.read_pixels(&RenderTarget::Default, viewport);
-        let pixels = match self.renderer.device.recv_texture_data(&texture_data_receiver) {
+            self.renderer.device().read_pixels(&RenderTarget::Default, viewport);
+        let pixels = match self.renderer.device().recv_texture_data(&texture_data_receiver) {
             TextureData::U8(pixels) => pixels,
             _ => panic!("Unexpected pixel format for default framebuffer!"),
         };
@@ -290,20 +283,5 @@ impl<W> DemoApp<W> where W: Window {
             ColorType::Rgba8,
         )
         .unwrap();
-    }
-
-    pub fn draw_debug_ui(&mut self) {
-        if self.options.ui == UIVisibility::None {
-            return;
-        }
-
-        let viewport = self.window.viewport(View::Mono);
-        self.window.make_current(View::Mono);
-        self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
-            viewport,
-            window_size: self.window_size.device_size(),
-        });
-
-        self.renderer.draw_debug_ui();
     }
 }

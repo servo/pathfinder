@@ -58,9 +58,11 @@ int main(int argc, const char **argv) {
         PFGLDestFramebufferCreateFullWindow(&(PFVector2I){640, 480});
     PFGLRendererRef renderer = PFGLRendererCreate(PFGLDeviceCreate(PF_GL_VERSION_GL3, 0),
                                                   PFFilesystemResourceLoaderLocate(),
-                                                  dest_framebuffer,
+                                                  &(PFRendererMode){PF_RENDERER_LEVEL_D3D9},
                                                   &(PFRendererOptions){
-        (PFColorF){1.0, 1.0, 1.0, 1.0}, PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR
+        dest_framebuffer,
+        (PFColorF){1.0, 1.0, 1.0, 1.0},
+        PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR
     });
 
     // Make a canvas. We're going to draw a house.
@@ -86,7 +88,8 @@ int main(int argc, const char **argv) {
 
     // Render the canvas to screen.
     PFSceneRef scene = PFCanvasCreateScene(canvas);
-    PFSceneProxyRef scene_proxy = PFSceneProxyCreateFromSceneAndRayonExecutor(scene);
+    PFSceneProxyRef scene_proxy =
+        PFSceneProxyCreateFromSceneAndRayonExecutor(scene, PF_RENDERER_LEVEL_D3D9);
     PFSceneProxyBuildAndRenderGL(scene_proxy, renderer, PFBuildOptionsCreate());
     SDL_GL_SwapWindow(window);
 

@@ -11,40 +11,36 @@
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2I, vec2i};
 
-#[derive(Debug)]
-pub struct DenseTileMap<T> {
+#[derive(Clone, Debug)]
+pub struct DenseTileMap<T> where T: Clone + Copy {
     pub data: Vec<T>,
     pub rect: RectI,
 }
 
-impl<T> DenseTileMap<T> {
+impl<T> DenseTileMap<T> where T: Clone + Copy {
     #[inline]
-    pub fn new(rect: RectI) -> DenseTileMap<T>
-    where
-        T: Copy + Clone + Default,
-    {
-        let length = rect.size().x() as usize * rect.size().y() as usize;
-        DenseTileMap {
-            data: vec![T::default(); length],
-            rect,
+    pub fn from_builder<F>(mut build: F, rect: RectI) -> DenseTileMap<T>
+                           where F: FnMut(Vector2I) -> T {
+        let mut data = Vec::with_capacity(rect.size().x() as usize * rect.size().y() as usize);
+        for y in rect.min_y()..rect.max_y() {
+            for x in rect.min_x()..rect.max_x() {
+                data.push(build(vec2i(x, y)));
+            }
         }
-    }
-
-    #[inline]
-    pub fn from_builder<F>(build: F, rect: RectI) -> DenseTileMap<T>
-    where
-        F: FnMut(usize) -> T,
-    {
-        let length = rect.size().x() as usize * rect.size().y() as usize;
-        DenseTileMap {
-            data: (0..length).map(build).collect(),
-            rect,
-        }
+        DenseTileMap { data, rect }
     }
 
     #[inline]
     pub fn get(&self, coords: Vector2I) -> Option<&T> {
         self.coords_to_index(coords).and_then(|index| self.data.get(index))
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, coords: Vector2I) -> Option<&mut T> {
+        match self.coords_to_index(coords) {
+            None => None,
+            Some(index) => self.data.get_mut(index),
+        }
     }
 
     #[inline]

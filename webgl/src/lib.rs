@@ -13,6 +13,7 @@
 #[macro_use]
 extern crate log;
 
+use js_sys::{Uint8Array, Uint16Array, Float32Array, Object};
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
@@ -24,11 +25,11 @@ use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use std::cell::RefCell;
 use std::mem;
+use std::ops::Range;
 use std::str;
 use std::time::Duration;
 use wasm_bindgen::JsCast;
 use web_sys::WebGl2RenderingContext as WebGl;
-use js_sys::{Uint8Array, Uint16Array, Float32Array, Object};
 
 pub struct WebGlDevice {
     context: web_sys::WebGl2RenderingContext,
@@ -426,6 +427,7 @@ unsafe fn check_and_extract_data(
 
 impl Device for WebGlDevice {
     type Buffer = WebGlBuffer;
+    type BufferDataReceiver = ();
     type Fence = ();
     type Framebuffer = WebGlFramebuffer;
     type ImageParameter = ();
@@ -943,9 +945,23 @@ impl Device for WebGlDevice {
     fn recv_timer_query(&self, _query: &WebGlTimerQuery) -> Duration {
         Duration::from_millis(0)
     }
+
+    fn try_recv_buffer(&self, _: &()) -> Option<Vec<u8>> {
+        unimplemented!()
+    }
+
+    fn recv_buffer(&self, _: &()) -> Vec<u8> {
+        unimplemented!()
+    }
+
+    fn read_buffer(&self, _: &Self::Buffer, _: BufferTarget, _: Range<usize>) {
+        unimplemented!()
+    }
+
     fn try_recv_texture_data(&self, _receiver: &Self::TextureDataReceiver) -> Option<TextureData> {
         None
     }
+
     fn recv_texture_data(&self, _receiver: &Self::TextureDataReceiver) -> TextureData {
         unimplemented!()
     }
@@ -1175,6 +1191,7 @@ impl VertexAttrTypeExt for VertexAttrType {
     fn to_gl_type(self) -> u32 {
         match self {
             VertexAttrType::F32 => WebGl::FLOAT,
+            VertexAttrType::I32 => WebGl::INT,
             VertexAttrType::I16 => WebGl::SHORT,
             VertexAttrType::I8 => WebGl::BYTE,
             VertexAttrType::U16 => WebGl::UNSIGNED_SHORT,

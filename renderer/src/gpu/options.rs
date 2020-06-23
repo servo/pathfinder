@@ -11,13 +11,58 @@
 use pathfinder_color::ColorF;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::Vector2I;
-use pathfinder_gpu::Device;
+use pathfinder_gpu::{Device, FeatureLevel};
 
-/// Options that influence rendering.
-#[derive(Default)]
-pub struct RendererOptions {
+/// Renderer options that can't be changed after the renderer is created.
+pub struct RendererMode {
+    /// The level of hardware features that the renderer will attempt to use.
+    pub level: RendererLevel,
+}
+
+/// Options that influence rendering that can be changed at runtime.
+pub struct RendererOptions<D> where D: Device {
+    /// Where the rendering should go: either to the default framebuffer (i.e. screen) or to a
+    /// custom framebuffer.
+    pub dest: DestFramebuffer<D>,
+    /// The background color. If not present, transparent is assumed.
     pub background_color: Option<ColorF>,
-    pub no_compute: bool,
+    /// Whether to display the debug UI.
+    pub show_debug_ui: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RendererLevel {
+    /// Direct3D 9/OpenGL 3.0/WebGL 2.0 compatibility. Bin on CPU, fill and composite on GPU.
+    D3D9,
+    /// Direct3D 11/OpenGL 4.3/Metal/Vulkan/WebGPU compatibility. Bin, fill, and composite on GPU.
+    D3D11,
+}
+
+impl RendererMode {
+    #[inline]
+    pub fn default_for_device<D>(device: &D) -> RendererMode where D: Device {
+        RendererMode { level: RendererLevel::default_for_device(device) }
+    }
+}
+
+impl<D> Default for RendererOptions<D> where D: Device {
+    #[inline]
+    fn default() -> RendererOptions<D> {
+        RendererOptions {
+            dest: DestFramebuffer::default(),
+            background_color: None,
+            show_debug_ui: false,
+        }
+    }
+}
+
+impl RendererLevel {
+    pub fn default_for_device<D>(device: &D) -> RendererLevel where D: Device {
+        match device.feature_level() {
+            FeatureLevel::D3D10 => RendererLevel::D3D9,
+            FeatureLevel::D3D11 => RendererLevel::D3D11,
+        }
+    }
 }
 
 #[derive(Clone)]

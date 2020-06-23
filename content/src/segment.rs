@@ -12,12 +12,10 @@
 
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::transform2d::Transform2F;
-use pathfinder_geometry::util::{self, EPSILON};
+use pathfinder_geometry::util::EPSILON;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_simd::default::F32x4;
 use std::f32::consts::SQRT_2;
-
-const MAX_NEWTON_ITERATIONS: u32 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {
@@ -153,16 +151,6 @@ impl Segment {
                                               p1_2 + self.baseline.to()) * (1.0 / 3.0);
         new_segment.kind = SegmentKind::Cubic;
         new_segment
-    }
-
-    #[inline]
-    pub fn is_monotonic(&self) -> bool {
-        // FIXME(pcwalton): Don't degree elevate!
-        match self.kind {
-            SegmentKind::None | SegmentKind::Line => true,
-            SegmentKind::Quadratic => self.to_cubic().as_cubic_segment().is_monotonic(),
-            SegmentKind::Cubic => self.as_cubic_segment().is_monotonic(),
-        }
     }
 
     #[inline]
@@ -339,72 +327,6 @@ impl<'s> CubicSegment<'s> {
     #[inline]
     pub fn sample(self, t: f32) -> Vector2F {
         self.split(t).0.baseline.to()
-    }
-
-    #[inline]
-    pub fn is_monotonic(self) -> bool {
-        // TODO(pcwalton): Optimize this.
-        let (p0, p3) = (self.0.baseline.from_y(), self.0.baseline.to_y());
-        let (p1, p2) = (self.0.ctrl.from_y(), self.0.ctrl.to_y());
-        (p0 <= p1 && p1 <= p2 && p2 <= p3) || (p0 >= p1 && p1 >= p2 && p2 >= p3)
-    }
-
-    #[inline]
-    pub fn y_extrema(self) -> (Option<f32>, Option<f32>) {
-        if self.is_monotonic() {
-            return (None, None);
-        }
-
-        let p0p1p2p3 = F32x4::new(
-            self.0.baseline.from_y(),
-            self.0.ctrl.from_y(),
-            self.0.ctrl.to_y(),
-            self.0.baseline.to_y(),
-        );
-
-        let pxp0p1p2 = p0p1p2p3.wxyz();
-        let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;
-        let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
-
-        let (t0, t1);
-        let (v0_to_v1, v2_to_v1) = (v0 - v1, v2 - v1);
-        let denom = v0_to_v1 + v2_to_v1;
-
-        if util::approx_eq(denom, 0.0) {
-            // Let's not divide by zero (issue #146). Fall back to Newton's method.
-            // FIXME(pcwalton): Can we have two roots here?
-            let mut t = 0.5;
-            for _ in 0..MAX_NEWTON_ITERATIONS {
-                let dydt = 3.0 * ((denom * t - v0_to_v1 - v0_to_v1) * t + v0);
-                if f32::abs(dydt) <= EPSILON {
-                    break
-                }
-                let d2ydt2 = 6.0 * (denom * t - v0_to_v1);
-                t -= dydt / d2ydt2;
-            }
-            t0 = t;
-            t1 = 0.0;
-            debug!("...  t=(newton) {}", t);
-        } else {
-            // Algebraically compute the values for t.
-            let discrim = f32::sqrt(v1 * v1 - v0 * v2);
-            let denom_recip = 1.0 / denom;
-
-            t0 = (v0_to_v1 + discrim) * denom_recip;
-            t1 = (v0_to_v1 - discrim) * denom_recip;
-
-            debug!("... t=({} +/- {})/{} t0={} t1={}", v0_to_v1, discrim, denom, t0, t1);
-        }
-
-        return match (
-            t0 > EPSILON && t0 < 1.0 - EPSILON,
-            t1 > EPSILON && t1 < 1.0 - EPSILON,
-        ) {
-            (false, false) => (None, None),
-            (true, false) => (Some(t0), None),
-            (false, true) => (Some(t1), None),
-            (true, true) => (Some(f32::min(t0, t1)), Some(f32::max(t0, t1))),
-        };
     }
 
     #[inline]

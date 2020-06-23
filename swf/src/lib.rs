@@ -194,7 +194,7 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
 
                 let mut path = DrawPath::new(path, paint_id);
                 path.set_fill_rule(FillRule::EvenOdd);
-                scene.push_path(path);
+                scene.push_draw_path(path);
             }
         }
     }

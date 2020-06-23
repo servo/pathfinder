@@ -280,7 +280,7 @@ impl BuiltSVG {
         path.set_clip_path(state.clip_path);
         path.set_fill_rule(fill_rule);
         path.set_name(name);
-        self.scene.push_path(path);
+        self.scene.push_draw_path(path);
     }
 }
 

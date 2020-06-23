@@ -334,6 +334,11 @@ impl Contour {
     }
 
     #[inline]
+    pub fn flags_of(&self, index: u32) -> PointFlags {
+        self.flags[index as usize]
+    }
+
+    #[inline]
     pub fn push_endpoint(&mut self, point: Vector2F) {
         self.push_point(point, PointFlags::empty(), true);
     }

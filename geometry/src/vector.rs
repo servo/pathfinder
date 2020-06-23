@@ -350,6 +350,11 @@ impl Vector2I {
     }
 
     #[inline]
+    pub fn area(self) -> i32 {
+        self.x() * self.y()
+    }
+
+    #[inline]
     pub fn to_f32(self) -> Vector2F {
         Vector2F(self.0.to_f32x2())
     }

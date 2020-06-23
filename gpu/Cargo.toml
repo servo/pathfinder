@@ -10,7 +10,9 @@ homepage = "https://github.com/servo/pathfinder"
 
 [dependencies]
 bitflags = "1.0"
+fxhash = "0.2"
 half = "1.5"
+log = "0.4"
 
 [dependencies.image]
 version = "0.23"
