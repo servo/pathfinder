@@ -23,11 +23,13 @@ use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
+use pathfinder_gpu::Device;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererLevel};
+use pathfinder_renderer::gpu::options::{RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::scene::Scene;
@@ -39,7 +41,7 @@ use std::slice;
 use std::str;
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use metal::{CAMetalLayer, CoreAnimationLayerRef, Device};
+use metal::{self, CAMetalLayer, CoreAnimationLayerRef};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
@@ -74,6 +76,10 @@ pub const PF_GL_VERSION_GLES3:  u8 = 1;
 // `renderer`
 
 pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
+pub const PF_RENDERER_OPTIONS_FLAGS_SHOW_DEBUG_UI: u8 = 0x2;
+
+pub const PF_RENDERER_LEVEL_D3D9: u8 = 0x1;
+pub const PF_RENDERER_LEVEL_D3D11: u8 = 0x2;
 
 // Types
 
@@ -182,13 +188,20 @@ pub type PFMetalDeviceRef = *mut MetalDevice;
 pub type PFSceneRef = *mut Scene;
 pub type PFSceneProxyRef = *mut SceneProxy;
 #[repr(C)]
+pub struct PFRendererMode {
+    pub level: PFRendererLevel,
+}
+pub type PFDestFramebufferRef = *mut c_void;
+#[repr(C)]
 pub struct PFRendererOptions {
+    pub dest: PFDestFramebufferRef,
     pub background_color: PFColorF,
     pub flags: PFRendererOptionsFlags,
 }
 pub type PFRendererOptionsFlags = u8;
 pub type PFBuildOptionsRef = *mut BuildOptions;
 pub type PFRenderTransformRef = *mut RenderTransform;
+pub type PFRendererLevel = u8;
 
 // `canvas`
 
@@ -541,12 +554,12 @@ pub unsafe extern "C" fn PFGLDestFramebufferDestroy(dest_framebuffer: PFGLDestFr
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererCreate(device: PFGLDeviceRef,
                                             resources: PFResourceLoaderRef,
-                                            dest_framebuffer: PFGLDestFramebufferRef,
+                                            mode: *const PFRendererMode,
                                             options: *const PFRendererOptions)
                                             -> PFGLRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
                                          &*((*resources).0),
-                                         *Box::from_raw(dest_framebuffer),
+                                         (*mode).to_rust(),
                                          (*options).to_rust())))
 }
 
@@ -557,7 +570,7 @@ pub unsafe extern "C" fn PFGLRendererDestroy(renderer: PFGLRendererRef) {
 
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFGLDeviceRef {
-    &mut (*renderer).device
+    (*renderer).device_mut()
 }
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
@@ -581,12 +594,12 @@ pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
                                                resources: PFResourceLoaderRef,
-                                               dest_framebuffer: PFMetalDestFramebufferRef,
+                                               mode: *const PFRendererMode,
                                                options: *const PFRendererOptions)
                                                -> PFMetalRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
                                          &*((*resources).0),
-                                         *Box::from_raw(dest_framebuffer),
+                                         (*mode).to_rust(),
                                          (*options).to_rust())))
 }
 
@@ -603,7 +616,7 @@ pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef)
                                                   -> PFMetalDeviceRef {
-    &mut (*renderer).device
+    (*renderer).device_mut()
 }
 
 /// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
@@ -631,7 +644,8 @@ pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFScenePro
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
                                              -> PFMetalDeviceRef {
-    let device = Device::system_default().expect("Failed to get Metal system default device!");
+    let device =
+        metal::Device::system_default().expect("Failed to get Metal system default device!");
     let layer = CoreAnimationLayerRef::from_ptr(layer);
     Box::into_raw(Box::new(MetalDevice::new(device, layer.next_drawable().unwrap())))
 }
@@ -696,9 +710,12 @@ pub unsafe extern "C" fn PFSceneDestroy(scene: PFSceneRef) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFSceneProxyCreateFromSceneAndRayonExecutor(scene: PFSceneRef)
+pub unsafe extern "C" fn PFSceneProxyCreateFromSceneAndRayonExecutor(scene: PFSceneRef,
+                                                                     level: PFRendererLevel)
                                                                      -> PFSceneProxyRef {
-    Box::into_raw(Box::new(SceneProxy::from_scene(*Box::from_raw(scene), RayonExecutor)))
+    Box::into_raw(Box::new(SceneProxy::from_scene(*Box::from_raw(scene),
+                                                  to_rust_renderer_level(level),
+                                                  RayonExecutor)))
 }
 
 #[no_mangle]
@@ -807,17 +824,35 @@ impl PFPerspective {
 
 // Helpers for `renderer`
 
-impl PFRendererOptions {
-    pub fn to_rust(&self) -> RendererOptions {
-        let has_background_color = self.flags & PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR;
-        RendererOptions {
-            background_color: if has_background_color != 0 {
-                Some(self.background_color.to_rust())
-            } else {
-                None
-            },
-            // TODO(pcwalton): Expose this in the C API.
-            no_compute: false,
+impl PFRendererMode {
+    pub fn to_rust(&self) -> RendererMode {
+        RendererMode {
+            level: to_rust_renderer_level(self.level),
         }
+    }
+}
+
+impl PFRendererOptions {
+    pub fn to_rust<D>(&self) -> RendererOptions<D> where D: Device {
+        let has_background_color = self.flags & PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR;
+        let show_debug_ui = (self.flags & PF_RENDERER_OPTIONS_FLAGS_SHOW_DEBUG_UI) != 0;
+        unsafe {
+            RendererOptions {
+                background_color: if has_background_color != 0 {
+                    Some(self.background_color.to_rust())
+                } else {
+                    None
+                },
+                dest: *Box::from_raw(self.dest as *mut DestFramebuffer<D>),
+                show_debug_ui,
+            }
+        }
+    }
+}
+
+fn to_rust_renderer_level(level: PFRendererLevel) -> RendererLevel {
+    match level {
+        PF_RENDERER_LEVEL_D3D9 => RendererLevel::D3D9,
+        _ => RendererLevel::D3D11,
     }
 }
