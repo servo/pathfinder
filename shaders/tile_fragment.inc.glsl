@@ -1,6 +1,4 @@
-#version 330
-
-// pathfinder/shaders/tile.fs.glsl
+// pathfinder/shaders/tile_fragment.inc.glsl
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -30,14 +28,6 @@
 //          |                 |
 //          +                 +
 //     Color UV 0        Color UV 1
-
-#extension GL_GOOGLE_include_directive : enable
-
-precision highp float;
-
-#ifdef GL_ES
-precision highp sampler2D;
-#endif
 
 #define EPSILON     0.00001
 
@@ -80,25 +70,6 @@ precision highp sampler2D;
 #define COMBINER_CTRL_COLOR_FILTER_SHIFT        4
 #define COMBINER_CTRL_COLOR_COMBINE_SHIFT       6
 #define COMBINER_CTRL_COMPOSITE_SHIFT           8
-
-uniform sampler2D uColorTexture0;
-uniform sampler2D uMaskTexture0;
-uniform sampler2D uDestTexture;
-uniform sampler2D uGammaLUT;
-uniform vec2 uColorTextureSize0;
-uniform vec2 uMaskTextureSize0;
-uniform vec4 uFilterParams0;
-uniform vec4 uFilterParams1;
-uniform vec4 uFilterParams2;
-uniform vec2 uFramebufferSize;
-uniform int uCtrl;
-
-in vec3 vMaskTexCoord0;
-in vec2 vColorTexCoord0;
-in vec4 vBaseColor;
-in float vTileCtrl;
-
-out vec4 oFragColor;
 
 // Color sampling
 
@@ -565,27 +536,42 @@ float sampleMask(float maskAlpha,
 
 // Main function
 
-void calculateColor(int tileCtrl, int ctrl) {
+vec4 calculateColor(vec2 fragCoord,
+                    sampler2D colorTexture0,
+                    sampler2D maskTexture0,
+                    sampler2D destTexture,
+                    sampler2D gammaLUT,
+                    vec2 colorTextureSize0,
+                    vec2 maskTextureSize0,
+                    vec4 filterParams0,
+                    vec4 filterParams1,
+                    vec4 filterParams2,
+                    vec2 framebufferSize,
+                    int ctrl,
+                    vec3 maskTexCoord0,
+                    vec2 colorTexCoord0,
+                    vec4 baseColor,
+                    int tileCtrl) {
     // Sample mask.
     int maskCtrl0 = (tileCtrl >> TILE_CTRL_MASK_0_SHIFT) & TILE_CTRL_MASK_MASK;
     float maskAlpha = 1.0;
-    maskAlpha = sampleMask(maskAlpha, uMaskTexture0, uMaskTextureSize0, vMaskTexCoord0, maskCtrl0);
+    maskAlpha = sampleMask(maskAlpha, maskTexture0, maskTextureSize0, maskTexCoord0, maskCtrl0);
 
     // Sample color.
-    vec4 color = vBaseColor;
+    vec4 color = baseColor;
     int color0Combine = (ctrl >> COMBINER_CTRL_COLOR_COMBINE_SHIFT) &
         COMBINER_CTRL_COLOR_COMBINE_MASK;
     if (color0Combine != 0) {
         int color0Filter = (ctrl >> COMBINER_CTRL_COLOR_FILTER_SHIFT) & COMBINER_CTRL_FILTER_MASK;
-        vec4 color0 = filterColor(vColorTexCoord0,
-                                  uColorTexture0,
-                                  uGammaLUT,
-                                  uColorTextureSize0,
-                                  gl_FragCoord.xy,
-                                  uFramebufferSize,
-                                  uFilterParams0,
-                                  uFilterParams1,
-                                  uFilterParams2,
+        vec4 color0 = filterColor(colorTexCoord0,
+                                  colorTexture0,
+                                  gammaLUT,
+                                  colorTextureSize0,
+                                  fragCoord,
+                                  framebufferSize,
+                                  filterParams0,
+                                  filterParams1,
+                                  filterParams2,
                                   color0Filter);
         color = combineColor0(color, color0, color0Combine);
     }
@@ -595,17 +581,9 @@ void calculateColor(int tileCtrl, int ctrl) {
 
     // Apply composite.
     int compositeOp = (ctrl >> COMBINER_CTRL_COMPOSITE_SHIFT) & COMBINER_CTRL_COMPOSITE_MASK;
-    color = composite(color, uDestTexture, uFramebufferSize, gl_FragCoord.xy, compositeOp);
+    color = composite(color, destTexture, framebufferSize, fragCoord, compositeOp);
 
     // Premultiply alpha.
     color.rgb *= color.a;
-    oFragColor = color;
-}
-
-// Entry point
-//
-// TODO(pcwalton): Generate this dynamically.
-
-void main() {
-    calculateColor(int(vTileCtrl), uCtrl);
+    return color;
 }

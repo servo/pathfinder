@@ -12,27 +12,6 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #extension GL_GOOGLE_include_directive : enable
 
 precision highp float;
@@ -83,24 +62,37 @@ precision highp float;
 
 
 
-uniform sampler2D uColorTexture0;
-uniform sampler2D uMaskTexture0;
-uniform sampler2D uDestTexture;
-uniform sampler2D uGammaLUT;
-uniform vec2 uColorTextureSize0;
-uniform vec2 uMaskTextureSize0;
-uniform vec4 uFilterParams0;
-uniform vec4 uFilterParams1;
-uniform vec4 uFilterParams2;
-uniform vec2 uFramebufferSize;
-uniform int uCtrl;
 
-in vec3 vMaskTexCoord0;
-in vec2 vColorTexCoord0;
-in vec4 vBaseColor;
-in float vTileCtrl;
 
-out vec4 oFragColor;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -567,27 +559,42 @@ float sampleMask(float maskAlpha,
 
 
 
-void calculateColor(int tileCtrl, int ctrl){
+vec4 calculateColor(vec2 fragCoord,
+                    sampler2D colorTexture0,
+                    sampler2D maskTexture0,
+                    sampler2D destTexture,
+                    sampler2D gammaLUT,
+                    vec2 colorTextureSize0,
+                    vec2 maskTextureSize0,
+                    vec4 filterParams0,
+                    vec4 filterParams1,
+                    vec4 filterParams2,
+                    vec2 framebufferSize,
+                    int ctrl,
+                    vec3 maskTexCoord0,
+                    vec2 colorTexCoord0,
+                    vec4 baseColor,
+                    int tileCtrl){
 
     int maskCtrl0 =(tileCtrl >> 0)& 0x3;
     float maskAlpha = 1.0;
-    maskAlpha = sampleMask(maskAlpha, uMaskTexture0, uMaskTextureSize0, vMaskTexCoord0, maskCtrl0);
+    maskAlpha = sampleMask(maskAlpha, maskTexture0, maskTextureSize0, maskTexCoord0, maskCtrl0);
 
 
-    vec4 color = vBaseColor;
+    vec4 color = baseColor;
     int color0Combine =(ctrl >> 6)&
                                        0x3;
     if(color0Combine != 0){
         int color0Filter =(ctrl >> 4)& 0x3;
-        vec4 color0 = filterColor(vColorTexCoord0,
-                                  uColorTexture0,
-                                  uGammaLUT,
-                                  uColorTextureSize0,
-                                  gl_FragCoord . xy,
-                                  uFramebufferSize,
-                                  uFilterParams0,
-                                  uFilterParams1,
-                                  uFilterParams2,
+        vec4 color0 = filterColor(colorTexCoord0,
+                                  colorTexture0,
+                                  gammaLUT,
+                                  colorTextureSize0,
+                                  fragCoord,
+                                  framebufferSize,
+                                  filterParams0,
+                                  filterParams1,
+                                  filterParams2,
                                   color0Filter);
         color = combineColor0(color, color0, color0Combine);
     }
@@ -597,18 +604,53 @@ void calculateColor(int tileCtrl, int ctrl){
 
 
     int compositeOp =(ctrl >> 8)& 0xf;
-    color = composite(color, uDestTexture, uFramebufferSize, gl_FragCoord . xy, compositeOp);
+    color = composite(color, destTexture, framebufferSize, fragCoord, compositeOp);
 
 
     color . rgb *= color . a;
-    oFragColor = color;
+    return color;
 }
+
+
+uniform sampler2D uColorTexture0;
+uniform sampler2D uMaskTexture0;
+uniform sampler2D uDestTexture;
+uniform sampler2D uGammaLUT;
+uniform vec2 uColorTextureSize0;
+uniform vec2 uMaskTextureSize0;
+uniform vec2 uFramebufferSize;
+
+in vec3 vMaskTexCoord0;
+in vec2 vColorTexCoord0;
+in vec4 vBaseColor;
+in float vTileCtrl;
+in vec4 vFilterParams0;
+in vec4 vFilterParams1;
+in vec4 vFilterParams2;
+in float vCtrl;
+
+out vec4 oFragColor;
 
 
 
 
 
 void main(){
-    calculateColor(int(vTileCtrl), uCtrl);
+    oFragColor = calculateColor(gl_FragCoord . xy,
+                                uColorTexture0,
+                                uMaskTexture0,
+                                uDestTexture,
+                                uGammaLUT,
+                                uColorTextureSize0,
+                                uMaskTextureSize0,
+                                vFilterParams0,
+                                vFilterParams1,
+                                vFilterParams2,
+                                uFramebufferSize,
+                                int(vCtrl),
+                                vMaskTexCoord0,
+                                vColorTexCoord0,
+                                vBaseColor,
+                                int(vTileCtrl));
 }
 

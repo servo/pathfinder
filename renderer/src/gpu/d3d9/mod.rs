@@ -1,6 +1,4 @@
-#version 330
-
-// pathfinder/shaders/fill.fs.glsl
+// pathfinder/renderer/src/gpu/d3d9/mod.rs
 //
 // Copyright © 2020 The Pathfinder Project Developers.
 //
@@ -10,23 +8,5 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#extension GL_GOOGLE_include_directive : enable
-
-precision highp float;
-
-#ifdef GL_ES
-precision highp sampler2D;
-#endif
-
-#include "fill.inc.glsl"
-
-uniform sampler2D uAreaLUT;
-
-in vec2 vFrom;
-in vec2 vTo;
-
-out vec4 oFragColor;
-
-void main() {
-    oFragColor = computeCoverage(vFrom, vTo, uAreaLUT);
-}
+pub mod renderer;
+pub mod shaders;
