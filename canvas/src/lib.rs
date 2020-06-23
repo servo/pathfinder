@@ -165,7 +165,7 @@ impl CanvasRenderingContext2D {
 
         let mut path = DrawPath::new(outline, paint_id);
         path.set_blend_mode(BlendMode::Clear);
-        self.canvas.scene.push_path(path);
+        self.canvas.scene.push_draw_path(path);
     }
 
     // Line styles
@@ -345,7 +345,7 @@ impl CanvasRenderingContext2D {
             }
             path.set_fill_rule(fill_rule);
             path.set_blend_mode(blend_mode);
-            self.canvas.scene.push_path(path);
+            self.canvas.scene.push_draw_path(path);
 
             composite_shadow_blur_render_targets_if_needed(&mut self.canvas.scene,
                                                            shadow_blur_info,
@@ -356,7 +356,7 @@ impl CanvasRenderingContext2D {
         path.set_clip_path(clip_path);
         path.set_fill_rule(fill_rule);
         path.set_blend_mode(blend_mode);
-        self.canvas.scene.push_path(path);
+        self.canvas.scene.push_draw_path(path);
 
         fn push_shadow_blur_render_targets_if_needed(scene: &mut Scene,
                                                      current_state: &State,
@@ -410,9 +410,9 @@ impl CanvasRenderingContext2D {
             path_y.set_clip_path(clip_path);
 
             scene.pop_render_target();
-            scene.push_path(path_x);
+            scene.push_draw_path(path_x);
             scene.pop_render_target();
-            scene.push_path(path_y);
+            scene.push_draw_path(path_y);
         }
 
     }

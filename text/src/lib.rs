@@ -137,7 +137,7 @@ impl<F> FontContext<F> where F: Loader {
         path.set_clip_path(render_options.clip_path);
         path.set_blend_mode(render_options.blend_mode);
 
-        scene.push_path(path);
+        scene.push_draw_path(path);
         Ok(())
     }
 
