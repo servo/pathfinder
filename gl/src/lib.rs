@@ -21,15 +21,18 @@ use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::{BlendFactor, BlendOp, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{ComputeDimensions, ComputeState, DepthFunc, Device, FeatureLevel};
 use pathfinder_gpu::{ImageAccess, ImageBinding, Primitive, ProgramKind, RenderOptions};
-use pathfinder_gpu::{RenderState, RenderTarget, ShaderKind, StencilFunc, TextureBinding, TextureData};
-use pathfinder_gpu::{TextureDataRef, TextureFormat, TextureSamplingFlags, UniformData};
+use pathfinder_gpu::{RenderState, RenderTarget, ShaderKind, StencilFunc, TextureBinding};
+use pathfinder_gpu::{TextureData, TextureDataRef, TextureFormat, TextureSamplingFlags, UniformData};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 use std::cell::RefCell;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::mem;
+use std::ops::Range;
+use std::os::raw::c_char;
 use std::ptr;
+use std::rc::Rc;
 use std::str;
 use std::time::Duration;
 
@@ -82,6 +85,10 @@ impl GLDevice {
         self.bind_textures_and_images(&render_state.program,
                                       &render_state.textures,
                                       &render_state.images);
+
+        for &(storage_buffer, buffer) in render_state.storage_buffers {
+            self.set_storage_buffer(storage_buffer, buffer);
+        }
 
         render_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
 
@@ -241,7 +248,7 @@ impl GLDevice {
         unsafe {
             gl::BindBufferBase(gl::SHADER_STORAGE_BUFFER,
                                storage_buffer.location as GLuint,
-                               buffer.gl_buffer);
+                               buffer.object.gl_buffer);
         }
     }
 
@@ -253,6 +260,10 @@ impl GLDevice {
 
     fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.reset_render_options(&render_state.options);
+
+        for &(storage_buffer, _) in render_state.storage_buffers {
+            self.unset_storage_buffer(storage_buffer);
+        }
 
         unsafe {
             for image_binding in render_state.images {
@@ -310,6 +321,7 @@ impl GLDevice {
 
 impl Device for GLDevice {
     type Buffer = GLBuffer;
+    type BufferDataReceiver = GLBufferDataReceiver;
     type Fence = GLFence;
     type Framebuffer = GLFramebuffer;
     type ImageParameter = GLImageParameter;
@@ -323,6 +335,19 @@ impl Device for GLDevice {
     type Uniform = GLUniform;
     type VertexArray = GLVertexArray;
     type VertexAttr = GLVertexAttr;
+
+    #[inline]
+    fn backend_name(&self) -> &'static str {
+        "OpenGL"
+    }
+
+    #[inline]
+    fn device_name(&self) -> String {
+        unsafe {
+            CStr::from_ptr(gl::GetString(gl::RENDERER) as *const c_char).to_string_lossy()
+                                                                        .to_string()
+        }
+    }
 
     fn feature_level(&self) -> FeatureLevel {
         match self.version {
@@ -582,14 +607,12 @@ impl Device for GLDevice {
         unsafe {
             let mut gl_buffer = 0;
             gl::GenBuffers(1, &mut gl_buffer); ck();
-            GLBuffer { gl_buffer, mode }
+            let object = Rc::new(GLBufferObject { gl_buffer });
+            GLBuffer { object, mode }
         }
     }
 
-    fn allocate_buffer<T>(&self,
-                          buffer: &GLBuffer,
-                          data: BufferData<T>,
-                          target: BufferTarget) {
+    fn allocate_buffer<T>(&self, buffer: &GLBuffer, data: BufferData<T>, target: BufferTarget) {
         let target = target.to_gl_target();
         let (ptr, len) = match data {
             BufferData::Uninitialized(len) => (ptr::null(), len),
@@ -598,7 +621,7 @@ impl Device for GLDevice {
         let len = (len * mem::size_of::<T>()) as GLsizeiptr;
         let usage = buffer.mode.to_gl_usage();
         unsafe {
-            gl::BindBuffer(target, buffer.gl_buffer); ck();
+            gl::BindBuffer(target, buffer.object.gl_buffer); ck();
             gl::BufferData(target, len, ptr, usage); ck();
         }
     }
@@ -611,7 +634,7 @@ impl Device for GLDevice {
         let target = target.to_gl_target();
         let len = (data.len() * mem::size_of::<T>()) as GLsizeiptr;
         unsafe {
-            gl::BindBuffer(target, buffer.gl_buffer); ck();
+            gl::BindBuffer(target, buffer.object.gl_buffer); ck();
             gl::BufferSubData(target,
                               position as GLintptr,
                               len,
@@ -748,6 +771,14 @@ impl Device for GLDevice {
         }
     }
 
+    fn read_buffer(&self, buffer: &GLBuffer, target: BufferTarget, range: Range<usize>)
+                   -> GLBufferDataReceiver {
+        unsafe {
+            let gl_sync = gl::FenceSync(gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
+            GLBufferDataReceiver { object: buffer.object.clone(), gl_sync, range, target }
+        }
+    }
+
     fn begin_commands(&self) {
         // TODO(pcwalton): Add some checks in debug mode to make sure render commands are bracketed
         // by these?
@@ -867,11 +898,34 @@ impl Device for GLDevice {
         }
     }
 
+    fn try_recv_buffer(&self, receiver: &Self::BufferDataReceiver) -> Option<Vec<u8>> {
+        unsafe {
+            let result = gl::ClientWaitSync(receiver.gl_sync,
+                                            gl::SYNC_FLUSH_COMMANDS_BIT,
+                                            0); ck();
+            if result == gl::TIMEOUT_EXPIRED || result == gl::WAIT_FAILED {
+                None
+            } else {
+                Some(self.get_buffer_data(receiver))
+            }
+        }
+    }
+
+    fn recv_buffer(&self, receiver: &Self::BufferDataReceiver) -> Vec<u8> {
+        unsafe {
+            let result = gl::ClientWaitSync(receiver.gl_sync,
+                                            gl::SYNC_FLUSH_COMMANDS_BIT,
+                                            !0); ck();
+            debug_assert!(result != gl::TIMEOUT_EXPIRED && result != gl::WAIT_FAILED);
+            self.get_buffer_data(receiver)
+        }
+    }
+
     #[inline]
     fn bind_buffer(&self, vertex_array: &GLVertexArray, buffer: &GLBuffer, target: BufferTarget) {
         self.bind_vertex_array(vertex_array);
         unsafe {
-            gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();
+            gl::BindBuffer(target.to_gl_target(), buffer.object.gl_buffer); ck();
         }
         self.unbind_vertex_array();
     }
@@ -964,7 +1018,7 @@ impl GLDevice {
 
     fn unbind_image(&self, unit: u32) {
         unsafe {
-            gl::BindImageTexture(unit, 0, 0, gl::FALSE, 0, 0, 0); ck();
+            gl::BindImageTexture(unit, 0, 0, gl::FALSE, 0, gl::READ_ONLY, gl::RGBA8); ck();
         }
     }
 
@@ -1092,6 +1146,19 @@ impl GLDevice {
             texture_data
         }
     }
+
+    fn get_buffer_data(&self, receiver: &GLBufferDataReceiver) -> Vec<u8> {
+        let mut dest = vec![0; receiver.range.end - receiver.range.start];
+        let gl_target = receiver.target.to_gl_target();
+        unsafe {
+            gl::BindBuffer(gl_target, receiver.object.gl_buffer); ck();
+            gl::GetBufferSubData(gl_target,
+                                 receiver.range.start as GLintptr,
+                                 (receiver.range.end - receiver.range.start) as GLsizeiptr,
+                                 dest.as_mut_ptr() as *mut GLvoid); ck();
+        }
+        dest
+    }
 }
 
 pub struct GLVertexArray {
@@ -1175,11 +1242,15 @@ impl Drop for GLFramebuffer {
 }
 
 pub struct GLBuffer {
-    pub gl_buffer: GLuint,
+    pub object: Rc<GLBufferObject>,
     pub mode: BufferUploadMode,
 }
 
-impl Drop for GLBuffer {
+pub struct GLBufferObject {
+    pub gl_buffer: GLuint,
+}
+
+impl Drop for GLBufferObject {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteBuffers(1, &mut self.gl_buffer); ck();
@@ -1397,7 +1468,7 @@ impl TextureFormatExt for TextureFormat {
         match self {
             TextureFormat::R8 => gl::R8 as GLint,
             TextureFormat::R16F => gl::R16F as GLint,
-            TextureFormat::RGBA8 => gl::RGBA as GLint,
+            TextureFormat::RGBA8 => gl::RGBA8 as GLint,
             TextureFormat::RGBA16F => gl::RGBA16F as GLint,
             TextureFormat::RGBA32F => gl::RGBA32F as GLint,
         }
@@ -1427,12 +1498,20 @@ impl VertexAttrTypeExt for VertexAttrType {
     fn to_gl_type(self) -> GLuint {
         match self {
             VertexAttrType::F32 => gl::FLOAT,
-            VertexAttrType::I16 => gl::SHORT,
             VertexAttrType::I8  => gl::BYTE,
-            VertexAttrType::U16 => gl::UNSIGNED_SHORT,
+            VertexAttrType::I16 => gl::SHORT,
+            VertexAttrType::I32 => gl::INT,
             VertexAttrType::U8  => gl::UNSIGNED_BYTE,
+            VertexAttrType::U16 => gl::UNSIGNED_SHORT,
         }
     }
+}
+
+pub struct GLBufferDataReceiver {
+    object: Rc<GLBufferObject>,
+    gl_sync: GLsync,
+    range: Range<usize>,
+    target: BufferTarget,
 }
 
 pub struct GLTextureDataReceiver {
