@@ -52,12 +52,11 @@ bitflags! {
         const UNSUPPORTED_IMAGE_NODE             = 0x0002;
         const UNSUPPORTED_MASK_NODE              = 0x0004;
         const UNSUPPORTED_PATTERN_NODE           = 0x0008;
-        const UNSUPPORTED_NESTED_SVG_NODE        = 0x0010;
-        const UNSUPPORTED_MULTIPLE_CLIP_PATHS    = 0x0020;
-        const UNSUPPORTED_LINK_PAINT             = 0x0040;
-        const UNSUPPORTED_FILTER_ATTR            = 0x0080;
-        const UNSUPPORTED_MASK_ATTR              = 0x0100;
-        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x0200;
+        const UNSUPPORTED_MULTIPLE_CLIP_PATHS    = 0x0010;
+        const UNSUPPORTED_LINK_PAINT             = 0x0020;
+        const UNSUPPORTED_FILTER_ATTR            = 0x0040;
+        const UNSUPPORTED_MASK_ATTR              = 0x0080;
+        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x0100;
     }
 }
 
@@ -236,10 +235,7 @@ impl BuiltSVG {
                 self.result_flags
                     .insert(BuildResultFlags::UNSUPPORTED_PATTERN_NODE);
             }
-            NodeKind::Svg(..) => {
-                self.result_flags
-                    .insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
-            }
+            NodeKind::Svg(..) => unreachable!(),
         }
     }
 
