@@ -12,6 +12,7 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
+use crate::gpu::options::RendererLevel;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{MergedPaletteInfo, Paint, PaintId, PaintInfo, Palette};
@@ -22,19 +23,22 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2I, vec2f};
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::u64;
 
 static NEXT_SCENE_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Clone)]
 pub struct Scene {
-    pub(crate) display_list: Vec<DisplayItem>,
-    pub(crate) paths: Vec<DrawPath>,
-    pub(crate) clip_paths: Vec<ClipPath>,
+    display_list: Vec<DisplayItem>,
+    draw_paths: Vec<DrawPath>,
+    clip_paths: Vec<ClipPath>,
     palette: Palette,
     bounds: RectF,
     view_box: RectF,
     id: SceneId,
+    epoch: SceneEpoch,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,47 +50,47 @@ impl Scene {
         let scene_id = SceneId(NEXT_SCENE_ID.fetch_add(1, Ordering::Relaxed) as u32);
         Scene {
             display_list: vec![],
-            paths: vec![],
+            draw_paths: vec![],
             clip_paths: vec![],
             palette: Palette::new(scene_id),
             bounds: RectF::default(),
             view_box: RectF::default(),
             id: scene_id,
+            epoch: SceneEpoch::new(0, 1),
         }
     }
 
-    pub fn push_path(&mut self, path: DrawPath) {
-        let path_index = self.paths.len() as u32;
-        self.paths.push(path);
-        self.push_path_with_index(path_index);
+    pub fn push_draw_path(&mut self, draw_path: DrawPath) {
+        let draw_path_index = DrawPathId(self.draw_paths.len() as u32);
+        self.draw_paths.push(draw_path);
+        self.push_draw_path_with_index(draw_path_index);
     }
 
-    fn push_path_with_index(&mut self, path_index: u32) {
-        self.bounds = self.bounds.union_rect(self.paths[path_index as usize].outline.bounds());
+    fn push_draw_path_with_index(&mut self, draw_path_id: DrawPathId) {
+        let new_path_bounds = self.draw_paths[draw_path_id.0 as usize].outline.bounds();
+        self.bounds = self.bounds.union_rect(new_path_bounds);
 
-        if let Some(DisplayItem::DrawPaths {
-            start_index: _,
-            ref mut end_index
-        }) = self.display_list.last_mut() {
-            *end_index = path_index + 1;
-        } else {
-            self.display_list.push(DisplayItem::DrawPaths {
-                start_index: path_index,
-                end_index: path_index + 1,
-            });
+        let end_path_id = DrawPathId(draw_path_id.0 + 1);
+        match self.display_list.last_mut() {
+            Some(DisplayItem::DrawPaths(ref mut range)) => range.end = end_path_id,
+            _ => self.display_list.push(DisplayItem::DrawPaths(draw_path_id..end_path_id)),
         }
+
+        self.epoch.next();
     }
 
     pub fn push_clip_path(&mut self, clip_path: ClipPath) -> ClipPathId {
         self.bounds = self.bounds.union_rect(clip_path.outline.bounds());
         let clip_path_id = ClipPathId(self.clip_paths.len() as u32);
         self.clip_paths.push(clip_path);
+        self.epoch.next();
         clip_path_id
     }
 
     pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
         let render_target_id = self.palette.push_render_target(render_target);
         self.display_list.push(DisplayItem::PushRenderTarget(render_target_id));
+        self.epoch.next();
         render_target_id
     }
 
@@ -108,10 +112,10 @@ impl Scene {
         }
 
         // Merge draw paths.
-        let mut draw_path_mapping = Vec::with_capacity(scene.paths.len());
-        for draw_path in scene.paths {
-            draw_path_mapping.push(self.paths.len() as u32);
-            self.paths.push(DrawPath {
+        let mut draw_path_mapping = Vec::with_capacity(scene.draw_paths.len());
+        for draw_path in scene.draw_paths {
+            draw_path_mapping.push(self.draw_paths.len() as u32);
+            self.draw_paths.push(DrawPath {
                 outline: draw_path.outline,
                 paint: paint_mapping[&draw_path.paint],
                 clip_path: draw_path.clip_path.map(|clip_path_id| {
@@ -133,16 +137,17 @@ impl Scene {
                 DisplayItem::PopRenderTarget => {
                     self.display_list.push(DisplayItem::PopRenderTarget);
                 }
-                DisplayItem::DrawPaths {
-                    start_index: old_start_path_index,
-                    end_index: old_end_path_index,
-                } => {
-                    for old_path_index in old_start_path_index..old_end_path_index {
-                        self.push_path_with_index(draw_path_mapping[old_path_index as usize])
+                DisplayItem::DrawPaths(range) => {
+                    for old_path_index in (range.start.0 as usize)..(range.end.0 as usize) {
+                        let old_draw_path_id = DrawPathId(draw_path_mapping[old_path_index]);
+                        self.push_draw_path_with_index(old_draw_path_id);
                     }
                 }
             }
         }
+
+        // Bump epoch.
+        self.epoch.next();
     }
 
     #[inline]
@@ -152,12 +157,9 @@ impl Scene {
 
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
-        self.palette.push_paint(paint)
-    }
-
-    #[inline]
-    pub fn path_count(&self) -> usize {
-        self.paths.len()
+        let paint_id = self.palette.push_paint(paint);
+        self.epoch.next();
+        paint_id
     }
 
     #[inline]
@@ -168,6 +170,7 @@ impl Scene {
     #[inline]
     pub fn set_bounds(&mut self, new_bounds: RectF) {
         self.bounds = new_bounds;
+        self.epoch.next();
     }
 
     #[inline]
@@ -178,13 +181,13 @@ impl Scene {
     #[inline]
     pub fn set_view_box(&mut self, new_view_box: RectF) {
         self.view_box = new_view_box;
+        self.epoch.next();
     }
 
-    pub(crate) fn apply_render_options(
-        &self,
-        original_outline: &Outline,
-        options: &PreparedBuildOptions,
-    ) -> Outline {
+    pub(crate) fn apply_render_options(&self,
+                                       original_outline: &Outline,
+                                       options: &PreparedBuildOptions)
+                                       -> Outline {
         let mut outline;
         match options.transform {
             PreparedRenderTransform::Perspective {
@@ -238,62 +241,130 @@ impl Scene {
     }
 
     #[inline]
-    pub fn build<'a, E>(&mut self,
-                    options: BuildOptions,
-                    listener: Box<dyn RenderCommandListener + 'a>,
-                    executor: &E)
-                    where E: Executor {
+    pub fn build<'a, 'b, E>(&mut self,
+                            options: BuildOptions,
+                            sink: &'b mut SceneSink<'a>,
+                            executor: &E)
+                            where E: Executor {
         let prepared_options = options.prepare(self.bounds);
-        SceneBuilder::new(self, &prepared_options, listener).build(executor)
+        SceneBuilder::new(self, &prepared_options, sink).build(executor)
     }
 
-    pub fn paths<'a>(&'a self) -> PathIter {
-        PathIter {
-            scene: self,
-            pos: 0
+    #[inline]
+    pub fn display_list(&self) -> &[DisplayItem] {
+        &self.display_list
+    }
+
+    #[inline]
+    pub fn draw_paths(&self) -> &[DrawPath] {
+        &self.draw_paths
+    }
+
+    #[inline]
+    pub fn clip_paths(&self) -> &[ClipPath] {
+        &self.clip_paths
+    }
+
+    #[inline]
+    pub fn get_draw_path(&self, draw_path_id: DrawPathId) -> &DrawPath {
+        &self.draw_paths[draw_path_id.0 as usize]
+    }
+
+    #[inline]
+    pub fn get_clip_path(&self, clip_path_id: ClipPathId) -> &ClipPath {
+        &self.clip_paths[clip_path_id.0 as usize]
+    }
+
+    #[inline]
+    pub fn palette(&self) -> &Palette {
+        &self.palette
+    }
+
+    #[inline]
+    pub fn id(&self) -> SceneId {
+        self.id
+    }
+
+    #[inline]
+    pub fn epoch(&self) -> SceneEpoch {
+        self.epoch
+    }
+}
+
+pub struct SceneSink<'a> {
+    pub(crate) listener: RenderCommandListener<'a>,
+    pub(crate) renderer_level: RendererLevel,
+    pub(crate) last_scene: Option<LastSceneInfo>,
+}
+
+pub(crate) struct LastSceneInfo {
+    pub(crate) scene_id: SceneId,
+    pub(crate) scene_epoch: SceneEpoch,
+    pub(crate) draw_segment_ranges: Vec<Range<u32>>,
+    pub(crate) clip_segment_ranges: Vec<Range<u32>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct SceneEpoch {
+    pub hi: u64,
+    pub lo: u64,
+}
+
+impl SceneEpoch {
+    #[inline]
+    fn new(hi: u64, lo: u64) -> SceneEpoch {
+        SceneEpoch { hi, lo }
+    }
+
+    #[inline]
+    fn successor(&self) -> SceneEpoch {
+        if self.lo == u64::MAX {
+            SceneEpoch { hi: self.hi + 1, lo: 0 }
+        } else {
+            SceneEpoch { hi: self.hi, lo: self.lo + 1 }
         }
     }
+
+    #[inline]
+    fn next(&mut self) {
+        *self = self.successor();
+    }
 }
 
-pub struct PathIter<'a> {
-    scene: &'a Scene,
-    pos: usize
-}
-
-impl<'a> Iterator for PathIter<'a> {
-    type Item = (&'a Paint, &'a Outline, &'a str);
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.scene.paths.get(self.pos).map(|path_object| {
-            (
-                self.scene.palette.paints.get(path_object.paint.0 as usize).unwrap(),
-                &path_object.outline,
-                &*path_object.name
-            )
-        });
-        self.pos += 1;
-        item
+impl<'a> SceneSink<'a> {
+    #[inline]
+    pub fn new(listener: RenderCommandListener<'a>, renderer_level: RendererLevel)
+               -> SceneSink<'a> {
+        SceneSink { listener, renderer_level, last_scene: None }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct DrawPath {
-    outline: Outline,
-    paint: PaintId,
-    clip_path: Option<ClipPathId>,
-    fill_rule: FillRule,
-    blend_mode: BlendMode,
-    name: String,
+    pub outline: Outline,
+    pub paint: PaintId,
+    pub clip_path: Option<ClipPathId>,
+    pub fill_rule: FillRule,
+    pub blend_mode: BlendMode,
+    pub name: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct ClipPath {
-    outline: Outline,
-    fill_rule: FillRule,
-    name: String,
+    pub outline: Outline,
+    pub fill_rule: FillRule,
+    pub name: String,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct DrawPathId(pub u32);
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ClipPathId(pub u32);
+
+/// Either a draw path ID or a clip path ID, depending on context.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PathId(pub u32);
 
 #[derive(Clone, Debug)]
 pub struct RenderTarget {
@@ -305,7 +376,7 @@ pub struct RenderTarget {
 #[derive(Clone, Debug)]
 pub enum DisplayItem {
     /// Draws paths to the render target on top of the stack.
-    DrawPaths { start_index: u32, end_index: u32 },
+    DrawPaths(Range<DrawPathId>),
 
     /// Pushes a render target onto the top of the stack.
     PushRenderTarget(RenderTargetId),
@@ -409,5 +480,31 @@ impl RenderTarget {
     #[inline]
     pub fn size(&self) -> Vector2I {
         self.size
+    }
+}
+
+impl DrawPathId {
+    #[inline]
+    pub(crate) fn to_path_id(self) -> PathId {
+        PathId(self.0)
+    }
+}
+
+impl ClipPathId {
+    #[inline]
+    pub(crate) fn to_path_id(self) -> PathId {
+        PathId(self.0)
+    }
+}
+
+impl PathId {
+    #[inline]
+    pub(crate) fn to_clip_path_id(self) -> ClipPathId {
+        ClipPathId(self.0)
+    }
+
+    #[inline]
+    pub(crate) fn to_draw_path_id(self) -> DrawPathId {
+        DrawPathId(self.0)
     }
 }
