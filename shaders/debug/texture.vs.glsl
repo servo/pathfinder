@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/debug_texture.vs.glsl
+// pathfinder/shaders/debug/texture.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

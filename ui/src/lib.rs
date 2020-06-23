@@ -20,9 +20,10 @@ use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2i};
-use pathfinder_gpu::{BlendFactor, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
-use pathfinder_gpu::{Primitive, RenderOptions, RenderState, RenderTarget, TextureFormat};
-use pathfinder_gpu::{UniformData, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::allocator::{BufferTag, GPUMemoryAllocator};
+use pathfinder_gpu::{BlendFactor, BlendState, BufferTarget, Device, Primitive, RenderOptions};
+use pathfinder_gpu::{RenderState, RenderTarget, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 use serde_json;
@@ -71,9 +72,7 @@ pub struct UIPresenter<D> where D: Device {
     framebuffer_size: Vector2I,
 
     texture_program: DebugTextureProgram<D>,
-    texture_vertex_array: DebugTextureVertexArray<D>,
     solid_program: DebugSolidProgram<D>,
-    solid_vertex_array: DebugSolidVertexArray<D>,
     font: DebugFont,
 
     font_texture: D::Texture,
@@ -85,11 +84,9 @@ impl<D> UIPresenter<D> where D: Device {
     pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Vector2I)
                -> UIPresenter<D> {
         let texture_program = DebugTextureProgram::new(device, resources);
-        let texture_vertex_array = DebugTextureVertexArray::new(device, &texture_program);
         let font = DebugFont::load(resources);
 
         let solid_program = DebugSolidProgram::new(device, resources);
-        let solid_vertex_array = DebugSolidVertexArray::new(device, &solid_program);
 
         let font_texture = device.create_texture_from_png(resources,
                                                           FONT_PNG_NAME,
@@ -108,10 +105,8 @@ impl<D> UIPresenter<D> where D: Device {
             framebuffer_size,
 
             texture_program,
-            texture_vertex_array,
             font,
             solid_program,
-            solid_vertex_array,
 
             font_texture,
             corner_fill_texture,
@@ -128,16 +123,25 @@ impl<D> UIPresenter<D> where D: Device {
     }
 
 
-    pub fn draw_solid_rect(&self, device: &D, rect: RectI, color: ColorU) {
-        self.draw_rect(device, rect, color, true);
+    pub fn draw_solid_rect(&self,
+                           device: &D,
+                           allocator: &mut GPUMemoryAllocator<D>,
+                           rect: RectI,
+                           color: ColorU) {
+        self.draw_rect(device, allocator, rect, color, true);
     }
 
-    pub fn draw_rect_outline(&self, device: &D, rect: RectI, color: ColorU) {
-        self.draw_rect(device, rect, color, false);
+    pub fn draw_rect_outline(&self,
+                             device: &D,
+                             allocator: &mut GPUMemoryAllocator<D>,
+                             rect: RectI,
+                             color: ColorU) {
+        self.draw_rect(device, allocator, rect, color, false);
     }
 
     fn draw_rect(&self,
                  device: &D,
+                 allocator: &mut GPUMemoryAllocator<D>,
                  rect: RectI,
                  color: ColorU,
                  filled: bool) {
@@ -150,12 +154,14 @@ impl<D> UIPresenter<D> where D: Device {
 
         if filled {
             self.draw_solid_rects_with_vertex_data(device,
+                                                   allocator,
                                                    &vertex_data,
                                                    &QUAD_INDICES,
                                                    color,
                                                    true);
         } else {
             self.draw_solid_rects_with_vertex_data(device,
+                                                   allocator,
                                                    &vertex_data,
                                                    &RECT_LINE_INDICES,
                                                    color,
@@ -165,39 +171,60 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_solid_rects_with_vertex_data(&self,
                                          device: &D,
+                                         allocator: &mut GPUMemoryAllocator<D>,
                                          vertex_data: &[DebugSolidVertex],
                                          index_data: &[u32],
                                          color: ColorU,
                                          filled: bool) {
-        device.allocate_buffer(&self.solid_vertex_array.vertex_buffer,
-                               BufferData::Memory(vertex_data),
-                               BufferTarget::Vertex);
-        device.allocate_buffer(&self.solid_vertex_array.index_buffer,
-                               BufferData::Memory(index_data),
-                               BufferTarget::Index);
+        let vertex_buffer_id =
+            allocator.allocate_buffer::<DebugSolidVertex>(device,
+                                                          vertex_data.len() as u64,
+                                                          BufferTag("SolidVertexDebug"));
+        let index_buffer_id = allocator.allocate_buffer::<u32>(device,
+                                                               index_data.len() as u64,
+                                                               BufferTag("SolidIndexDebug"));
+        {
+            let vertex_buffer = allocator.get_buffer(vertex_buffer_id);
+            let index_buffer = allocator.get_buffer(index_buffer_id);
+            device.upload_to_buffer(&vertex_buffer, 0, vertex_data, BufferTarget::Vertex);
+            device.upload_to_buffer(&index_buffer, 0, index_data, BufferTarget::Index);
+            let solid_vertex_array = DebugSolidVertexArray::new(device,
+                                                                &self.solid_program,
+                                                                vertex_buffer,
+                                                                index_buffer);
 
-        let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
-        device.draw_elements(index_data.len() as u32, &RenderState {
-            target: &RenderTarget::Default,
-            program: &self.solid_program.program,
-            vertex_array: &self.solid_vertex_array.vertex_array,
-            primitive,
-            uniforms: &[
-                (&self.solid_program.framebuffer_size_uniform,
-                 UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
-                (&self.solid_program.color_uniform, get_color_uniform(color)),
-            ],
-            textures: &[],
-            images: &[],
-            viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
-            options: RenderOptions {
-                blend: Some(alpha_blend_state()),
-                ..RenderOptions::default()
-            },
-        });
+            let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
+            device.draw_elements(index_data.len() as u32, &RenderState {
+                target: &RenderTarget::Default,
+                program: &self.solid_program.program,
+                vertex_array: &solid_vertex_array.vertex_array,
+                primitive,
+                uniforms: &[
+                    (&self.solid_program.framebuffer_size_uniform,
+                    UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
+                    (&self.solid_program.color_uniform, get_color_uniform(color)),
+                ],
+                textures: &[],
+                images: &[],
+                storage_buffers: &[],
+                viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
+                options: RenderOptions {
+                    blend: Some(alpha_blend_state()),
+                    ..RenderOptions::default()
+                },
+            });
+        }
+
+        allocator.free_buffer(index_buffer_id);
+        allocator.free_buffer(vertex_buffer_id);
     }
 
-    pub fn draw_text(&self, device: &D, string: &str, origin: Vector2I, invert: bool) {
+    pub fn draw_text(&self,
+                     device: &D,
+                     allocator: &mut GPUMemoryAllocator<D>,
+                     string: &str,
+                     origin: Vector2I,
+                     invert: bool) {
         let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
@@ -227,6 +254,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         let color = if invert { INVERTED_TEXT_COLOR } else { TEXT_COLOR };
         self.draw_texture_with_vertex_data(device,
+                                           allocator,
                                            &vertex_data,
                                            &index_data,
                                            &self.font_texture,
@@ -235,6 +263,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_texture(&self,
                         device: &D,
+                        allocator: &mut GPUMemoryAllocator<D>,
                         origin: Vector2I,
                         texture: &D::Texture,
                         color: ColorU) {
@@ -247,7 +276,12 @@ impl<D> UIPresenter<D> where D: Device {
             DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
         ];
 
-        self.draw_texture_with_vertex_data(device, &vertex_data, &QUAD_INDICES, texture, color);
+        self.draw_texture_with_vertex_data(device,
+                                           allocator,
+                                           &vertex_data,
+                                           &QUAD_INDICES,
+                                           texture,
+                                           color);
     }
 
     pub fn measure_text(&self, string: &str) -> i32 {
@@ -268,10 +302,14 @@ impl<D> UIPresenter<D> where D: Device {
         SEGMENT_SIZE * segment_count as i32 + (segment_count - 1) as i32
     }
 
-    pub fn draw_solid_rounded_rect(&self, device: &D, rect: RectI, color: ColorU) {
+    pub fn draw_solid_rounded_rect(&self,
+                                   device: &D,
+                                   allocator: &mut GPUMemoryAllocator<D>,
+                                   rect: RectI,
+                                   color: ColorU) {
         let corner_texture = self.corner_texture(true);
         let corner_rects = CornerRects::new(device, rect, corner_texture);
-        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
+        self.draw_rounded_rect_corners(device, allocator, color, corner_texture, &corner_rects);
 
         let solid_rect_mid   = RectI::from_points(corner_rects.upper_left.upper_right(),
                                                     corner_rects.lower_right.lower_left());
@@ -302,16 +340,21 @@ impl<D> UIPresenter<D> where D: Device {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
 
         self.draw_solid_rects_with_vertex_data(device,
+                                               allocator,
                                                &vertex_data,
                                                &index_data[0..18],
                                                color,
                                                true);
     }
 
-    pub fn draw_rounded_rect_outline(&self, device: &D, rect: RectI, color: ColorU) {
+    pub fn draw_rounded_rect_outline(&self,
+                                     device: &D,
+                                     allocator: &mut GPUMemoryAllocator<D>,
+                                     rect: RectI,
+                                     color: ColorU) {
         let corner_texture = self.corner_texture(false);
         let corner_rects = CornerRects::new(device, rect, corner_texture);
-        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
+        self.draw_rounded_rect_corners(device, allocator, color, corner_texture, &corner_rects);
 
         let vertex_data = vec![
             DebugSolidVertex::new(corner_rects.upper_left.upper_right()),
@@ -325,18 +368,34 @@ impl<D> UIPresenter<D> where D: Device {
         ];
 
         let index_data = &OUTLINE_RECT_LINE_INDICES;
-        self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
+        self.draw_solid_rects_with_vertex_data(device,
+                                               allocator,
+                                               &vertex_data,
+                                               index_data,
+                                               color,
+                                               false);
     }
 
     // TODO(pcwalton): `LineSegment2I`.
-    fn draw_line(&self, device: &D, from: Vector2I, to: Vector2I, color: ColorU) {
+    fn draw_line(&self,
+                 device: &D,
+                 allocator: &mut GPUMemoryAllocator<D>,
+                 from: Vector2I,
+                 to: Vector2I,
+                 color: ColorU) {
         let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
-        self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);
+        self.draw_solid_rects_with_vertex_data(device,
+                                               allocator,
+                                               &vertex_data,
+                                               &[0, 1],
+                                               color,
+                                               false);
 
     }
 
     fn draw_rounded_rect_corners(&self,
                                  device: &D,
+                                 allocator: &mut GPUMemoryAllocator<D>,
                                  color: ColorU,
                                  texture: &D::Texture,
                                  corner_rects: &CornerRects) {
@@ -387,7 +446,12 @@ impl<D> UIPresenter<D> where D: Device {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 12));
 
-        self.draw_texture_with_vertex_data(device, &vertex_data, &index_data, texture, color);
+        self.draw_texture_with_vertex_data(device,
+                                           allocator,
+                                           &vertex_data,
+                                           &index_data,
+                                           texture,
+                                           color);
     }
 
     fn corner_texture(&self, filled: bool) -> &D::Texture {
@@ -396,44 +460,66 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_texture_with_vertex_data(&self,
                                      device: &D,
+                                     allocator: &mut GPUMemoryAllocator<D>,
                                      vertex_data: &[DebugTextureVertex],
                                      index_data: &[u32],
                                      texture: &D::Texture,
                                      color: ColorU) {
-        device.allocate_buffer(&self.texture_vertex_array.vertex_buffer,
-                               BufferData::Memory(vertex_data),
-                               BufferTarget::Vertex);
-        device.allocate_buffer(&self.texture_vertex_array.index_buffer,
-                               BufferData::Memory(index_data),
-                               BufferTarget::Index);
+        let vertex_buffer_id =
+            allocator.allocate_buffer::<DebugTextureVertex>(device,
+                                                            vertex_data.len() as u64,
+                                                            BufferTag("TextureVertexDebug"));
+        let index_buffer_id = allocator.allocate_buffer::<u32>(device,
+                                                               index_data.len() as u64,
+                                                               BufferTag("TextureIndexDebug"));
+        {
+            let vertex_buffer = allocator.get_buffer(vertex_buffer_id);
+            let index_buffer = allocator.get_buffer(index_buffer_id);
+            device.upload_to_buffer(&vertex_buffer, 0, vertex_data, BufferTarget::Vertex);
+            device.upload_to_buffer(&index_buffer, 0, index_data, BufferTarget::Index);
 
-        device.draw_elements(index_data.len() as u32, &RenderState {
-            target: &RenderTarget::Default,
-            program: &self.texture_program.program,
-            vertex_array: &self.texture_vertex_array.vertex_array,
-            primitive: Primitive::Triangles,
-            textures: &[(&self.texture_program.texture, &texture)],
-            images: &[],
-            uniforms: &[
-                (&self.texture_program.framebuffer_size_uniform,
-                 UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
-                (&self.texture_program.color_uniform, get_color_uniform(color)),
-                (&self.texture_program.texture_size_uniform,
-                 UniformData::Vec2(device.texture_size(&texture).0.to_f32x2()))
-            ],
-            viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
-            options: RenderOptions {
-                blend: Some(alpha_blend_state()),
-                ..RenderOptions::default()
-            },
-        });
+            let texture_vertex_array = DebugTextureVertexArray::new(device,
+                                                                    &self.texture_program,
+                                                                    vertex_buffer,
+                                                                    index_buffer);
+
+            device.draw_elements(index_data.len() as u32, &RenderState {
+                target: &RenderTarget::Default,
+                program: &self.texture_program.program,
+                vertex_array: &texture_vertex_array.vertex_array,
+                primitive: Primitive::Triangles,
+                textures: &[(&self.texture_program.texture, &texture)],
+                images: &[],
+                storage_buffers: &[],
+                uniforms: &[
+                    (&self.texture_program.framebuffer_size_uniform,
+                    UniformData::Vec2(self.framebuffer_size.0.to_f32x2())),
+                    (&self.texture_program.color_uniform, get_color_uniform(color)),
+                    (&self.texture_program.texture_size_uniform,
+                    UniformData::Vec2(device.texture_size(&texture).0.to_f32x2()))
+                ],
+                viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
+                options: RenderOptions {
+                    blend: Some(alpha_blend_state()),
+                    ..RenderOptions::default()
+                },
+            });
+        }
+
+        allocator.free_buffer(index_buffer_id);
+        allocator.free_buffer(vertex_buffer_id);
     }
 
-    pub fn draw_button(&mut self, device: &D, origin: Vector2I, texture: &D::Texture) -> bool {
+    pub fn draw_button(&mut self,
+                       device: &D,
+                       allocator: &mut GPUMemoryAllocator<D>,
+                       origin: Vector2I,
+                       texture: &D::Texture) -> bool {
         let button_rect = RectI::new(origin, vec2i(BUTTON_WIDTH, BUTTON_HEIGHT));
-        self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
-        self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
+        self.draw_solid_rounded_rect(device, allocator, button_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, allocator, button_rect, OUTLINE_COLOR);
         self.draw_texture(device,
+                          allocator,
                           origin + vec2i(PADDING, PADDING),
                           texture,
                           BUTTON_ICON_COLOR);
@@ -442,11 +528,13 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_text_switch(&mut self,
                             device: &D,
+                            allocator: &mut GPUMemoryAllocator<D>,
                             mut origin: Vector2I,
                             segment_labels: &[&str],
                             mut value: u8)
                             -> u8 {
         if let Some(new_value) = self.draw_segmented_control(device,
+                                                             allocator,
                                                              origin,
                                                              Some(value),
                                                              segment_labels.len() as u8) {
@@ -458,6 +546,7 @@ impl<D> UIPresenter<D> where D: Device {
             let label_width = self.measure_text(segment_label);
             let offset = SEGMENT_SIZE / 2 - label_width / 2;
             self.draw_text(device,
+                           allocator,
                            segment_label,
                            origin + vec2i(offset, 0),
                            segment_index as u8 == value);
@@ -469,12 +558,14 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_image_segmented_control(&mut self,
                                         device: &D,
+                                        allocator: &mut GPUMemoryAllocator<D>,
                                         mut origin: Vector2I,
                                         segment_textures: &[&D::Texture],
                                         mut value: Option<u8>)
                                         -> Option<u8> {
         let mut clicked_segment = None;
         if let Some(segment_index) = self.draw_segmented_control(device,
+                                                                 allocator,
                                                                  origin,
                                                                  value,
                                                                  segment_textures.len() as u8) {
@@ -493,7 +584,7 @@ impl<D> UIPresenter<D> where D: Device {
                 TEXT_COLOR
             };
 
-            self.draw_texture(device, origin + offset, segment_texture, color);
+            self.draw_texture(device, allocator, origin + offset, segment_texture, color);
             origin += vec2i(SEGMENT_SIZE + 1, 0);
         }
 
@@ -502,6 +593,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_segmented_control(&mut self,
                               device: &D,
+                              allocator: &mut GPUMemoryAllocator<D>,
                               origin: Vector2I,
                               mut value: Option<u8>,
                               segment_count: u8)
@@ -518,13 +610,14 @@ impl<D> UIPresenter<D> where D: Device {
             clicked_segment = Some(segment);
         }
 
-        self.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
-        self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
+        self.draw_solid_rounded_rect(device, allocator, widget_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, allocator, widget_rect, OUTLINE_COLOR);
 
         if let Some(value) = value {
             let highlight_size = vec2i(SEGMENT_SIZE, BUTTON_HEIGHT);
             let x_offset = value as i32 * SEGMENT_SIZE + (value as i32 - 1);
             self.draw_solid_rounded_rect(device,
+                                         allocator,
                                          RectI::new(origin + vec2i(x_offset, 0), highlight_size),
                                          TEXT_COLOR);
         }
@@ -536,6 +629,7 @@ impl<D> UIPresenter<D> where D: Device {
                 Some(value) if value == prev_segment_index || value == next_segment_index => {}
                 _ => {
                     self.draw_line(device,
+                                   allocator,
                                    segment_origin,
                                    segment_origin + vec2i(0, BUTTON_HEIGHT),
                                    TEXT_COLOR);
@@ -547,7 +641,11 @@ impl<D> UIPresenter<D> where D: Device {
         clicked_segment
     }
 
-    pub fn draw_tooltip(&self, device: &D, string: &str, rect: RectI) {
+    pub fn draw_tooltip(&self,
+                        device: &D,
+                        allocator: &mut GPUMemoryAllocator<D>,
+                        string: &str,
+                        rect: RectI) {
         if !rect.to_f32().contains_point(self.mouse_position) {
             return;
         }
@@ -556,8 +654,15 @@ impl<D> UIPresenter<D> where D: Device {
         let window_size = vec2i(text_size + PADDING * 2, TOOLTIP_HEIGHT);
         let origin = rect.origin() - vec2i(0, window_size.y() + PADDING);
 
-        self.draw_solid_rounded_rect(device, RectI::new(origin, window_size), WINDOW_COLOR);
-        self.draw_text(device, string, origin + vec2i(PADDING, PADDING + FONT_ASCENT), false);
+        self.draw_solid_rounded_rect(device,
+                                     allocator,
+                                     RectI::new(origin, window_size),
+                                     WINDOW_COLOR);
+        self.draw_text(device,
+                       allocator,
+                       string,
+                       origin + vec2i(PADDING, PADDING + FONT_ASCENT),
+                       false);
     }
 }
 
@@ -571,7 +676,7 @@ struct DebugTextureProgram<D> where D: Device {
 
 impl<D> DebugTextureProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> DebugTextureProgram<D> {
-        let program = device.create_raster_program(resources, "debug_texture");
+        let program = device.create_raster_program(resources, "debug/texture");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let texture_size_uniform = device.get_uniform(&program, "TextureSize");
         let color_uniform = device.get_uniform(&program, "Color");
@@ -588,15 +693,14 @@ impl<D> DebugTextureProgram<D> where D: Device {
 
 struct DebugTextureVertexArray<D> where D: Device {
     vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-    index_buffer: D::Buffer,
 }
 
 impl<D> DebugTextureVertexArray<D> where D: Device {
-    fn new(device: &D, debug_texture_program: &DebugTextureProgram<D>)
+    fn new(device: &D,
+           debug_texture_program: &DebugTextureProgram<D>,
+           vertex_buffer: &D::Buffer,
+           index_buffer: &D::Buffer)
            -> DebugTextureVertexArray<D> {
-        let vertex_buffer = device.create_buffer(BufferUploadMode::Dynamic);
-        let index_buffer = device.create_buffer(BufferUploadMode::Dynamic);
         let vertex_array = device.create_vertex_array();
 
         let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position")
@@ -604,8 +708,8 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord")
                                    .unwrap();
 
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&vertex_array, index_buffer, BufferTarget::Index);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
@@ -625,20 +729,20 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
             buffer_index: 0,
         });
 
-        DebugTextureVertexArray { vertex_array, vertex_buffer, index_buffer }
+        DebugTextureVertexArray { vertex_array }
     }
 }
 
 struct DebugSolidVertexArray<D> where D: Device {
     vertex_array: D::VertexArray,
-    vertex_buffer: D::Buffer,
-    index_buffer: D::Buffer,
 }
 
 impl<D> DebugSolidVertexArray<D> where D: Device {
-    fn new(device: &D, debug_solid_program: &DebugSolidProgram<D>) -> DebugSolidVertexArray<D> {
-        let vertex_buffer = device.create_buffer(BufferUploadMode::Dynamic);
-        let index_buffer = device.create_buffer(BufferUploadMode::Dynamic);
+    fn new(device: &D,
+           debug_solid_program: &DebugSolidProgram<D>,
+           vertex_buffer: &D::Buffer,
+           index_buffer: &D::Buffer)
+           -> DebugSolidVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
         let position_attr =
@@ -655,7 +759,7 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
             buffer_index: 0,
         });
 
-        DebugSolidVertexArray { vertex_array, vertex_buffer, index_buffer }
+        DebugSolidVertexArray { vertex_array }
     }
 }
 
@@ -667,7 +771,7 @@ struct DebugSolidProgram<D> where D: Device {
 
 impl<D> DebugSolidProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> DebugSolidProgram<D> {
-        let program = device.create_raster_program(resources, "debug_solid");
+        let program = device.create_raster_program(resources, "debug/solid");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let color_uniform = device.get_uniform(&program, "Color");
         DebugSolidProgram { program, framebuffer_size_uniform, color_uniform }

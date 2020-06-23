@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/shaders/debug_solid.vs.glsl
+// pathfinder/shaders/debug/solid.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -16,11 +16,10 @@ precision highp float;
 precision highp sampler2D;
 #endif
 
-uniform vec2 uFramebufferSize;
+uniform vec4 uColor;
 
-in ivec2 aPosition;
+out vec4 oFragColor;
 
 void main() {
-    vec2 position = vec2(aPosition) / uFramebufferSize * 2.0 - 1.0;
-    gl_Position = vec4(position.x, -position.y, 0.0, 1.0);
+    oFragColor = vec4(uColor.rgb, 1.0) * uColor.a;
 }
