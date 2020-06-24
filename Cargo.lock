@@ -1698,6 +1698,8 @@ dependencies = [
  "pathfinder_renderer 0.5.0",
  "pathfinder_resources 0.5.0",
  "pathfinder_simd 0.5.0",
+ "pathfinder_svg 0.5.0",
+ "usvg 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
