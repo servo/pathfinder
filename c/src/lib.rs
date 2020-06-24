@@ -72,6 +72,7 @@ pub const PF_ARC_DIRECTION_CCW: u8 = 1;
 
 pub const PF_GL_VERSION_GL3:    u8 = 0;
 pub const PF_GL_VERSION_GLES3:  u8 = 1;
+pub const PF_GL_VERSION_GL4:    u8 = 2;
 
 // `renderer`
 
@@ -521,7 +522,12 @@ pub unsafe extern "C" fn PFGLLoadWith(loader: PFGLFunctionLoader, userdata: *mut
 #[no_mangle]
 pub unsafe extern "C" fn PFGLDeviceCreate(version: PFGLVersion, default_framebuffer: u32)
                                           -> PFGLDeviceRef {
-    let version = match version { PF_GL_VERSION_GLES3 => GLVersion::GLES3, _ => GLVersion::GL3 };
+    let version = match version {
+        PF_GL_VERSION_GL3   => GLVersion::GL3,
+        PF_GL_VERSION_GLES3 => GLVersion::GLES3,
+        PF_GL_VERSION_GL4   => GLVersion::GL4,
+        _ => panic!("Invalid Pathfinder OpenGL version!"),
+    };
     Box::into_raw(Box::new(GLDevice::new(version, default_framebuffer)))
 }
 
