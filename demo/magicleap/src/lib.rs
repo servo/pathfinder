@@ -48,7 +48,7 @@ use pathfinder_renderer::options::RenderTransform;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_simd::default::F32x4;
-use pathfinder_svg::BuiltSVG;
+use pathfinder_svg::SVGScene;
 
 use std::collections::HashMap;
 use std::ffi::CStr;
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo_load(app: *mut c_void, svg_fi
 
 struct MagicLeapPathfinder {
     renderers: HashMap<(EGLSurface, EGLDisplay), Renderer<GLDevice>>,
-    svgs: HashMap<String, BuiltSVG>,
+    svgs: HashMap<String, SVGScene>,
     resources: FilesystemResourceLoader,
 }
 
@@ -185,7 +185,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
             let svg_filename = CStr::from_ptr(options.svg_filename).to_string_lossy();
             let data = resources.slurp(&*svg_filename).unwrap();
             let tree = Tree::from_data(&data, &UsvgOptions::default()).unwrap();
-            BuiltSVG::from_tree(tree)
+            SVGScene::from_tree(tree)
         });
 
         let mut width = 0;

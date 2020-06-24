@@ -42,7 +42,7 @@ use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{DrawPath, RenderTarget, Scene};
 use pathfinder_resources::ResourceLoader;
-use pathfinder_svg::BuiltSVG;
+use pathfinder_svg::SVGScene;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::File;
 use std::io::{BufWriter, Read};
@@ -759,7 +759,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
               input_path: &SVGPath,
               viewport_size: Vector2I,
               filter: Option<PatternFilter>)
-              -> (BuiltSVG, Tree) {
+              -> (SVGScene, Tree) {
     let mut data;
     match *input_path {
         SVGPath::Default => data = resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
@@ -778,7 +778,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
 // FIXME(pcwalton): Rework how transforms work in the demo. The transform affects the final
 // composite steps, breaking this approach.
 fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, filter: Option<PatternFilter>)
-                  -> BuiltSVG {
+                  -> SVGScene {
     let mut scene = Scene::new();
     let filter_info = filter.map(|filter| {
         let scale = match filter {
@@ -792,7 +792,7 @@ fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, filter: Option<PatternFi
         FilterInfo { filter, render_target_id, render_target_size }
     });
 
-    let mut built_svg = BuiltSVG::from_tree_and_scene(&tree, scene);
+    let mut built_svg = SVGScene::from_tree_and_scene(&tree, scene);
     if let Some(FilterInfo { filter, render_target_id, render_target_size }) = filter_info {
         let mut pattern = Pattern::from_render_target(render_target_id, render_target_size);
         pattern.set_filter(Some(filter));
@@ -818,7 +818,7 @@ fn center_of_window(window_size: &WindowSize) -> Vector2F {
     window_size.device_size().to_f32() * 0.5
 }
 
-fn get_svg_building_message(built_svg: &BuiltSVG) -> String {
+fn get_svg_building_message(built_svg: &SVGScene) -> String {
     if built_svg.result_flags.is_empty() {
         return String::new();
     }
