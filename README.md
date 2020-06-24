@@ -11,31 +11,48 @@ Please note that Pathfinder is under heavy development and is incomplete in vari
 
 Pathfinder contains a library that implements a subset of the
 [HTML canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API). You can quickly add
-vector rendering to any Rust app with it. The library is available on `crates.io`. See
+vector rendering to any Rust or C/C++ app with it. The library is available on `crates.io`. See
 `examples/canvas_minimal` for a small example of usage.
 
 ### Demos
 
-Demo app sources are available in [demo/](https://github.com/servo/pathfinder/tree/master/demo). A prebuilt package for Magic Leap can be found in [releases](https://github.com/servo/pathfinder/releases).
+Demo app sources are available in
+[demo/native](https://github.com/servo/pathfinder/tree/master/demo/native). Simply run:
+
+    $ cd demo/native
+    $ cargo run --release
+
+A variety of small examples are also available to get you up and running quickly. For example, you
+can run the `canvas_nanovg` example like so:
+
+    $ cd examples/canvas_nanovg
+    $ cargo run --release
 
 ## Features
 
 The project features:
 
+* Rust and C bindings, for easy embedding in your own applications regardless of programming
+  language. (Note that the C bindings are currently less complete; pull requests are welcome!)
+
+* GPU compute-based rendering, where available. Pathfinder has two rendering modes: D3D11, which is
+  based on compute, and D3D9, which is based on hardware rasterization. (Note that these names are
+  purely convenient ways to refer to hardware levels: the project doesn't have a proper Direct3D
+  backend yet.) In the D3D11 mode, Pathfinder uses compute shaders to achieve large reductions in
+  CPU usage and overall better performance than what the built-in GPU rasterization hardware can
+  provide.
+
+* Fast CPU setup if needed, making full use of parallelism. If the D3D9 backend is in use,
+  Pathfinder performs the tiling step using SIMD and Rayon in order to get as much parallelism out
+  of the CPU as possible. (In the D3D11 backend, these steps are done on GPU instead.) The CPU step
+  can be pipelined with the GPU to hide its latency.
+
+* Fast GPU rendering, even at small pixel sizes. Even on lower-end GPUs, Pathfinder often matches
+  or exceeds the performance of the best CPU rasterizers. The difference is particularly pronounced
+  at large sizes, where Pathfinder regularly achieves multi-factor speedups.
+
 * High quality antialiasing. Pathfinder can compute exact fractional trapezoidal area coverage on a
   per-pixel basis for the highest-quality antialiasing possible (effectively 256xAA).
-
-* Fast CPU setup, making full use of parallelism. Pathfinder 3 uses the Rayon library to quickly
-  perform a CPU tiling prepass to prepare vector scenes for the GPU. This prepass can be pipelined
-  with the GPU to hide its latency.
-
-* Fast GPU rendering, even at small pixel sizes. Even on lower-end GPUs, Pathfinder typically
-  matches or exceeds the performance of the best CPU rasterizers. The difference is particularly
-  pronounced at large sizes, where Pathfinder regularly achieves multi-factor speedups.
-
-* GPU compute-based rendering, where available. Pathfinder can optionally use compute shaders to
-  achieve better performance than what the built-in GPU rasterization hardware can provide. Compute
-  shader capability is not required, and all features are available without it.
 
 * Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
   antialiasing on LCD screens. It can do stem darkening/font dilation like macOS and FreeType in
@@ -43,42 +60,47 @@ The project features:
   correction.
 
 * Support for SVG. Pathfinder 3 is designed to efficiently handle workloads that consist of many
-  overlapping vector paths, such as those commonly found in SVG and PDF files. It can perform
-  occlusion culling, which often results in dramatic performance wins over typical software
-  renderers that use the painter's algorithm. A simple loader that leverages the `resvg` library
-  to render a subset of SVG is included, so it's easy to get started.
+  overlapping vector paths, such as those commonly found in complex SVG and PDF files. It performs
+  tile-based occlusion culling, which often results in dramatic performance wins over typical
+  software renderers that use the painter's algorithm. A simple loader that leverages the `resvg`
+  library to render a subset of SVG is included, so it's easy to get started.
 
 * 3D capability. Pathfinder can render fonts and vector paths in 3D environments without any loss
   in quality. This is intended to be useful for vector-graphics-based user interfaces in VR, for
   example.
 
-* Lightweight. Unlike large vector graphics packages that mix and match many different algorithms,
-  Pathfinder 3 uses a single, simple technique. It consists of a set of modular crates, so
-  applications can pick and choose only the components that are necessary to minimize dependencies.
+* Lightweight. Pathfinder is designed first and foremost for simplicity and generality instead of
+  a large number of specialized fast paths. It consists of a set of modular crates, so applications can pick and choose only the components that are necessary to minimize dependencies.
 
 * Portability to most GPUs manufactured in the last decade, including integrated and mobile GPUs.
-  Geometry, tessellation, and compute shader functionality is not required.
+  Any GPU capable of Direct3D 9/OpenGL 3.0/WebGL 2.0 should be able to run Pathfinder. Currently,
+  backends are available for OpenGL, OpenGL ES, Metal, and WebGL.
 
 ## Building
 
-Pathfinder 3 is a set of modular packages, allowing you to choose which parts of the library you
-need. An SVG rendering demo, written in Rust, is included, so you can try Pathfinder out right
-away. It also provides an example of how to use the library. (Note that, like the rest of
-Pathfinder, the demo is under heavy development and has known bugs.)
+Pathfinder can be used from either Rust or C/C++. See the appropriate section below.
 
-Running the demo is as simple as:
+### Rust
 
-    $ cd demo/native
-    $ cargo run --release
-
-Running examples (e.g. `canvas_nanovg`) can be done with:
-
-    $ cd examples/canvas_nanovg
-    $ cargo run --release
-
-Pathfinder libraries are available on `crates.io` with the `pathfinder_` prefix (e.g.
+Simply run `cargo build --release` at top level to build all the crates. Pathfinder is a set of
+modular crates, allowing you to select only the parts of the library you need and omit the rest.
+The libraries are available on `crates.io` with the `pathfinder_` prefix (e.g.
 `pathfinder_canvas`), but you may wish to use the `master` branch for the latest features and bug
 fixes.
+
+### C
+
+The C bindings use [cargo-c](https://github.com/lu-zero/cargo-c). Install `cargo-c` with
+`cargo install cargo-c`, and then use a command like:
+
+    $ cd c
+    $ cargo cbuild --prefix=/usr/local
+    $ cargo cinstall --prefix=/usr/local
+
+The resulting library is usable via `pkg-config` as `pathfinder_c`. For examples of use, see the
+examples in the `examples/` directory beginning with `c_`.
+
+`cargo-c` has a variety of other options such as `--destdir`, which may be useful for packagers.
 
 ## Community
 
@@ -89,7 +111,8 @@ information on connecting to the Matrix network, see
 [this `wiki.mozilla.org` page](https://wiki.mozilla.org/Matrix).
 
 The entire Pathfinder community, including the chat room and GitHub project, is expected to abide
-by the same Code of Conduct that the Rust project itself follows.
+by the same Code of Conduct that the Rust project itself follows. (At the moment, the authors will
+handle violations.)
 
 ## Build status
 
