@@ -72,6 +72,7 @@ pub const PF_ARC_DIRECTION_CCW: u8 = 1;
 
 pub const PF_GL_VERSION_GL3:    u8 = 0;
 pub const PF_GL_VERSION_GLES3:  u8 = 1;
+pub const PF_GL_VERSION_GL4:    u8 = 2;
 
 // `renderer`
 
@@ -303,18 +304,20 @@ pub unsafe extern "C" fn PFCanvasSetLineWidth(canvas: PFCanvasRef, new_line_widt
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineCap(canvas: PFCanvasRef, new_line_cap: PFLineCap) {
     (*canvas).set_line_cap(match new_line_cap {
+        PF_LINE_CAP_BUTT   => LineCap::Butt,
         PF_LINE_CAP_SQUARE => LineCap::Square,
         PF_LINE_CAP_ROUND  => LineCap::Round,
-        _                  => LineCap::Butt,
+        _                  => panic!("Invalid Pathfinder line cap style!"),
     });
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineJoin(canvas: PFCanvasRef, new_line_join: PFLineJoin) {
     (*canvas).set_line_join(match new_line_join {
+        PF_LINE_JOIN_MITER => LineJoin::Miter,
         PF_LINE_JOIN_BEVEL => LineJoin::Bevel,
         PF_LINE_JOIN_ROUND => LineJoin::Round,
-        _                  => LineJoin::Miter,
+        _                  => panic!("Invalid Pathfinder line join style!"),
     });
 }
 
@@ -452,7 +455,11 @@ pub unsafe extern "C" fn PFPathArc(path: PFPathRef,
                                    start_angle: f32,
                                    end_angle: f32,
                                    direction: PFArcDirection) {
-    let direction = if direction == 0 { ArcDirection::CW } else { ArcDirection::CCW };
+    let direction = match direction {
+        PF_ARC_DIRECTION_CW  => ArcDirection::CW,
+        PF_ARC_DIRECTION_CCW => ArcDirection::CCW,
+        _                    => panic!("Invalid Pathfinder arc direction!"),
+    };
     (*path).arc((*center).to_rust(), radius, start_angle, end_angle, direction)
 }
 
@@ -521,7 +528,12 @@ pub unsafe extern "C" fn PFGLLoadWith(loader: PFGLFunctionLoader, userdata: *mut
 #[no_mangle]
 pub unsafe extern "C" fn PFGLDeviceCreate(version: PFGLVersion, default_framebuffer: u32)
                                           -> PFGLDeviceRef {
-    let version = match version { PF_GL_VERSION_GLES3 => GLVersion::GLES3, _ => GLVersion::GL3 };
+    let version = match version {
+        PF_GL_VERSION_GL3   => GLVersion::GL3,
+        PF_GL_VERSION_GLES3 => GLVersion::GLES3,
+        PF_GL_VERSION_GL4   => GLVersion::GL4,
+        _ => panic!("Invalid Pathfinder OpenGL version!"),
+    };
     Box::into_raw(Box::new(GLDevice::new(version, default_framebuffer)))
 }
 
@@ -852,7 +864,8 @@ impl PFRendererOptions {
 
 fn to_rust_renderer_level(level: PFRendererLevel) -> RendererLevel {
     match level {
-        PF_RENDERER_LEVEL_D3D9 => RendererLevel::D3D9,
-        _ => RendererLevel::D3D11,
+        PF_RENDERER_LEVEL_D3D9  => RendererLevel::D3D9,
+        PF_RENDERER_LEVEL_D3D11 => RendererLevel::D3D11,
+        _                       => panic!("Invalid Pathfinder renderer level!"),
     }
 }
