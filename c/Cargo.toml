@@ -3,7 +3,6 @@ name = "pathfinder_c"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
-build = "build.rs"
 
 [lib]
 crate-type = ["staticlib"]
