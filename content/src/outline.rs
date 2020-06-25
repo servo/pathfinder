@@ -61,6 +61,15 @@ impl Outline {
         }
     }
 
+    /// Returns a new `Outline` with storage for `capacity` contours preallocated.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Outline {
+        Outline {
+            contours: Vec::with_capacity(capacity),
+            bounds: RectF::default(),
+        }
+    }
+
     #[inline]
     pub fn from_segments<I>(segments: I) -> Outline
     where
@@ -178,6 +187,11 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
+    pub fn transformed(mut self, transform: &Transform2F) -> Outline {
+        self.transform(transform);
+        self
+    }
+
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         let mut new_bounds = None;
         for contour in &mut self.contours {
@@ -222,6 +236,12 @@ impl Outline {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.contours.iter().all(Contour::is_empty)
+    }
+
+    /// Returns the number of contours in this outline.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.contours.len()
     }
 
     /// Appends the contours in another outline to this one.
@@ -275,7 +295,7 @@ impl Contour {
 
     #[inline]
     pub fn from_rect(rect: RectF) -> Contour {
-        let mut contour = Contour::new();
+        let mut contour = Contour::with_capacity(4);
         contour.push_point(rect.origin(), PointFlags::empty(), false);
         contour.push_point(rect.upper_right(), PointFlags::empty(), false);
         contour.push_point(rect.lower_right(), PointFlags::empty(), false);
@@ -612,6 +632,12 @@ impl Contour {
             *point = *transform * *point;
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
+    }
+
+    #[inline]
+    pub fn transformed(mut self, transform: &Transform2F) -> Contour {
+        self.transform(transform);
+        self
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
