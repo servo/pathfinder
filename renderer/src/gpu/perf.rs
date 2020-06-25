@@ -10,6 +10,7 @@
 
 //! Performance monitoring infrastructure.
 
+use crate::gpu::options::RendererOptions;
 use pathfinder_gpu::Device;
 use std::mem;
 use std::ops::{Add, Div};
@@ -76,6 +77,15 @@ pub(crate) enum TimerFuture<D> where D: Device {
     Resolved(Duration),
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum TimeCategory {
+    Dice,
+    Bin,
+    Fill,
+    Composite,
+    Other,
+}
+
 impl<D> TimerQueryCache<D> where D: Device {
     pub(crate) fn new() -> TimerQueryCache<D> {
         TimerQueryCache { free_queries: vec![] }
@@ -87,6 +97,17 @@ impl<D> TimerQueryCache<D> where D: Device {
 
     pub(crate) fn free(&mut self, old_query: D::TimerQuery) {
         self.free_queries.push(old_query);
+    }
+
+    pub(crate) fn start_timing_draw_call(&mut self, device: &D, options: &RendererOptions<D>)
+                                         -> Option<D::TimerQuery> {
+        if !options.show_debug_ui {
+            return None;
+        }
+
+        let timer_query = self.alloc(device);
+        device.begin_timer_query(&timer_query);
+        Some(timer_query)
     }
 }
 
@@ -129,6 +150,22 @@ impl<D> PendingTimer<D> where D: Device {
                 Some(RenderTime { dice_time, bin_time, fill_time, composite_time, other_time })
             }
             _ => None,
+        }
+    }
+
+    pub(crate) fn push_query(&mut self,
+                             time_category: TimeCategory,
+                             timer_query: Option<D::TimerQuery>) {
+        let timer_future = match timer_query {
+            None => return,
+            Some(timer_query) => TimerFuture::new(timer_query),
+        };
+        match time_category {
+            TimeCategory::Dice => self.dice_times.push(timer_future),
+            TimeCategory::Bin => self.bin_times.push(timer_future),
+            TimeCategory::Fill => self.fill_times.push(timer_future),
+            TimeCategory::Composite => self.composite_times.push(timer_future),
+            TimeCategory::Other => self.other_times.push(timer_future),
         }
     }
 }
