@@ -137,6 +137,18 @@ impl Vector2F {
         Vector2F(self.0.abs())
     }
 
+    /// Returns the reciprocal of the vector, `(1.0 / x, 1.0 / y)`.
+    #[inline]
+    pub fn recip(self) -> Vector2F {
+        Vector2F::splat(1.0) / self
+    }
+
+    /// Returns the counterclockwise angle of the vector from the +x axis.
+    #[inline]
+    pub fn angle(self) -> f32 {
+        self.y().atan2(self.x())
+    }
+
     /// Returns the coefficient when the given vector `a` is projected onto this one.
     ///
     /// That is, if this vector is `v` and this function returns `c`, then `proj_v a = cv`. In
@@ -144,6 +156,12 @@ impl Vector2F {
     #[inline]
     pub fn projection_coefficient(self, a: Vector2F) -> f32 {
         a.dot(self) / self.square_length()
+    }
+
+    /// Returns the angle between the two vectors.
+    #[inline]
+    pub fn angle_between(self, a: Vector2F) -> f32 {
+        self.projection_coefficient(a).acos()
     }
 
     #[inline]
