@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::gpu::blend::{BlendModeExt, ToBlendState};
-use crate::gpu::perf::TimerFuture;
+use crate::gpu::perf::TimeCategory;
 use crate::gpu::renderer::{FramebufferFlags, MASK_FRAMEBUFFER_HEIGHT, MASK_FRAMEBUFFER_WIDTH};
 use crate::gpu::renderer::{RendererCore, RendererFlags};
 use crate::gpu::d3d9::shaders::{ClipTileCombineVertexArrayD3D9, ClipTileCopyVertexArrayD3D9};
@@ -225,8 +225,8 @@ impl<D> RendererD3D9<D> where D: Device {
             clear_color = Some(ColorF::default());
         };
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         core.device.draw_elements_instanced(6, fill_count, &RenderState {
             target: &RenderTarget::Framebuffer(mask_framebuffer),
@@ -256,9 +256,9 @@ impl<D> RendererD3D9<D> where D: Device {
             },
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().fill_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Fill, timer_query);
 
         core.framebuffer_flags.insert(FramebufferFlags::MASK_FRAMEBUFFER_IS_DIRTY);
     }
@@ -297,8 +297,8 @@ impl<D> RendererD3D9<D> where D: Device {
                                                 quad_vertex_positions_buffer,
                                                 quad_vertex_indices_buffer);
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         // Copy out tiles.
         //
@@ -322,6 +322,12 @@ impl<D> RendererD3D9<D> where D: Device {
             options: RenderOptions::default(),
         });
 
+        core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
+
         // Combine clip tiles.
         core.device.draw_elements_instanced(6, clip_buffer_info.clip_count, &RenderState {
             target: &RenderTarget::Framebuffer(mask_framebuffer),
@@ -342,9 +348,9 @@ impl<D> RendererD3D9<D> where D: Device {
             options: RenderOptions::default(),
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().other_times.push(TimerFuture::new(timer_query));
-        core.stats.drawcall_count += 2;
+        core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
 
         core.allocator.free_framebuffer(mask_temp_framebuffer_id);
     }
@@ -397,8 +403,8 @@ impl<D> RendererD3D9<D> where D: Device {
         let clear_color = core.clear_color_for_draw_operation();
         let draw_viewport = core.draw_viewport();
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let tile_raster_program = &self.programs.tile_program;
 
@@ -454,9 +460,9 @@ impl<D> RendererD3D9<D> where D: Device {
             },
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().composite_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Composite, timer_query);
 
         core.preserve_draw_framebuffer();
     }

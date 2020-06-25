@@ -10,7 +10,7 @@
 
 use crate::gpu::d3d11::shaders::{BOUND_WORKGROUP_SIZE, DICE_WORKGROUP_SIZE};
 use crate::gpu::d3d11::shaders::{PROPAGATE_WORKGROUP_SIZE, ProgramsD3D11, SORT_WORKGROUP_SIZE};
-use crate::gpu::perf::TimerFuture;
+use crate::gpu::perf::TimeCategory;
 use crate::gpu::renderer::{FramebufferFlags, RendererCore};
 use crate::gpu_data::{AlphaTileD3D11, BackdropInfoD3D11, DiceMetadataD3D11, DrawTileBatchD3D11};
 use crate::gpu_data::{Fill, FirstTileD3D11, MicrolineD3D11, PathSource, PropagateMetadataD3D11};
@@ -78,8 +78,8 @@ impl<D> RendererD3D11<D> where D: Device {
 
         let tiles_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let compute_dimensions = ComputeDimensions {
             x: (tile_count + BOUND_WORKGROUP_SIZE - 1) / BOUND_WORKGROUP_SIZE,
@@ -100,9 +100,9 @@ impl<D> RendererD3D11<D> where D: Device {
             ],
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().other_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
 
         core.allocator.free_buffer(path_info_buffer_id);
     }
@@ -174,8 +174,8 @@ impl<D> RendererD3D11<D> where D: Device {
                                             &indirect_draw_params,
                                             BufferTarget::Storage);
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let compute_dimensions = ComputeDimensions {
             x: (microlines_storage.count + 63) / 64,
@@ -204,9 +204,9 @@ impl<D> RendererD3D11<D> where D: Device {
             ],
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().bin_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Bin, timer_query);
 
         let indirect_draw_params_receiver =
             core.device.read_buffer(fill_indirect_draw_params_buffer,
@@ -294,8 +294,8 @@ impl<D> RendererD3D11<D> where D: Device {
                                      dice_metadata,
                                      BufferTarget::Storage);
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let workgroup_count = (batch_segment_count + DICE_WORKGROUP_SIZE - 1) /
             DICE_WORKGROUP_SIZE;
@@ -325,9 +325,9 @@ impl<D> RendererD3D11<D> where D: Device {
             ],
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().dice_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Dice, timer_query);
 
         let indirect_compute_params_receiver =
             core.device.read_buffer(&dice_indirect_draw_params_buffer,
@@ -374,8 +374,8 @@ impl<D> RendererD3D11<D> where D: Device {
 
         let area_lut_texture = core.allocator.get_texture(core.area_lut_texture_id);
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         // This setup is an annoying workaround for the 64K limit of compute invocation in OpenGL.
         let alpha_tile_count = alpha_tile_range.end - alpha_tile_range.start;
@@ -401,9 +401,9 @@ impl<D> RendererD3D11<D> where D: Device {
             ],
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().fill_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Fill, timer_query);
 
         core.framebuffer_flags.insert(FramebufferFlags::MASK_FRAMEBUFFER_IS_DIRTY);
     }
@@ -596,8 +596,8 @@ impl<D> RendererD3D11<D> where D: Device {
             storage_buffers.push((&propagate_program.clip_tiles_storage_buffer, clip_tile_buffer));
         }
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let dimensions = ComputeDimensions {
             x: (column_count + PROPAGATE_WORKGROUP_SIZE - 1) / PROPAGATE_WORKGROUP_SIZE,
@@ -618,9 +618,9 @@ impl<D> RendererD3D11<D> where D: Device {
             storage_buffers: &storage_buffers,
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().other_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
 
         let fill_indirect_draw_params_receiver =
             core.device.read_buffer(&fill_indirect_draw_params_buffer,
@@ -654,8 +654,8 @@ impl<D> RendererD3D11<D> where D: Device {
 
         let tile_count = core.framebuffer_tile_size().area();
 
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let dimensions = ComputeDimensions {
             x: (tile_count as u32 + SORT_WORKGROUP_SIZE - 1) / SORT_WORKGROUP_SIZE,
@@ -674,9 +674,9 @@ impl<D> RendererD3D11<D> where D: Device {
             ],
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().other_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
     }
 
     fn allocate_first_tile_map(&mut self, core: &mut RendererCore<D>) -> BufferID {
@@ -703,8 +703,8 @@ impl<D> RendererD3D11<D> where D: Device {
                              tiles_d3d11_buffer_id: BufferID,
                              first_tile_map_buffer_id: BufferID,
                              color_texture_0: Option<TileBatchTexture>) {
-        let timer_query = core.timer_query_cache.alloc(&core.device);
-        core.device.begin_timer_query(&timer_query);
+        let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
+                                                                        &core.options);
 
         let tile_program = &self.programs.tile_program;
 
@@ -763,9 +763,9 @@ impl<D> RendererD3D11<D> where D: Device {
             uniforms: &uniforms,
         });
 
-        core.device.end_timer_query(&timer_query);
-        core.current_timer.as_mut().unwrap().composite_times.push(TimerFuture::new(timer_query));
         core.stats.drawcall_count += 1;
+        core.finish_timing_draw_call(&timer_query);
+        core.current_timer.as_mut().unwrap().push_query(TimeCategory::Composite, timer_query);
 
         core.preserve_draw_framebuffer();
     }

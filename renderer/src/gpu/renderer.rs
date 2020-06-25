@@ -13,7 +13,7 @@ use crate::gpu::d3d9::renderer::RendererD3D9;
 use crate::gpu::d3d11::renderer::RendererD3D11;
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererLevel, RendererMode, RendererOptions};
-use crate::gpu::perf::{PendingTimer, RenderStats, RenderTime, TimerFuture, TimerQueryCache};
+use crate::gpu::perf::{PendingTimer, RenderStats, RenderTime, TimeCategory, TimerQueryCache};
 use crate::gpu::shaders::{BlitProgram, BlitVertexArray, ClearProgram, ClearVertexArray};
 use crate::gpu::shaders::{ProgramsCore, ReprojectionProgram, ReprojectionVertexArray};
 use crate::gpu::shaders::{StencilProgram, StencilVertexArray, TileProgramCommon, VertexArraysCore};
@@ -934,8 +934,8 @@ impl<D> RendererCore<D> where D: Device {
         let old_mask_texture = self.device.framebuffer_texture(old_mask_framebuffer);
         let old_size = self.device.texture_size(old_mask_texture);
 
-        let timer_query = self.timer_query_cache.alloc(&self.device);
-        self.device.begin_timer_query(&timer_query);
+        let timer_query = self.timer_query_cache.start_timing_draw_call(&self.device,
+                                                                        &self.options);
 
         self.device.draw_elements(6, &RenderState {
             target: &RenderTarget::Framebuffer(mask_framebuffer),
@@ -961,9 +961,9 @@ impl<D> RendererCore<D> where D: Device {
             },
         });
 
-        self.device.end_timer_query(&timer_query);
-        self.current_timer.as_mut().unwrap().other_times.push(TimerFuture::new(timer_query));
         self.stats.drawcall_count += 1;
+        self.finish_timing_draw_call(&timer_query);
+        self.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
     }
 
     pub(crate) fn set_uniforms_for_drawing_tiles<'a>(
@@ -1127,6 +1127,12 @@ impl<D> RendererCore<D> where D: Device {
 
     fn render_target_location(&self, render_target_id: RenderTargetId) -> TextureLocation {
         self.render_targets[render_target_id.render_target as usize].location
+    }
+
+    pub(crate) fn finish_timing_draw_call(&self, timer_query: &Option<D::TimerQuery>) {
+        if let Some(ref timer_query) = *timer_query {
+            self.device.end_timer_query(timer_query)
+        }
     }
 }
 
