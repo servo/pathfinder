@@ -289,7 +289,7 @@ impl Contour {
 
     #[inline]
     pub fn from_rect(rect: RectF) -> Contour {
-        let mut contour = Contour::new();
+        let mut contour = Contour::with_capacity(4);
         contour.push_point(rect.origin(), PointFlags::empty(), false);
         contour.push_point(rect.upper_right(), PointFlags::empty(), false);
         contour.push_point(rect.lower_right(), PointFlags::empty(), false);
