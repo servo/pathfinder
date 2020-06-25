@@ -61,6 +61,15 @@ impl Outline {
         }
     }
 
+    /// Returns a new `Outline` with storage for `capacity` contours preallocated.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Outline {
+        Outline {
+            contours: Vec::with_capacity(capacity),
+            bounds: RectF::default(),
+        }
+    }
+
     #[inline]
     pub fn from_segments<I>(segments: I) -> Outline
     where
