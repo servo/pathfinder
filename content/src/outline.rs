@@ -238,6 +238,12 @@ impl Outline {
         self.contours.iter().all(Contour::is_empty)
     }
 
+    /// Returns the number of contours in this outline.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.contours.len()
+    }
+
     /// Appends the contours in another outline to this one.
     pub fn push_outline(&mut self, other: Outline) {
         if other.is_empty() {
