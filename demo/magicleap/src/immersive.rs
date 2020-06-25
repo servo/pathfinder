@@ -24,7 +24,7 @@ use pathfinder_geometry::transform3d::Transform4F32;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_gpu::Device;
 use pathfinder_simd::default::F32x4;
-use pathfinder_svg::BuiltSVG;
+use pathfinder_svg::SVGScene;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::builder::RenderTransform;
 
@@ -58,7 +58,7 @@ impl<D: Display> ImmersiveDemo<D> {
         let options = Options::get();
         let svg_data = resources.slurp(DEFAULT_SVG_VIRTUAL_PATH)?;
         let tree = usvg::Tree::from_data(&svg_data[..], &usvg::Options::default())?;
-        let svg = BuiltSVG::from_tree(tree);
+        let svg = SVGScene::from_tree(tree);
 	let svg_size = svg.scene.view_box.size();
         let scene_thread_proxy = SceneThreadProxy::new(svg.scene, options);
         let _ = scene_thread_proxy.sender.send(MainToSceneMsg::SetDrawableSize(display.size()));

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{Read, BufWriter};
 use std::error::Error;
 use std::path::PathBuf;
-use pathfinder_svg::BuiltSVG;
+use pathfinder_svg::SVGScene;
 use pathfinder_export::{Export, FileFormat};
 use usvg::{Tree, Options};
 
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut data = Vec::new();
     File::open(input)?.read_to_end(&mut data)?;
-    let svg = BuiltSVG::from_tree(&Tree::from_data(&data, &Options::default()).unwrap());
+    let svg = SVGScene::from_tree(&Tree::from_data(&data, &Options::default()).unwrap());
 
     let scene = &svg.scene;
     let mut writer = BufWriter::new(File::create(&output)?);
