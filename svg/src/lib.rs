@@ -307,7 +307,6 @@ impl Display for BuildResultFlags {
             "<image>",
             "<mask>",
             "<pattern>",
-            "nested <svg>",
             "multiple clip paths",
             "non-color paint",
             "filter attribute",
