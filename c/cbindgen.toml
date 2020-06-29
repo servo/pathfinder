@@ -35,18 +35,21 @@ include = [
     "pathfinder_gpu",
     "pathfinder_metal",
     "pathfinder_renderer",
+    "pathfinder_svg",
 ]
 
 [export.rename]
 "BuildOptions" = "PFBuildOptionsPrivate"
 "CanvasFontContext" = "PFCanvasFontContextPrivate"
 "CanvasRenderingContext2D" = "PFCanvasRenderingContext2DPrivate"
+"CoreAnimationDrawableRef" = "NSObject<CAMetalDrawable>"
 "DestFramebuffer_GLDevice" = "PFDestFramebufferGLDevicePrivate"
 "DestFramebuffer_MetalDevice" = "PFDestFramebufferMetalDevicePrivate"
 "FillStyle" = "PFFillStylePrivate"
 "GLDevice" = "PFGLDevicePrivate"
 "Handle" = "FKHandlePrivate"
 "MetalDevice" = "PFMetalDevicePrivate"
+"NativeMetalDeviceRef" = "NSObject<MTLDevice>"
 "Path2D" = "PFPath2DPrivate"
 "RenderTransform" = "PFRenderTransformPrivate"
 "Renderer_GLDevice" = "PFRendererGLDevicePrivate"
@@ -54,3 +57,4 @@ include = [
 "ResourceLoaderWrapper" = "PFResourceLoaderWrapperPrivate"
 "Scene" = "PFScenePrivate"
 "SceneProxy" = "PFSceneProxyPrivate"
+"SVGScene" = "PFSVGScenePrivate"

@@ -44,11 +44,11 @@ use std::str;
 use usvg::{Options, Tree};
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use metal::{self, CAMetalLayer, CoreAnimationLayerRef};
+use io_surface::IOSurfaceRef;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::{self, CoreAnimationDrawableRef, DeviceRef as NativeMetalDeviceRef};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use foreign_types::ForeignTypeRef;
 
 // Constants
 
@@ -660,12 +660,39 @@ pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFScenePro
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
-pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
-                                             -> PFMetalDeviceRef {
-    let device =
-        metal::Device::system_default().expect("Failed to get Metal system default device!");
-    let layer = CoreAnimationLayerRef::from_ptr(layer);
-    Box::into_raw(Box::new(MetalDevice::new(device, layer.next_drawable().unwrap())))
+pub unsafe extern "C" fn PFMetalDeviceCreateWithIOSurface(metal_device: &NativeMetalDeviceRef,
+                                                          io_surface: IOSurfaceRef)
+                                                          -> PFMetalDeviceRef {
+    Box::into_raw(Box::new(MetalDevice::new(metal_device, io_surface)))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceCreateWithDrawable(metal_device: &NativeMetalDeviceRef,
+                                                         ca_drawable: &CoreAnimationDrawableRef)
+                                                         -> PFMetalDeviceRef {
+    Box::into_raw(Box::new(MetalDevice::new(metal_device, ca_drawable)))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceSwapIOSurface(device: PFMetalDeviceRef,
+                                                    new_io_surface: IOSurfaceRef) {
+    drop((*device).swap_texture(new_io_surface))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceSwapDrawable(device: PFMetalDeviceRef,
+                                                   new_ca_drawable: &CoreAnimationDrawableRef) {
+    drop((*device).swap_texture(new_ca_drawable))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDevicePresentDrawable(device: PFMetalDeviceRef,
+                                                      ca_drawable: &CoreAnimationDrawableRef) {
+    (*device).present_drawable(ca_drawable)
 }
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]

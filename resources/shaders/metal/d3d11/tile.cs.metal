@@ -647,7 +647,7 @@ float4 calculateColor(thread const float2& fragCoord, thread const texture2d<flo
     return color;
 }
 
-kernel void main0(constant int2& uFramebufferTileSize [[buffer(3)]], constant int& uLoadAction [[buffer(4)]], constant int2& uTextureMetadataSize [[buffer(7)]], constant float2& uFramebufferSize [[buffer(0)]], constant float2& uTileSize [[buffer(1)]], constant float4& uClearColor [[buffer(5)]], constant float2& uColorTextureSize0 [[buffer(8)]], constant float2& uMaskTextureSize0 [[buffer(9)]], const device bFirstTileMap& _1510 [[buffer(2)]], const device bTiles& _1603 [[buffer(6)]], texture2d<float, access::read_write> uDestImage [[texture(0)]], texture2d<float> uTextureMetadata [[texture(1)]], texture2d<float> uColorTexture0 [[texture(2)]], texture2d<float> uMaskTexture0 [[texture(3)]], texture2d<float> uDestTexture [[texture(4)]], texture2d<float> uGammaLUT [[texture(5)]], sampler uTextureMetadataSmplr [[sampler(0)]], sampler uColorTexture0Smplr [[sampler(1)]], sampler uMaskTexture0Smplr [[sampler(2)]], sampler uDestTextureSmplr [[sampler(3)]], sampler uGammaLUTSmplr [[sampler(4)]], uint3 gl_WorkGroupID [[threadgroup_position_in_grid]], uint3 gl_LocalInvocationID [[thread_position_in_threadgroup]])
+kernel void main0(constant int2& uFramebufferTileSize [[buffer(3)]], constant int& uLoadAction [[buffer(4)]], constant int2& uTextureMetadataSize [[buffer(7)]], constant float2& uFramebufferSize [[buffer(0)]], constant float2& uTileSize [[buffer(1)]], constant float4& uClearColor [[buffer(5)]], constant float2& uColorTextureSize0 [[buffer(8)]], constant float2& uMaskTextureSize0 [[buffer(9)]], const device bFirstTileMap& _1510 [[buffer(2)]], const device bTiles& _1603 [[buffer(6)]], texture2d<float, access::read_write> uDestImage [[texture(0)]], texture2d<float> uTextureMetadata [[texture(1)]], texture2d<float> uColorTexture0 [[texture(2)]], texture2d<float> uMaskTexture0 [[texture(3)]], texture2d<float> uGammaLUT [[texture(4)]], sampler uTextureMetadataSmplr [[sampler(0)]], sampler uColorTexture0Smplr [[sampler(1)]], sampler uMaskTexture0Smplr [[sampler(2)]], sampler uGammaLUTSmplr [[sampler(3)]], uint3 gl_WorkGroupID [[threadgroup_position_in_grid]], uint3 gl_LocalInvocationID [[thread_position_in_threadgroup]])
 {
     int2 tileCoord = int2(gl_WorkGroupID.xy);
     int2 firstTileSubCoord = int2(gl_LocalInvocationID.xy) * int2(1, 4);
@@ -723,7 +723,7 @@ kernel void main0(constant int2& uFramebufferTileSize [[buffer(3)]], constant in
             float2 param_19 = colorTexCoord0;
             float4 param_20 = baseColor;
             int param_21 = tileCtrl;
-            float4 srcColor = calculateColor(param_10, uColorTexture0, uColorTexture0Smplr, uMaskTexture0, uMaskTexture0Smplr, uDestTexture, uDestTextureSmplr, uGammaLUT, uGammaLUTSmplr, param_11, param_12, param_13, param_14, param_15, param_16, param_17, param_18, param_19, param_20, param_21);
+            float4 srcColor = calculateColor(param_10, uColorTexture0, uColorTexture0Smplr, uMaskTexture0, uMaskTexture0Smplr, uColorTexture0, uColorTexture0Smplr, uGammaLUT, uGammaLUTSmplr, param_11, param_12, param_13, param_14, param_15, param_16, param_17, param_18, param_19, param_20, param_21);
             destColors[subY_1] = (destColors[subY_1] * (1.0 - srcColor.w)) + srcColor;
         }
         tileIndex = int(_1603.iTiles[(tileIndex * 4) + 0]);

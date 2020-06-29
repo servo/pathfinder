@@ -44,9 +44,13 @@ fn main() {
     let metal_layer = unsafe {
         CoreAnimationLayerRef::from_ptr(SDL_RenderGetMetalLayer(canvas.raw()) as *mut CAMetalLayer)
     };
+    let metal_device = metal_layer.device();
+    let drawable = metal_layer.next_drawable().unwrap();
 
     // Create a Pathfinder renderer.
-    let device = MetalDevice::new(metal_layer);
+    let device = unsafe {
+        MetalDevice::new(metal_device, drawable.clone())
+    };
     let mode = RendererMode::default_for_device(&device);
     let options = RendererOptions {
         dest: DestFramebuffer::full_window(window_size),
@@ -81,7 +85,7 @@ fn main() {
                                            renderer.mode().level,
                                            RayonExecutor);
     scene.build_and_render(&mut renderer, BuildOptions::default());
-    renderer.device().present_drawable();
+    renderer.device().present_drawable(drawable);
 
     // Wait for a keypress.
     let mut event_pump = sdl_context.event_pump().unwrap();

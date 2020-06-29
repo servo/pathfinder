@@ -425,11 +425,8 @@ impl<D> RendererD3D9<D> where D: Device {
 
         uniforms.push((&tile_raster_program.transform_uniform,
                        UniformData::Mat4(self.tile_transform(core).to_columns())));
-
-        if needs_readable_framebuffer {
-            textures.push((&tile_raster_program.dest_texture,
-                           core.device.framebuffer_texture(dest_blend_framebuffer)));
-        }
+        textures.push((&tile_raster_program.dest_texture,
+                        core.device.framebuffer_texture(dest_blend_framebuffer)));
 
         let z_buffer_texture = core.allocator.get_texture(z_buffer_texture_id);
         textures.push((&tile_raster_program.common.z_buffer_texture, z_buffer_texture));

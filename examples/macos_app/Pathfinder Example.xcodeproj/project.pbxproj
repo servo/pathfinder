@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6A9A35B322C1E14700B86652 /* libpathfinder_c.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A9A35B222C1E14700B86652 /* libpathfinder_c.a */; };
+		6A7C3B7224A6B75500027B8E /* libpathfinder_c.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6A7C3B7124A6B75500027B8E /* libpathfinder_c.a */; };
 		6AFD6FFA22BD780D00AC1ED3 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 6AFD6FF922BD780D00AC1ED3 /* AppDelegate.m */; };
 		6AFD6FFC22BD781000AC1ED3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6AFD6FFB22BD781000AC1ED3 /* Assets.xcassets */; };
 		6AFD6FFF22BD781000AC1ED3 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 6AFD6FFD22BD781000AC1ED3 /* MainMenu.xib */; };
@@ -17,7 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		6A9A35B222C1E14700B86652 /* libpathfinder_c.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpathfinder_c.a; path = ../../../target/release/libpathfinder_c.a; sourceTree = "<group>"; };
+		6A7C3B7124A6B75500027B8E /* libpathfinder_c.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpathfinder_c.a; path = ../../../target/release/libpathfinder_c.a; sourceTree = "<group>"; };
 		6AFD6FF522BD780D00AC1ED3 /* Pathfinder Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pathfinder Example.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6AFD6FF822BD780D00AC1ED3 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		6AFD6FF922BD780D00AC1ED3 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -36,7 +36,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6A9A35B322C1E14700B86652 /* libpathfinder_c.a in Frameworks */,
+				6A7C3B7224A6B75500027B8E /* libpathfinder_c.a in Frameworks */,
 				6AFD700F22BD930500AC1ED3 /* libharfbuzz.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -72,7 +72,7 @@
 				6AFD700A22BD7B7A00AC1ED3 /* PathfinderView.m */,
 				6AFD700122BD781000AC1ED3 /* main.m */,
 				6AFD700322BD781000AC1ED3 /* Pathfinder_Example.entitlements */,
-				6A9A35B222C1E14700B86652 /* libpathfinder_c.a */,
+				6A7C3B7124A6B75500027B8E /* libpathfinder_c.a */,
 				6AFD700E22BD930500AC1ED3 /* libharfbuzz.a */,
 			);
 			path = "Pathfinder Example";
@@ -290,7 +290,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
-				HEADER_SEARCH_PATHS = ../../c/build/include;
+				HEADER_SEARCH_PATHS = ../../target/release;
 				INFOPLIST_FILE = "Pathfinder Example/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -312,7 +312,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
-				HEADER_SEARCH_PATHS = ../../c/build/include;
+				HEADER_SEARCH_PATHS = ../../target/release;
 				INFOPLIST_FILE = "Pathfinder Example/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

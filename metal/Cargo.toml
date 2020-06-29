@@ -19,7 +19,7 @@ foreign-types = "0.3"
 half = "1.5"
 io-surface = "0.12"
 libc = "0.2"
-metal = "0.17"
+metal = "0.18"
 objc = "0.2"
 
 [dependencies.pathfinder_geometry]
