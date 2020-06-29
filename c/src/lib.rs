@@ -508,7 +508,8 @@ pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
     drop(Box::from_raw(fill_style))
 }
 
-// `gl`
+// `resources`
+
 #[no_mangle]
 pub unsafe extern "C" fn PFEmbeddedResourceLoaderCreate() -> PFResourceLoaderRef {
     let loader = Box::new(EmbeddedResourceLoader::new());
@@ -528,6 +529,9 @@ pub unsafe extern "C" fn PFFilesystemResourceLoaderFromPath(path: *const c_char)
     let loader = Box::new(FilesystemResourceLoader { directory });
     Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
 }
+
+
+// `gl`
 
 #[no_mangle]
 pub unsafe extern "C" fn PFGLLoadWith(loader: PFGLFunctionLoader, userdata: *mut c_void) {
