@@ -586,14 +586,24 @@ impl<D> RendererD3D11<D> where D: Device {
             (&propagate_program.alpha_tiles_storage_buffer, alpha_tiles_storage_buffer),
         ];
 
-        if let Some(clip_buffer_ids) = clip_buffer_ids {
-            let clip_metadata_buffer_id =
-                clip_buffer_ids.metadata.expect("Where's the clip metadata storage?");
-            let clip_metadata_buffer = core.allocator.get_buffer(clip_metadata_buffer_id);
-            let clip_tile_buffer = core.allocator.get_buffer(clip_buffer_ids.tiles);
-            storage_buffers.push((&propagate_program.clip_metadata_storage_buffer,
-                                  clip_metadata_buffer));
-            storage_buffers.push((&propagate_program.clip_tiles_storage_buffer, clip_tile_buffer));
+        match clip_buffer_ids {
+            Some(clip_buffer_ids) => {
+                let clip_metadata_buffer_id =
+                    clip_buffer_ids.metadata.expect("Where's the clip metadata storage?");
+                let clip_metadata_buffer = core.allocator.get_buffer(clip_metadata_buffer_id);
+                let clip_tile_buffer = core.allocator.get_buffer(clip_buffer_ids.tiles);
+                storage_buffers.push((&propagate_program.clip_metadata_storage_buffer,
+                                    clip_metadata_buffer));
+                storage_buffers.push((&propagate_program.clip_tiles_storage_buffer,
+                                      clip_tile_buffer));
+            }
+            None => {
+                // Just attach any old buffers to these, to satisfy Metal.
+                storage_buffers.push((&propagate_program.clip_metadata_storage_buffer,
+                                      propagate_metadata_storage_buffer));
+                storage_buffers.push((&propagate_program.clip_tiles_storage_buffer,
+                                      tiles_d3d11_buffer));
+            }
         }
 
         let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,

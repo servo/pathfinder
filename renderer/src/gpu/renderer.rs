@@ -1010,6 +1010,8 @@ impl<D> RendererCore<D> where D: Device {
                                UniformData::Vec2(color_texture_size.0)));
             }
             None => {
+                // Attach any old texture, just to satisfy Metal.
+                textures.push((&tile_program.color_texture_0, texture_metadata_texture));
                 uniforms.push((&tile_program.color_texture_size_0_uniform,
                                UniformData::Vec2(F32x2::default())));
             }

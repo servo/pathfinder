@@ -19,7 +19,8 @@ extern crate objc;
 
 use block::{Block, ConcreteBlock, RcBlock};
 use byteorder::{NativeEndian, WriteBytesExt};
-use cocoa::foundation::NSUInteger;
+use cocoa::base::{id, nil};
+use cocoa::foundation::{NSAutoreleasePool, NSUInteger};
 use core_foundation::base::TCFType;
 use core_foundation::string::{CFString, CFStringRef};
 use dispatch::ffi::dispatch_queue_t;
@@ -31,7 +32,7 @@ use libc::size_t;
 use metal::{self, Argument, ArgumentEncoder, BlitCommandEncoder, Buffer, CommandBuffer};
 use metal::{CommandQueue, CompileOptions, ComputeCommandEncoder, ComputePipelineDescriptor};
 use metal::{ComputePipelineState, CoreAnimationDrawable, CoreAnimationDrawableRef};
-use metal::{CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
+use metal::{CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Device as NativeMetalDevice, DeviceRef, Function, Library};
 use metal::{MTLArgument, MTLArgumentEncoder, MTLArgumentType, MTLBlendFactor, MTLBlendOperation};
 use metal::{MTLBlitOption, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLComputePipelineState};
 use metal::{MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat};
@@ -69,11 +70,11 @@ use std::time::{Duration, Instant};
 const FIRST_VERTEX_BUFFER_INDEX: u64 = 16;
 
 pub struct MetalDevice {
-    device: metal::Device,
+    device: NativeMetalDevice,
     main_color_texture: Texture,
     main_depth_stencil_texture: Texture,
     command_queue: CommandQueue,
-    command_buffers: RefCell<Vec<CommandBuffer>>,
+    scopes: RefCell<Vec<Scope>>,
     samplers: Vec<SamplerState>,
     #[allow(dead_code)]
     dispatch_queue: Queue,
@@ -118,9 +119,16 @@ struct StagingBuffer {
     event_value: u64,
 }
 
+struct Scope {
+    autorelease_pool: id,
+    command_buffer: CommandBuffer,
+}
+
 impl MetalDevice {
     #[inline]
-    pub unsafe fn new<T>(device: metal::Device, texture: T) -> MetalDevice where T: IntoTexture {
+    pub unsafe fn new<D, T>(device: D, texture: T) -> MetalDevice
+                            where D: IntoMetalDevice, T: IntoTexture {
+        let device = device.into_metal_device();
         let command_queue = device.new_command_queue();
 
         let samplers = (0..16).map(|sampling_flags_value| {
@@ -176,7 +184,7 @@ impl MetalDevice {
             main_color_texture: texture,
             main_depth_stencil_texture,
             command_queue,
-            command_buffers: RefCell::new(vec![]),
+            scopes: RefCell::new(vec![]),
             samplers,
             dispatch_queue,
             timer_query_shared_event,
@@ -198,8 +206,19 @@ impl MetalDevice {
     }
 
     #[inline]
-    pub fn metal_device(&self) -> metal::Device {
+    pub fn metal_device(&self) -> NativeMetalDevice {
         self.device.clone()
+    }
+
+    /// A convenience function to present a Core Animation drawable.
+    pub fn present_drawable(&self, drawable: &CoreAnimationDrawableRef) {
+        self.begin_commands();
+        {
+            let scopes = self.scopes.borrow();
+            let command_buffer = &scopes.last().unwrap().command_buffer;
+            command_buffer.present_drawable(drawable);
+        }
+        self.end_commands();
     }
 }
 
@@ -491,10 +510,7 @@ impl Device for MetalDevice {
 
         let attribute_index = attr.attribute_index();
 
-        let attr_info = vertex_array.descriptor
-                                    .attributes()
-                                    .object_at(attribute_index as usize)
-                                    .unwrap();
+        let attr_info = vertex_array.descriptor.attributes().object_at(attribute_index).unwrap();
         let format = match (descriptor.class, descriptor.attr_type, descriptor.size) {
             (VertexAttrClass::Int, VertexAttrType::I8, 2) => MTLVertexFormat::Char2,
             (VertexAttrClass::Int, VertexAttrType::I8, 3) => MTLVertexFormat::Char3,
@@ -577,7 +593,7 @@ impl Device for MetalDevice {
 
         // FIXME(pcwalton): Metal separates out per-buffer info from per-vertex info, while our
         // GL-like API does not. So we end up setting this state over and over again. Not great.
-        let layout = vertex_array.descriptor.layouts().object_at(buffer_index as usize).unwrap();
+        let layout = vertex_array.descriptor.layouts().object_at(buffer_index).unwrap();
         if descriptor.divisor == 0 {
             layout.set_step_function(MTLVertexStepFunction::PerVertex);
             layout.set_step_rate(1);
@@ -671,8 +687,8 @@ impl Device for MetalDevice {
         self.next_buffer_upload_event_value.set(staging_buffer.event_value + 1);
 
         {
-            let command_buffers = self.command_buffers.borrow();
-            let command_buffer = command_buffers.last().unwrap();
+            let scopes = self.scopes.borrow();
+            let command_buffer = &scopes.last().unwrap().command_buffer;
             let blit_command_encoder = command_buffer.real_new_blit_command_encoder();
             blit_command_encoder.copy_from_buffer(&staging_buffer.buffer,
                                                 byte_start,
@@ -731,8 +747,10 @@ impl Device for MetalDevice {
     }
 
     fn upload_to_texture(&self, dest_texture: &MetalTexture, rect: RectI, data: TextureDataRef) {
-        let command_buffers = self.command_buffers.borrow();
-        let command_buffer = command_buffers.last().expect("Must call `begin_commands()` first!");
+        let scopes = self.scopes.borrow();
+        let command_buffer = &scopes.last()
+                                    .expect("Must call `begin_commands()` first!")
+                                    .command_buffer;
 
         let texture_size = self.texture_size(dest_texture);
         let texture_format = self.texture_format(&dest_texture.private_texture)
@@ -817,8 +835,8 @@ impl Device for MetalDevice {
                    -> MetalBufferDataReceiver {
         let buffer_data_receiver;
         {
-            let command_buffers = self.command_buffers.borrow();
-            let command_buffer = command_buffers.last().unwrap();
+            let scopes = self.scopes.borrow();
+            let command_buffer = &scopes.last().unwrap().command_buffer;
 
             let mut src_allocations = src_buffer.allocations.borrow_mut();
             let src_allocations = &mut *src_allocations;
@@ -880,12 +898,19 @@ impl Device for MetalDevice {
     }
 
     fn begin_commands(&self) {
-        self.command_buffers.borrow_mut().push(self.command_queue.new_command_buffer_retained())
+        unsafe {
+            let autorelease_pool = NSAutoreleasePool::new(nil);
+            let command_buffer = self.command_queue.new_command_buffer_retained();
+            self.scopes.borrow_mut().push(Scope { autorelease_pool, command_buffer })
+        }
     }
 
     fn end_commands(&self) {
-        let command_buffer = self.command_buffers.borrow_mut().pop().unwrap();
-        command_buffer.commit();
+        let scope = self.scopes.borrow_mut().pop().unwrap();
+        scope.command_buffer.commit();
+        unsafe {
+            let () = msg_send![scope.autorelease_pool, release];
+        }
     }
 
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<MetalDevice>) {
@@ -937,8 +962,8 @@ impl Device for MetalDevice {
     fn dispatch_compute(&self,
                         size: ComputeDimensions,
                         compute_state: &ComputeState<MetalDevice>) {
-        let command_buffers = self.command_buffers.borrow();
-        let command_buffer = command_buffers.last().unwrap();
+        let scopes = self.scopes.borrow();
+        let command_buffer = &scopes.last().unwrap().command_buffer;
 
         let encoder = command_buffer.real_new_compute_command_encoder();
 
@@ -1034,10 +1059,11 @@ impl Device for MetalDevice {
             .notify_listener_at_value(&self.shared_event_listener,
                                       start_event_value,
                                       (*guard.start_block.as_ref().unwrap()).clone());
-        self.command_buffers
+        self.scopes
             .borrow_mut()
             .last()
             .unwrap()
+            .command_buffer
             .encode_signal_event(&self.timer_query_shared_event, start_event_value);
     }
 
@@ -1047,10 +1073,11 @@ impl Device for MetalDevice {
             .notify_listener_at_value(&self.shared_event_listener,
                                       guard.start_event_value + 1,
                                       (*guard.end_block.as_ref().unwrap()).clone());
-        self.command_buffers
+        self.scopes
             .borrow_mut()
             .last()
             .unwrap()
+            .command_buffer
             .encode_signal_event(&self.timer_query_shared_event, guard.start_event_value + 1);
     }
 
@@ -1110,7 +1137,12 @@ impl Device for MetalDevice {
             *captured_fence.0.mutex.lock().unwrap() = MetalFenceStatus::Resolved;
             captured_fence.0.cond.notify_all();
         });
-        self.command_buffers.borrow_mut().last().unwrap().add_completed_handler(block.copy());
+        self.scopes
+            .borrow_mut()
+            .last()
+            .unwrap()
+            .command_buffer
+            .add_completed_handler(block.copy());
         self.end_commands();
         self.begin_commands();
         fence
@@ -1334,8 +1366,8 @@ impl MetalDevice {
     }
 
     fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
-        let command_buffers = self.command_buffers.borrow();
-        let command_buffer = command_buffers.last().unwrap();
+        let scopes = self.scopes.borrow();
+        let command_buffer = &scopes.last().unwrap().command_buffer;
 
         let render_pass_descriptor = self.create_render_pass_descriptor(render_state);
 
@@ -1873,8 +1905,8 @@ impl MetalDevice {
 
     fn synchronize_texture(&self, texture: &Texture, block: RcBlock<(*mut Object,), ()>) {
         {
-            let command_buffers = self.command_buffers.borrow();
-            let command_buffer = command_buffers.last().unwrap();
+            let scopes = self.scopes.borrow();
+            let command_buffer = &scopes.last().unwrap().command_buffer;
             let encoder = command_buffer.real_new_blit_command_encoder();
             encoder.synchronize_resource(&texture);
             command_buffer.add_completed_handler(block);
@@ -1890,7 +1922,7 @@ trait DeviceExtra {
     fn create_depth_stencil_texture(&self, size: Vector2I) -> Texture;
 }
 
-impl DeviceExtra for metal::Device {
+impl DeviceExtra for NativeMetalDevice {
     fn create_depth_stencil_texture(&self, size: Vector2I) -> Texture {
         let descriptor = TextureDescriptor::new();
         descriptor.set_texture_type(MTLTextureType::D2);
@@ -1916,6 +1948,26 @@ impl MetalTexture {
     #[inline]
     pub fn metal_texture(&self) -> Texture {
         self.private_texture.clone()
+    }
+}
+
+pub trait IntoMetalDevice {
+    fn into_metal_device(self) -> NativeMetalDevice;
+}
+
+impl IntoMetalDevice for NativeMetalDevice {
+    #[inline]
+    fn into_metal_device(self) -> NativeMetalDevice {
+        self
+    }
+}
+
+impl<'a> IntoMetalDevice for &'a DeviceRef {
+    #[inline]
+    fn into_metal_device(self) -> NativeMetalDevice {
+        unsafe {
+            msg_send![self, retain]
+        }
     }
 }
 
@@ -2388,21 +2440,24 @@ impl CommandBufferExt for CommandBuffer {
     fn new_render_command_encoder_retained(&self, render_pass_descriptor: &RenderPassDescriptorRef)
                                            -> RenderCommandEncoder {
         unsafe {
-            RenderCommandEncoder::from_ptr(
+            let encoder: id =
                 msg_send![self.as_ptr(),
-                          renderCommandEncoderWithDescriptor:render_pass_descriptor.as_ptr()])
+                          renderCommandEncoderWithDescriptor:render_pass_descriptor.as_ptr()];
+            RenderCommandEncoder::from_ptr(msg_send![encoder, retain])
         }
     }
 
     fn real_new_blit_command_encoder(&self) -> BlitCommandEncoder {
         unsafe {
-            BlitCommandEncoder::from_ptr(msg_send![self.as_ptr(), blitCommandEncoder])
+            let encoder: id = msg_send![self.as_ptr(), blitCommandEncoder];
+            BlitCommandEncoder::from_ptr(msg_send![encoder, retain])
         }
     }
 
     fn real_new_compute_command_encoder(&self) -> ComputeCommandEncoder {
         unsafe {
-            ComputeCommandEncoder::from_ptr(msg_send![self.as_ptr(), computeCommandEncoder])
+            let encoder: id = msg_send![self.as_ptr(), computeCommandEncoder];
+            ComputeCommandEncoder::from_ptr(msg_send![encoder, retain])
         }
     }
 }
@@ -2415,7 +2470,8 @@ trait CommandQueueExt {
 impl CommandQueueExt for CommandQueue {
     fn new_command_buffer_retained(&self) -> CommandBuffer {
         unsafe {
-            CommandBuffer::from_ptr(msg_send![self.as_ptr(), commandBuffer])
+            let command_buffer: id = msg_send![self.as_ptr(), commandBuffer];
+            CommandBuffer::from_ptr(msg_send![command_buffer, retain])
         }
     }
 }
@@ -2567,8 +2623,8 @@ trait RenderPassDescriptorExt {
 impl RenderPassDescriptorExt for RenderPassDescriptor {
     fn new_retained() -> RenderPassDescriptor {
         unsafe {
-            RenderPassDescriptor::from_ptr(msg_send![class!(MTLRenderPassDescriptor),
-                                                     renderPassDescriptor])
+            let descriptor: id = msg_send![class!(MTLRenderPassDescriptor), renderPassDescriptor];
+            RenderPassDescriptor::from_ptr(msg_send![descriptor, retain])
         }
     }
 }

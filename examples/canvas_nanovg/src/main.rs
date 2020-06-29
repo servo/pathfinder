@@ -30,7 +30,7 @@ use pathfinder_geometry::vector::{Vector2F, vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::ResourceLoader;
@@ -1517,13 +1517,15 @@ fn main() {
     let pathfinder_device = GLDevice::new(GLVersion::GL3, default_framebuffer);
 
     // Create a Pathfinder renderer.
+    let renderer_mode = RendererMode::default_for_device(&pathfinder_device);
     let renderer_options = RendererOptions {
         background_color: Some(rgbf(0.3, 0.3, 0.32)),
-        ..RendererOptions::default_for_device(&pathfinder_device)
+        dest: DestFramebuffer::full_window(framebuffer_size),
+        ..RendererOptions::default()
     };
     let mut renderer = Renderer::new(pathfinder_device,
                                      &resources,
-                                     DestFramebuffer::full_window(framebuffer_size),
+                                     renderer_mode,
                                      renderer_options);
 
     // Initialize font state.
@@ -1568,7 +1570,7 @@ fn main() {
         // Render the canvas to screen.
         let canvas = context.into_canvas();
         let mut scene = SceneProxy::from_scene(canvas.into_scene(),
-                                               renderer.level(),
+                                               renderer.mode().level,
                                                RayonExecutor);
         scene.build_and_render(&mut renderer, BuildOptions::default());
 

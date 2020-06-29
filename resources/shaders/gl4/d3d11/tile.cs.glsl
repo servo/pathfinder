@@ -673,7 +673,6 @@ uniform sampler2D uZBuffer;
 uniform ivec2 uZBufferSize;
 uniform sampler2D uColorTexture0;
 uniform sampler2D uMaskTexture0;
-uniform sampler2D uDestTexture;
 uniform sampler2D uGammaLUT;
 uniform vec2 uColorTextureSize0;
 uniform vec2 uMaskTextureSize0;
@@ -762,10 +761,13 @@ void main(){
                                 filterParams2,
                                 ctrl);
 
+
+
+
             vec4 srcColor = calculateColor(fragCoord,
                                            uColorTexture0,
                                            uMaskTexture0,
-                                           uDestTexture,
+                                           uColorTexture0,
                                            uGammaLUT,
                                            uColorTextureSize0,
                                            uMaskTextureSize0,
