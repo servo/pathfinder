@@ -26,6 +26,7 @@ use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::Device;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererLevel};
@@ -508,6 +509,11 @@ pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
 }
 
 // `gl`
+#[no_mangle]
+pub unsafe extern "C" fn PFEmbeddedResourceLoaderCreate() -> PFResourceLoaderRef {
+    let loader = Box::new(EmbeddedResourceLoader::new());
+    Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn PFFilesystemResourceLoaderLocate() -> PFResourceLoaderRef {
