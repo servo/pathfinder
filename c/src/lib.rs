@@ -530,6 +530,10 @@ pub unsafe extern "C" fn PFFilesystemResourceLoaderFromPath(path: *const c_char)
     Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn PFResourceLoaderDestroy(loader: PFResourceLoaderRef) {
+    drop(Box::from_raw(loader))
+}
 
 // `gl`
 
@@ -556,11 +560,6 @@ pub unsafe extern "C" fn PFGLDeviceCreate(version: PFGLVersion, default_framebuf
 #[no_mangle]
 pub unsafe extern "C" fn PFGLDeviceDestroy(device: PFGLDeviceRef) {
     drop(Box::from_raw(device))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn PFResourceLoaderDestroy(loader: PFResourceLoaderRef) {
-    drop(Box::from_raw(loader))
 }
 
 // `gpu`
