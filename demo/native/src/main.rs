@@ -26,7 +26,6 @@ use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use std::cell::Cell;
 use std::collections::VecDeque;
-use std::mem;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use surfman::{SurfaceAccess, SurfaceType, declare_surfman};
@@ -34,6 +33,8 @@ use winit::{ControlFlow, ElementState, Event as WinitEvent, EventsLoop, EventsLo
 use winit::{MouseButton, VirtualKeyCode, Window as WinitWindow, WindowBuilder, WindowEvent};
 use winit::dpi::LogicalSize;
 
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use std::mem;
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use gl::types::GLuint;
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
