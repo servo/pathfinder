@@ -5,8 +5,8 @@ RUST_TARGET_DIR?=../../target
 RUST_SRC_DIR?=../../c
 RUSTFLAGS?=-C target-cpu=native
 
-CFLAGS?=-Wall -g -I../../c/build/include
-LIBS?=-lpathfinder_c
+CFLAGS?=-Wall -g $(shell pkg-config --cflags pathfinder_c sdl2)
+LIBS?=$(shell pkg-config --libs pathfinder_c sdl2)
 MKDIR?=mkdir -p
 RM?=rm
 CARGO?=cargo
@@ -35,10 +35,10 @@ all:	$(TARGET_DIR)/c_canvas_minimal
 .PHONY:	clean rustlib
 
 $(TARGET_DIR)/c_canvas_minimal:	$(OBJ_DIR)/c_canvas_minimal.o rustlib
-	$(MKDIR) $(TARGET_DIR) && $(CC) $(LDFLAGS) $(LIBS) `sdl2-config --libs` -o $@ $<
+	$(MKDIR) $(TARGET_DIR) && $(CC) $(LDFLAGS) $(LIBS) -o $@ $<
 
 $(OBJ_DIR)/%.o:	$(SRC_DIR)/%.c
-	$(MKDIR) $(OBJ_DIR) && $(CC) -c $(CFLAGS) `sdl2-config --cflags` -o $@ $<
+	$(MKDIR) $(OBJ_DIR) && $(CC) -c $(CFLAGS) -o $@ $<
 
 rustlib:
 	cd $(RUST_SRC_DIR) && RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS)

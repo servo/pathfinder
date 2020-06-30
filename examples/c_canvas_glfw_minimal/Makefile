@@ -5,8 +5,8 @@ RUST_TARGET_DIR?=../../target
 RUST_SRC_DIR?=../../c
 RUSTFLAGS?=
 
-CFLAGS?=-Wall -g -I../../c/build/include
-LIBS?=-lpathfinder_c -lglfw
+CFLAGS?=-Wall -g $(shell pkg-config --cflags pathfinder_c glfw3)
+LIBS?=$(shell pkg-config --libs pathfinder_c glfw3)
 MKDIR?=mkdir -p
 RM?=rm
 CARGO?=cargo

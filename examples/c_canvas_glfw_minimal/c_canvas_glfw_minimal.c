@@ -9,7 +9,7 @@
 // except according to those terms.
 
 #include <GLFW/glfw3.h>
-#include <pathfinder/pathfinder.h>
+#include <pathfinder_c.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
