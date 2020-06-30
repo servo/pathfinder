@@ -2,6 +2,7 @@ language: rust
 rust:
   - nightly
   - stable
+cache: cargo
 addons:
   apt:
     packages:
@@ -10,6 +11,8 @@ addons:
     - libsdl2-dev
     - cmake
 script:
+  - cargo install sccache
+  - export RUSTC_WRAPPER=sccache
   - rustup target add aarch64-unknown-linux-gnu
   - cd simd
   - cargo build --target aarch64-unknown-linux-gnu
