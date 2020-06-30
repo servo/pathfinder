@@ -9,6 +9,7 @@ addons:
     - libegl1-mesa-dev
     - libgtk-3-dev
     - libsdl2-dev
+    - libglfw3-dev
     - cmake
 script:
   - cargo install sccache
@@ -21,6 +22,10 @@ script:
   - cd ..
   - cargo build
   - cargo test
+  - cd c
+  - cargo cinstall --prefix=$TRAVIS_HOME/.fake-install
+  - cd ../examples/c_canvas_glfw_minimal
+  - PKG_CONFIG_PATH=$TRAVIS_HOME/.fake-install/lib/pkgconfig make
 env:
   global:
     - HARFBUZZ_SYS_NO_PKG_CONFIG=true
