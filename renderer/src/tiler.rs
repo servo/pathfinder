@@ -15,8 +15,8 @@ use crate::builder::{BuiltPath, BuiltPathBinCPUData, BuiltPathData, ObjectBuilde
 use crate::gpu::options::RendererLevel;
 use crate::gpu_data::AlphaTileId;
 use crate::options::PrepareMode;
-use crate::scene::PathId;
-use crate::tiles::{DrawTilingPathInfo, TILE_HEIGHT, TILE_WIDTH, TilingPathInfo};
+use crate::scene::{ClipPathId, PathId};
+use crate::tiles::{TILE_HEIGHT, TILE_WIDTH, TilingPathInfo};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{ContourIterFlags, Outline};
 use pathfinder_content::segment::Segment;
@@ -41,15 +41,14 @@ impl<'a, 'b, 'c, 'd> Tiler<'a, 'b, 'c, 'd> {
                       fill_rule: FillRule,
                       view_box: RectF,
                       prepare_mode: &PrepareMode,
+                      clip_path_id: Option<ClipPathId>,
                       built_clip_paths: &'a [BuiltPath],
                       path_info: TilingPathInfo)
                       -> Tiler<'a, 'b, 'c, 'd> {
         let bounds = outline.bounds().intersection(view_box).unwrap_or(RectF::default());
 
-        let clip_path = match path_info {
-            TilingPathInfo::Draw(DrawTilingPathInfo { clip_path_id: Some(clip_path_id), .. }) => {
-                Some(&built_clip_paths[clip_path_id.0 as usize])
-            }
+        let clip_path = match clip_path_id {
+            Some(clip_path_id) => Some(&built_clip_paths[clip_path_id.0 as usize]),
             _ => None,
         };
 
@@ -58,6 +57,7 @@ impl<'a, 'b, 'c, 'd> Tiler<'a, 'b, 'c, 'd> {
                                                 view_box,
                                                 fill_rule,
                                                 prepare_mode,
+                                                clip_path_id,
                                                 &path_info);
 
         Tiler { scene_builder, object_builder, outline, clip_path }
@@ -158,41 +158,6 @@ impl<'a, 'b, 'c, 'd> Tiler<'a, 'b, 'c, 'd> {
 
             backdrops[column] += delta;
         }
-
-        /*
-
-        // Calculate clips.
-        let built_clip_path = match self.path_info {
-            TilingPathInfo::Draw(DrawTilingPathInfo {
-                built_clip_path: Some(built_clip_path),
-                ..
-            }) => built_clip_path,
-            _ => return,
-        };
-
-        let clip_tiles = self.object_builder
-                             .built_path
-                             .clip_tiles
-                             .as_mut()
-                             .expect("Where are the clip tiles?");
-
-        for draw_tile in &mut self.object_builder.built_path.tiles.data {
-            let tile_coords = vec2i(draw_tile.tile_x as i32, draw_tile.tile_y as i32);
-            let built_clip_tile = match built_clip_path.tiles.get(tile_coords) {
-                None => {
-                    draw_tile.alpha_tile_id = AlphaTileId(!0);
-                    continue;
-                }
-                Some(built_clip_tile) => built_clip_tile,
-            };
-
-            let clip_tile = clip_tiles.get_mut(tile_coords).unwrap();
-            clip_tile.dest_tile_id = draw_tile.alpha_tile_id;
-            clip_tile.dest_backdrop = draw_tile.backdrop as i32;
-            clip_tile.src_tile_id = built_clip_tile.alpha_tile_id;
-            clip_tile.src_backdrop = built_clip_tile.backdrop as i32;
-        }
-        */
     }
 }
 

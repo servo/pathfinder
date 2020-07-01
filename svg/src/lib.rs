@@ -40,7 +40,7 @@ const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 pub struct SVGScene {
     pub scene: Scene,
     pub result_flags: BuildResultFlags,
-    pub clip_paths: HashMap<String, ClipPathId>,
+    pub clip_paths: HashMap<String, Outline>,
     gradients: HashMap<String, GradientInfo>,
 }
 
@@ -110,13 +110,12 @@ impl SVGScene {
                 }
 
                 if let Some(ref clip_path_name) = group.clip_path {
-                    if let Some(clip_path_id) = self.clip_paths.get(clip_path_name) {
-                        // TODO(pcwalton): Combine multiple clip paths if there's already one.
-                        if state.clip_path.is_some() {
-                            self.result_flags
-                                .insert(BuildResultFlags::UNSUPPORTED_MULTIPLE_CLIP_PATHS);
-                        }
-                        state.clip_path = Some(*clip_path_id);
+                    if let Some(clip_outline) = self.clip_paths.get(clip_path_name) {
+                        let mut clip_path = ClipPath::new((*clip_outline).clone());
+                        clip_path.set_clip_path(state.clip_path);
+                        clip_path.set_name(format!("ClipPath({})", clip_path_name));
+                        let clip_path_id = self.scene.push_clip_path(clip_path);
+                        state.clip_path = Some(clip_path_id);
                     }
                 }
 
@@ -187,13 +186,7 @@ impl SVGScene {
                     self.process_node(&kid, &state, &mut clip_outline);
                 }
 
-                if let Some(clip_outline) = clip_outline {
-                    // FIXME(pcwalton): Is the winding fill rule correct to use?
-                    let mut clip_path = ClipPath::new(clip_outline);
-                    clip_path.set_name(format!("ClipPath({})", node.id()));
-                    let clip_path_id = self.scene.push_clip_path(clip_path);
-                    self.clip_paths.insert(node.id().to_owned(), clip_path_id);
-                }
+                self.clip_paths.insert(node.id().to_owned(), clip_outline.unwrap());
             }
             NodeKind::Defs => {
                 // FIXME(pcwalton): This is wrong.

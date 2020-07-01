@@ -148,11 +148,6 @@ void main() {
                                                         clipTileRect,
                                                         clipTileCoord);
 
-/*
-                clipAlphaTileIndex =
-                    int(iClipTiles[clipTileIndex * 4 +
-                                   TILE_FIELD_BACKDROP_ALPHA_TILE_ID] << 8) >> 8;
-                                   */
                 int thisClipAlphaTileIndex =
                     int(iClipTiles[clipTileIndex * 4 +
                                    TILE_FIELD_BACKDROP_ALPHA_TILE_ID] << 8) >> 8;
@@ -166,8 +161,8 @@ void main() {
                         needNewAlphaTile = true;
                     } else {
                         if (drawTileBackdrop != 0) {
-                            // This is a solid draw tile, but there's a clip applied. Replace it with an
-                            // alpha tile pointing directly to the clip mask.
+                            // This is a solid draw tile, but there's a clip applied. Replace it
+                            // with an alpha tile pointing directly to the clip mask.
                             drawAlphaTileIndex = thisClipAlphaTileIndex;
                             clipAlphaTileIndex = -1;
                             needNewAlphaTile = false;
@@ -184,8 +179,6 @@ void main() {
                         // This is a blank clip tile. Cull the draw tile entirely.
                         drawTileBackdrop = 0;
                         needNewAlphaTile = false;
-                    } else {
-                        needNewAlphaTile = true;
                     }
                 }
             } else {

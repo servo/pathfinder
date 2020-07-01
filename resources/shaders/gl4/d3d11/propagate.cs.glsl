@@ -150,11 +150,6 @@ void main(){
                                                         clipTileRect,
                                                         clipTileCoord);
 
-
-
-
-
-
                 int thisClipAlphaTileIndex =
                     int(iClipTiles[clipTileIndex * 4 +
                                                                    2]<< 8)>> 8;
@@ -186,8 +181,6 @@ void main(){
 
                         drawTileBackdrop = 0;
                         needNewAlphaTile = false;
-                    } else {
-                        needNewAlphaTile = true;
                     }
                 }
             } else {
