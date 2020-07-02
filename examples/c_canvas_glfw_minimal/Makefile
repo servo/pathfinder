@@ -22,26 +22,19 @@ endif
 
 ifeq ($(DEBUG),)
 	CFLAGS+=-O2
-	LDFLAGS?=-L$(RUST_TARGET_DIR)/release
-	CARGOFLAGS?=--release
 else
 	CFLAGS+=-O0
-	LDFLAGS?=-L$(RUST_TARGET_DIR)/debug
-	CARGOFLAGS?=
 endif
 
 all:	$(TARGET_DIR)/c_canvas_glfw_minimal
 
-.PHONY:	clean rustlib
+.PHONY:	clean
 
-$(TARGET_DIR)/c_canvas_glfw_minimal:	$(OBJ_DIR)/c_canvas_glfw_minimal.o rustlib
+$(TARGET_DIR)/c_canvas_glfw_minimal:	$(OBJ_DIR)/c_canvas_glfw_minimal.o
 	$(MKDIR) $(TARGET_DIR) && $(CC) $(LDFLAGS) $(LIBS) -o $@ $<
 
 $(OBJ_DIR)/%.o:	$(SRC_DIR)/%.c
 	$(MKDIR) $(OBJ_DIR) && $(CC) -c $(CFLAGS) -o $@ $<
-
-rustlib:
-	cd $(RUST_SRC_DIR) && RUSTFLAGS="$(RUSTFLAGS)" $(CARGO) build $(CARGOFLAGS)
 
 clean:
 	$(RM) -rf $(TARGET_DIR) && $(RM) -rf $(OBJ_DIR)
