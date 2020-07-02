@@ -25,6 +25,8 @@ precision highp float;
 
 
 
+
+
 uniform int uTileCount;
 
 layout(std430, binding = 0)buffer bTiles {
@@ -62,7 +64,7 @@ void main(){
     if(globalTileIndex >= uint(uTileCount))
         return;
 
-    int zValue = iZBuffer[globalTileIndex];
+    int zValue = iZBuffer[8 + globalTileIndex];
 
     int unsortedFirstTileIndex = getFirst(globalTileIndex);
     int sortedFirstTileIndex = - 1;
