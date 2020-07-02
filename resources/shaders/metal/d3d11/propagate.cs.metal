@@ -61,7 +61,7 @@ uint calculateTileIndex(thread const uint& bufferOffset, thread const uint4& til
     return (bufferOffset + (tileCoord.y * (tileRect.z - tileRect.x))) + tileCoord.x;
 }
 
-kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirstAlphaTileIndex [[buffer(8)]], constant int2& uFramebufferTileSize [[buffer(9)]], const device bBackdrops& _59 [[buffer(1)]], const device bDrawMetadata& _85 [[buffer(2)]], const device bClipMetadata& _126 [[buffer(3)]], device bDrawTiles& _175 [[buffer(4)]], device bClipTiles& _252 [[buffer(5)]], device bIndirectDrawParams& _303 [[buffer(6)]], device bAlphaTiles& _310 [[buffer(7)]], device bZBuffer& _381 [[buffer(10)]], device bFirstTileMap& _398 [[buffer(11)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
+kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirstAlphaTileIndex [[buffer(8)]], constant int2& uFramebufferTileSize [[buffer(9)]], const device bBackdrops& _59 [[buffer(1)]], const device bDrawMetadata& _85 [[buffer(2)]], const device bClipMetadata& _126 [[buffer(3)]], device bDrawTiles& _175 [[buffer(4)]], device bClipTiles& _252 [[buffer(5)]], device bIndirectDrawParams& _302 [[buffer(6)]], device bAlphaTiles& _309 [[buffer(7)]], device bZBuffer& _380 [[buffer(10)]], device bFirstTileMap& _397 [[buffer(11)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
 {
     uint columnIndex = gl_GlobalInvocationID.x;
     if (int(columnIndex) >= uColumnCount)
@@ -144,10 +144,6 @@ kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirst
                         drawTileBackdrop = 0;
                         needNewAlphaTile = false;
                     }
-                    else
-                    {
-                        needNewAlphaTile = true;
-                    }
                 }
             }
             else
@@ -158,10 +154,10 @@ kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirst
         }
         if (needNewAlphaTile)
         {
-            uint _306 = atomic_fetch_add_explicit((device atomic_uint*)&_303.iIndirectDrawParams[4], 1u, memory_order_relaxed);
-            uint drawBatchAlphaTileIndex = _306;
-            _310.iAlphaTiles[(drawBatchAlphaTileIndex * 2u) + 0u] = drawTileIndex;
-            _310.iAlphaTiles[(drawBatchAlphaTileIndex * 2u) + 1u] = uint(clipAlphaTileIndex);
+            uint _305 = atomic_fetch_add_explicit((device atomic_uint*)&_302.iIndirectDrawParams[4], 1u, memory_order_relaxed);
+            uint drawBatchAlphaTileIndex = _305;
+            _309.iAlphaTiles[(drawBatchAlphaTileIndex * 2u) + 0u] = drawTileIndex;
+            _309.iAlphaTiles[(drawBatchAlphaTileIndex * 2u) + 1u] = uint(clipAlphaTileIndex);
             drawAlphaTileIndex = int(drawBatchAlphaTileIndex) + uFirstAlphaTileIndex;
         }
         _175.iDrawTiles[(drawTileIndex * 4u) + 2u] = (uint(drawAlphaTileIndex) & 16777215u) | (uint(drawBackdropDelta) << uint(24));
@@ -170,12 +166,12 @@ kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirst
         int tileMapIndex = (tileCoord_1.y * uFramebufferTileSize.x) + tileCoord_1.x;
         if ((zWrite && (drawTileBackdrop != 0)) && (drawAlphaTileIndex < 0))
         {
-            int _386 = atomic_fetch_max_explicit((device atomic_int*)&_381.iZBuffer[tileMapIndex], int(drawTileIndex), memory_order_relaxed);
+            int _385 = atomic_fetch_max_explicit((device atomic_int*)&_380.iZBuffer[tileMapIndex], int(drawTileIndex), memory_order_relaxed);
         }
         if ((drawTileBackdrop != 0) || (drawAlphaTileIndex >= 0))
         {
-            int _403 = atomic_exchange_explicit((device atomic_int*)&_398.iFirstTileMap[tileMapIndex], int(drawTileIndex), memory_order_relaxed);
-            int nextTileIndex = _403;
+            int _402 = atomic_exchange_explicit((device atomic_int*)&_397.iFirstTileMap[tileMapIndex], int(drawTileIndex), memory_order_relaxed);
+            int nextTileIndex = _402;
             _175.iDrawTiles[(drawTileIndex * 4u) + 0u] = uint(nextTileIndex);
         }
         currentBackdrop += drawBackdropDelta;

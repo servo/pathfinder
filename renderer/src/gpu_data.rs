@@ -179,8 +179,6 @@ pub struct SegmentIndicesD3D11 {
 #[derive(Clone, Debug)]
 pub struct ClippedPathInfo {
     /// The ID of the batch containing the clips.
-    /// 
-    /// In the current implementation, this is always 0.
     pub clip_batch_id: TileBatchId,
 
     /// The number of paths that have clips.
@@ -204,6 +202,12 @@ pub struct PathBatchIndex(pub u32);
 /// Unique ID that identifies a batch of tiles.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct TileBatchId(pub u32);
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct GlobalPathId {
+    pub batch_id: TileBatchId,
+    pub path_index: PathBatchIndex,
+}
 
 #[derive(Clone, Debug)]
 pub enum DrawTileBatch {
@@ -430,6 +434,13 @@ impl PathBatchIndex {
     #[inline]
     pub fn none() -> PathBatchIndex {
         PathBatchIndex(!0)
+    }
+}
+
+impl GlobalPathId {
+    #[inline]
+    pub fn none() -> GlobalPathId {
+        GlobalPathId { batch_id: TileBatchId(!0), path_index: PathBatchIndex(!0) }
     }
 }
 

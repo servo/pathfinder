@@ -352,6 +352,7 @@ pub struct DrawPath {
 #[derive(Clone, Debug)]
 pub struct ClipPath {
     pub outline: Outline,
+    pub clip_path: Option<ClipPathId>,
     pub fill_rule: FillRule,
     pub name: String,
 }
@@ -447,12 +448,22 @@ impl DrawPath {
 impl ClipPath {
     #[inline]
     pub fn new(outline: Outline) -> ClipPath {
-        ClipPath { outline, fill_rule: FillRule::Winding, name: String::new() }
+        ClipPath { outline, clip_path: None, fill_rule: FillRule::Winding, name: String::new() }
     }
 
     #[inline]
     pub fn outline(&self) -> &Outline {
         &self.outline
+    }
+
+    #[inline]
+    pub(crate) fn clip_path(&self) -> Option<ClipPathId> {
+        self.clip_path
+    }
+
+    #[inline]
+    pub fn set_clip_path(&mut self, new_clip_path: Option<ClipPathId>) {
+        self.clip_path = new_clip_path
     }
 
     #[inline]

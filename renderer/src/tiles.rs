@@ -31,7 +31,6 @@ pub(crate) struct DrawTilingPathInfo {
     pub(crate) paint_id: PaintId,
     pub(crate) blend_mode: BlendMode,
     pub(crate) fill_rule: FillRule,
-    pub(crate) clip_path_id: Option<ClipPathId>,
 }
 
 impl TilingPathInfo {
