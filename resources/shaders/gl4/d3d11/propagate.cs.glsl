@@ -29,6 +29,9 @@ layout(local_size_x = 64)in;
 
 
 
+
+
+
 uniform ivec2 uFramebufferTileSize;
 uniform int uColumnCount;
 uniform int uFirstAlphaTileIndex;
@@ -76,6 +79,12 @@ layout(std430, binding = 4)buffer bClipTiles {
 };
 
 layout(std430, binding = 5)buffer bZBuffer {
+
+
+
+
+
+
     restrict int iZBuffer[];
 };
 
@@ -83,16 +92,7 @@ layout(std430, binding = 6)buffer bFirstTileMap {
     restrict int iFirstTileMap[];
 };
 
-layout(std430, binding = 7)buffer bIndirectDrawParams {
-
-
-
-
-
-    restrict uint iIndirectDrawParams[];
-};
-
-layout(std430, binding = 8)buffer bAlphaTiles {
+layout(std430, binding = 7)buffer bAlphaTiles {
 
 
     restrict uint iAlphaTiles[];
@@ -191,7 +191,8 @@ void main(){
         }
 
         if(needNewAlphaTile){
-            uint drawBatchAlphaTileIndex = atomicAdd(iIndirectDrawParams[4], 1);
+            uint drawBatchAlphaTileIndex =
+                atomicAdd(iZBuffer[4], 1);
             iAlphaTiles[drawBatchAlphaTileIndex * 2 + 0]= drawTileIndex;
             iAlphaTiles[drawBatchAlphaTileIndex * 2 + 1]= clipAlphaTileIndex;
             drawAlphaTileIndex = int(drawBatchAlphaTileIndex)+ uFirstAlphaTileIndex;
@@ -206,7 +207,7 @@ void main(){
         ivec2 tileCoord = ivec2(tileX, tileY)+ ivec2(drawTileRect . xy);
         int tileMapIndex = tileCoord . y * uFramebufferTileSize . x + tileCoord . x;
         if(zWrite && drawTileBackdrop != 0 && drawAlphaTileIndex < 0)
-            atomicMax(iZBuffer[tileMapIndex], int(drawTileIndex));
+            atomicMax(iZBuffer[tileMapIndex + 8], int(drawTileIndex));
 
 
         if(drawTileBackdrop != 0 || drawAlphaTileIndex >= 0){

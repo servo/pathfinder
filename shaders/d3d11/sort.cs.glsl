@@ -23,6 +23,8 @@ precision highp sampler2D;
 #define TILE_FIELD_BACKDROP_ALPHA_TILE_ID   2
 #define TILE_FIELD_CONTROL                  3
 
+#define FILL_INDIRECT_DRAW_PARAMS_SIZE      8
+
 uniform int uTileCount;
 
 layout(std430, binding = 0) buffer bTiles {
@@ -60,7 +62,7 @@ void main() {
     if (globalTileIndex >= uint(uTileCount))
         return;
 
-    int zValue = iZBuffer[globalTileIndex];
+    int zValue = iZBuffer[FILL_INDIRECT_DRAW_PARAMS_SIZE + globalTileIndex];
 
     int unsortedFirstTileIndex = getFirst(globalTileIndex);
     int sortedFirstTileIndex = -1;

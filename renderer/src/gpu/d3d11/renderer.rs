@@ -29,6 +29,7 @@ use vec_map::VecMap;
 
 const FILL_INDIRECT_DRAW_PARAMS_INSTANCE_COUNT_INDEX:   usize = 1;
 const FILL_INDIRECT_DRAW_PARAMS_ALPHA_TILE_COUNT_INDEX: usize = 4;
+const FILL_INDIRECT_DRAW_PARAMS_SIZE:                   usize = 8;
 
 const BIN_INDIRECT_DRAW_PARAMS_MICROLINE_COUNT_INDEX:   usize = 3;
 
@@ -146,7 +147,8 @@ impl<D> RendererD3D11<D> where D: Device {
                     core: &mut RendererCore<D>,
                     microlines_storage: &MicrolinesBufferIDsD3D11,
                     propagate_metadata_buffer_ids: &PropagateMetadataBufferIDsD3D11,
-                    tiles_d3d11_buffer_id: BufferID)
+                    tiles_d3d11_buffer_id: BufferID,
+                    z_buffer_id: BufferID)
                     -> Option<FillBufferInfoD3D11> {
         let bin_program = &self.programs.bin_program;
 
@@ -154,10 +156,6 @@ impl<D> RendererD3D11<D> where D: Device {
             core.allocator.allocate_buffer::<Fill>(&core.device,
                                                    self.allocated_fill_count as u64,
                                                    BufferTag("Fill"));
-        let fill_indirect_draw_params_buffer_id =
-            core.allocator.allocate_buffer::<u32>(&core.device,
-                                                  8,
-                                                  BufferTag("FillIndirectDrawParamsD3D11"));
 
         let fill_vertex_buffer = core.allocator.get_buffer(fill_vertex_buffer_id);
         let microlines_buffer = core.allocator.get_buffer(microlines_storage.buffer_id);
@@ -166,10 +164,13 @@ impl<D> RendererD3D11<D> where D: Device {
             core.allocator.get_buffer(propagate_metadata_buffer_ids.propagate_metadata);
         let backdrops_buffer = core.allocator.get_buffer(propagate_metadata_buffer_ids.backdrops);
 
-        let fill_indirect_draw_params_buffer =
-            core.allocator.get_buffer(fill_indirect_draw_params_buffer_id);
+        // Upload fill indirect draw params to header of the Z-buffer.
+        //
+        // This is in the Z-buffer, not its own buffer, to work around the 8 SSBO limitation on
+        // some drivers (#373).
+        let z_buffer = core.allocator.get_buffer(z_buffer_id);
         let indirect_draw_params = [6, 0, 0, 0, 0, microlines_storage.count, 0, 0];
-        core.device.upload_to_buffer::<u32>(&fill_indirect_draw_params_buffer,
+        core.device.upload_to_buffer::<u32>(&z_buffer,
                                             0,
                                             &indirect_draw_params,
                                             BufferTarget::Storage);
@@ -196,8 +197,7 @@ impl<D> RendererD3D11<D> where D: Device {
             storage_buffers: &[
                 (&bin_program.microlines_storage_buffer, microlines_buffer),
                 (&bin_program.metadata_storage_buffer, propagate_metadata_buffer),
-                (&bin_program.indirect_draw_params_storage_buffer,
-                 fill_indirect_draw_params_buffer),
+                (&bin_program.indirect_draw_params_storage_buffer, z_buffer),
                 (&bin_program.fills_storage_buffer, fill_vertex_buffer),
                 (&bin_program.tiles_storage_buffer, tiles_buffer),
                 (&bin_program.backdrops_storage_buffer, backdrops_buffer),
@@ -208,10 +208,9 @@ impl<D> RendererD3D11<D> where D: Device {
         core.finish_timing_draw_call(&timer_query);
         core.current_timer.as_mut().unwrap().push_query(TimeCategory::Bin, timer_query);
 
-        let indirect_draw_params_receiver =
-            core.device.read_buffer(fill_indirect_draw_params_buffer,
-                                    BufferTarget::Storage,
-                                    0..32);
+        let indirect_draw_params_receiver = core.device.read_buffer(z_buffer,
+                                                                    BufferTarget::Storage,
+                                                                    0..32);
         let indirect_draw_params = core.device.recv_buffer(&indirect_draw_params_receiver);
         let indirect_draw_params: &[u32] = indirect_draw_params.as_slice_of().unwrap();
 
@@ -224,7 +223,7 @@ impl<D> RendererD3D11<D> where D: Device {
 
         core.stats.fill_count += needed_fill_count as usize;
 
-        Some(FillBufferInfoD3D11 { fill_vertex_buffer_id, fill_indirect_draw_params_buffer_id })
+        Some(FillBufferInfoD3D11 { fill_vertex_buffer_id })
     }
 
     pub(crate) fn upload_scene(&mut self,
@@ -355,10 +354,7 @@ impl<D> RendererD3D11<D> where D: Device {
                   tiles_d3d11_buffer_id: BufferID,
                   alpha_tiles_buffer_id: BufferID,
                   propagate_tiles_info: &PropagateTilesInfoD3D11) {
-        let &FillBufferInfoD3D11 {
-            fill_vertex_buffer_id,
-            fill_indirect_draw_params_buffer_id: _,
-        } = fill_storage_info;
+        let &FillBufferInfoD3D11 { fill_vertex_buffer_id } = fill_storage_info;
         let &PropagateTilesInfoD3D11 { ref alpha_tile_range } = propagate_tiles_info;
 
         let fill_program = &self.programs.fill_program;
@@ -486,7 +482,8 @@ impl<D> RendererD3D11<D> where D: Device {
             fill_buffer_info = self.bin_segments(core,
                                                  &microlines_storage,
                                                  &propagate_metadata_buffer_ids,
-                                                 tiles_d3d11_buffer_id);
+                                                 tiles_d3d11_buffer_id,
+                                                 z_buffer_id);
             if fill_buffer_info.is_some() {
                 break;
             }
@@ -505,7 +502,6 @@ impl<D> RendererD3D11<D> where D: Device {
             self.propagate_tiles(core,
                                  batch.prepare_info.backdrops.len() as u32,
                                  tiles_d3d11_buffer_id,
-                                 fill_buffer_info.fill_indirect_draw_params_buffer_id,
                                  z_buffer_id,
                                  first_tile_map_buffer_id,
                                  alpha_tiles_buffer_id,
@@ -523,7 +519,6 @@ impl<D> RendererD3D11<D> where D: Device {
                         &propagate_tiles_info);
 
         core.allocator.free_buffer(fill_buffer_info.fill_vertex_buffer_id);
-        core.allocator.free_buffer(fill_buffer_info.fill_indirect_draw_params_buffer_id);
         core.allocator.free_buffer(alpha_tiles_buffer_id);
 
         // FIXME(pcwalton): This seems like the wrong place to do this...
@@ -543,7 +538,6 @@ impl<D> RendererD3D11<D> where D: Device {
                        core: &mut RendererCore<D>,
                        column_count: u32,
                        tiles_d3d11_buffer_id: BufferID,
-                       fill_indirect_draw_params_buffer_id: BufferID,
                        z_buffer_id: BufferID,
                        first_tile_map_buffer_id: BufferID,
                        alpha_tiles_buffer_id: BufferID,
@@ -572,8 +566,6 @@ impl<D> RendererD3D11<D> where D: Device {
                                                        BufferTarget::Storage);
 
         let alpha_tiles_storage_buffer = core.allocator.get_buffer(alpha_tiles_buffer_id);
-        let fill_indirect_draw_params_buffer =
-            core.allocator.get_buffer(fill_indirect_draw_params_buffer_id);
 
         let mut storage_buffers = vec![
             (&propagate_program.draw_metadata_storage_buffer, propagate_metadata_storage_buffer),
@@ -581,8 +573,6 @@ impl<D> RendererD3D11<D> where D: Device {
             (&propagate_program.draw_tiles_storage_buffer, tiles_d3d11_buffer),
             (&propagate_program.z_buffer_storage_buffer, z_buffer),
             (&propagate_program.first_tile_map_storage_buffer, first_tile_map_storage_buffer),
-            (&propagate_program.indirect_draw_params_storage_buffer,
-             fill_indirect_draw_params_buffer),
             (&propagate_program.alpha_tiles_storage_buffer, alpha_tiles_storage_buffer),
         ];
 
@@ -633,9 +623,7 @@ impl<D> RendererD3D11<D> where D: Device {
         core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
 
         let fill_indirect_draw_params_receiver =
-            core.device.read_buffer(&fill_indirect_draw_params_buffer,
-                                    BufferTarget::Storage,
-                                    0..32);
+            core.device.read_buffer(&z_buffer, BufferTarget::Storage, 0..32);
         let fill_indirect_draw_params = core.device
                                             .recv_buffer(&fill_indirect_draw_params_receiver);
         let fill_indirect_draw_params: &[u32] = fill_indirect_draw_params.as_slice_of().unwrap();
@@ -703,9 +691,10 @@ impl<D> RendererD3D11<D> where D: Device {
     }
 
     fn allocate_z_buffer(&mut self, core: &mut RendererCore<D>) -> BufferID {
-        core.allocator.allocate_buffer::<i32>(&core.device,
-                                              core.tile_size().area() as u64,
-                                              BufferTag("ZBufferD3D11"))
+        // This includes the fill indirect draw params because some drivers limit the number of
+        // SSBOs to 8 (#373).
+        let size = core.tile_size().area() as u64 + FILL_INDIRECT_DRAW_PARAMS_SIZE as u64;
+        core.allocator.allocate_buffer::<i32>( &core.device, size, BufferTag("ZBufferD3D11"))
     }
 
     pub(crate) fn draw_tiles(&mut self,
@@ -808,7 +797,6 @@ struct TileBatchInfoD3D11 {
 #[derive(Clone)]
 struct FillBufferInfoD3D11 {
     fill_vertex_buffer_id: BufferID,
-    fill_indirect_draw_params_buffer_id: BufferID,
 }
 
 #[derive(Debug)]

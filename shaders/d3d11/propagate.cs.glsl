@@ -27,6 +27,9 @@ layout(local_size_x = 64) in;
 #define TILE_FIELD_BACKDROP_ALPHA_TILE_ID   2
 #define TILE_FIELD_CONTROL                  3
 
+#define FILL_INDIRECT_DRAW_PARAMS_ALPHA_TILE_COUNT_INDEX    4
+#define FILL_INDIRECT_DRAW_PARAMS_SIZE                      8
+
 uniform ivec2 uFramebufferTileSize;
 uniform int uColumnCount;
 uniform int uFirstAlphaTileIndex;
@@ -74,6 +77,12 @@ layout(std430, binding = 4) buffer bClipTiles {
 };
 
 layout(std430, binding = 5) buffer bZBuffer {
+    // [0]: vertexCount (6)
+    // [1]: instanceCount (of fills)
+    // [2]: vertexStart (0)
+    // [3]: baseInstance (0)
+    // [4]: alpha tile count
+    // [8..]: z-buffer
     restrict int iZBuffer[];
 };
 
@@ -81,16 +90,7 @@ layout(std430, binding = 6) buffer bFirstTileMap {
     restrict int iFirstTileMap[];
 };
 
-layout(std430, binding = 7) buffer bIndirectDrawParams {
-    // [0]: vertexCount (6)
-    // [1]: instanceCount (of fills)
-    // [2]: vertexStart (0)
-    // [3]: baseInstance (0)
-    // [4]: alpha tile count
-    restrict uint iIndirectDrawParams[];
-};
-
-layout(std430, binding = 8) buffer bAlphaTiles {
+layout(std430, binding = 7) buffer bAlphaTiles {
     // [0]: alpha tile index
     // [1]: clip tile index
     restrict uint iAlphaTiles[];
@@ -189,7 +189,8 @@ void main() {
         }
 
         if (needNewAlphaTile) {
-            uint drawBatchAlphaTileIndex = atomicAdd(iIndirectDrawParams[4], 1);
+            uint drawBatchAlphaTileIndex =
+                atomicAdd(iZBuffer[FILL_INDIRECT_DRAW_PARAMS_ALPHA_TILE_COUNT_INDEX], 1);
             iAlphaTiles[drawBatchAlphaTileIndex * 2 + 0] = drawTileIndex;
             iAlphaTiles[drawBatchAlphaTileIndex * 2 + 1] = clipAlphaTileIndex;
             drawAlphaTileIndex = int(drawBatchAlphaTileIndex) + uFirstAlphaTileIndex;
@@ -204,7 +205,7 @@ void main() {
         ivec2 tileCoord = ivec2(tileX, tileY) + ivec2(drawTileRect.xy);
         int tileMapIndex = tileCoord.y * uFramebufferTileSize.x + tileCoord.x;
         if (zWrite && drawTileBackdrop != 0 && drawAlphaTileIndex < 0)
-            atomicMax(iZBuffer[tileMapIndex], int(drawTileIndex));
+            atomicMax(iZBuffer[tileMapIndex + FILL_INDIRECT_DRAW_PARAMS_SIZE], int(drawTileIndex));
 
         // Stitch into the linked list if necessary.
         if (drawTileBackdrop != 0 || drawAlphaTileIndex >= 0) {

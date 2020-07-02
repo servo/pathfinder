@@ -48,7 +48,7 @@ kernel void main0(constant int& uTileCount [[buffer(2)]], device bFirstTileMap& 
     {
         return;
     }
-    int zValue = _76.iZBuffer[globalTileIndex];
+    int zValue = _76.iZBuffer[8u + globalTileIndex];
     uint param = globalTileIndex;
     int unsortedFirstTileIndex = getFirst(param, v_26);
     int sortedFirstTileIndex = -1;

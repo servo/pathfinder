@@ -55,7 +55,6 @@ pub struct PropagateProgramD3D11<D> where D: Device {
     pub clip_tiles_storage_buffer: D::StorageBuffer,
     pub z_buffer_storage_buffer: D::StorageBuffer,
     pub first_tile_map_storage_buffer: D::StorageBuffer,
-    pub indirect_draw_params_storage_buffer: D::StorageBuffer,
     pub alpha_tiles_storage_buffer: D::StorageBuffer,
 }
 
@@ -75,9 +74,7 @@ impl<D> PropagateProgramD3D11<D> where D: Device {
         let clip_tiles_storage_buffer = device.get_storage_buffer(&program, "ClipTiles", 4);
         let z_buffer_storage_buffer = device.get_storage_buffer(&program, "ZBuffer", 5);
         let first_tile_map_storage_buffer = device.get_storage_buffer(&program, "FirstTileMap", 6);
-        let indirect_draw_params_storage_buffer =
-            device.get_storage_buffer(&program, "IndirectDrawParams", 7);
-        let alpha_tiles_storage_buffer = device.get_storage_buffer(&program, "AlphaTiles", 8);
+        let alpha_tiles_storage_buffer = device.get_storage_buffer(&program, "AlphaTiles", 7);
 
         PropagateProgramD3D11 {
             program,
@@ -91,7 +88,6 @@ impl<D> PropagateProgramD3D11<D> where D: Device {
             clip_tiles_storage_buffer,
             z_buffer_storage_buffer,
             first_tile_map_storage_buffer,
-            indirect_draw_params_storage_buffer,
             alpha_tiles_storage_buffer,
         }
     }
