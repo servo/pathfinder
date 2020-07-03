@@ -13,6 +13,8 @@
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
 use crate::gpu::options::RendererLevel;
+use crate::gpu::renderer::Renderer;
+use crate::gpu_data::RenderCommand;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{MergedPaletteInfo, Paint, PaintId, PaintInfo, Palette};
@@ -23,8 +25,11 @@ use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::{Vector2I, vec2f};
+use pathfinder_gpu::Device;
+use std::mem;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::u64;
 
 static NEXT_SCENE_ID: AtomicUsize = AtomicUsize::new(0);
@@ -288,6 +293,37 @@ impl Scene {
     #[inline]
     pub fn epoch(&self) -> SceneEpoch {
         self.epoch
+    }
+
+    /// A convenience method to build a scene and accumulate commands into a vector.
+    pub fn build_into_vector<D, E>(&mut self,
+                                   renderer: &mut Renderer<D>,
+                                   build_options: BuildOptions,
+                                   executor: E)
+                                   -> Vec<RenderCommand>
+                                   where D: Device, E: Executor {
+        let commands = Arc::new(Mutex::new(vec![]));
+        let commands_for_listener = commands.clone();
+        let listener = RenderCommandListener::new(Box::new(move |command| {
+            commands_for_listener.lock().unwrap().push(command)
+        }));
+        let mut sink = SceneSink::new(listener, renderer.mode().level);
+        self.build(build_options, &mut sink, &executor);
+        let mut commands = commands.lock().unwrap();
+        mem::replace(&mut *commands, vec![])
+    }
+
+    /// A convenience method to build a scene and send the resulting commands to the given
+    /// renderer.
+    pub fn build_and_render<D, E>(&mut self,
+                                  renderer: &mut Renderer<D>,
+                                  build_options: BuildOptions,
+                                  executor: E)
+                                  where D: Device, E: Executor {
+        let commands = self.build_into_vector(renderer, build_options, executor);
+        renderer.begin_scene();
+        commands.into_iter().for_each(|command| renderer.render_command(&command));
+        renderer.end_scene();
     }
 }
 

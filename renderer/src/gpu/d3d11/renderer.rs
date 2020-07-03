@@ -19,7 +19,7 @@ use crate::gpu_data::{TileBatchTexture, TilePathInfoD3D11};
 use byte_slice_cast::AsSliceOf;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::vector::Vector2F;
-use pathfinder_gpu::allocator::{BufferID, BufferTag, GPUMemoryAllocator};
+use pathfinder_gpu::allocator::{BufferTag, GeneralBufferID, GPUMemoryAllocator};
 use pathfinder_gpu::{BufferTarget, ComputeDimensions, ComputeState, Device, ImageAccess};
 use pathfinder_gpu::{RenderTarget, UniformData};
 use pathfinder_resources::ResourceLoader;
@@ -62,22 +62,23 @@ impl<D> RendererD3D11<D> where D: Device {
 
     fn bound(&mut self,
              core: &mut RendererCore<D>,
-             tiles_d3d11_buffer_id: BufferID,
+             tiles_d3d11_buffer_id: GeneralBufferID,
              tile_count: u32,
              tile_path_info: &[TilePathInfoD3D11]) {
         let bound_program = &self.programs.bound_program;
 
         let path_info_buffer_id =
-            core.allocator.allocate_buffer::<TilePathInfoD3D11>(&core.device,
-                                                                tile_path_info.len() as u64,
-                                                                BufferTag("TilePathInfoD3D11"));
-        let tile_path_info_buffer = core.allocator.get_buffer(path_info_buffer_id);
+            core.allocator
+                .allocate_general_buffer::<TilePathInfoD3D11>(&core.device,
+                                                              tile_path_info.len() as u64,
+                                                              BufferTag("TilePathInfoD3D11"));
+        let tile_path_info_buffer = core.allocator.get_general_buffer(path_info_buffer_id);
         core.device.upload_to_buffer(tile_path_info_buffer,
                                      0,
                                      tile_path_info,
                                      BufferTarget::Storage);
 
-        let tiles_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
+        let tiles_buffer = core.allocator.get_general_buffer(tiles_d3d11_buffer_id);
 
         let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
                                                                         &core.options);
@@ -105,7 +106,7 @@ impl<D> RendererD3D11<D> where D: Device {
         core.finish_timing_draw_call(&timer_query);
         core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
 
-        core.allocator.free_buffer(path_info_buffer_id);
+        core.allocator.free_general_buffer(path_info_buffer_id);
     }
 
     fn upload_propagate_metadata(&mut self,
@@ -114,20 +115,21 @@ impl<D> RendererD3D11<D> where D: Device {
                                  backdrops: &[BackdropInfoD3D11])
                                  -> PropagateMetadataBufferIDsD3D11 {
         let propagate_metadata_storage_id =
-            core.allocator
-                .allocate_buffer::<PropagateMetadataD3D11>(&core.device,
-                                                           propagate_metadata.len() as u64,
-                                                           BufferTag("PropagateMetadataD3D11"));
-        let propagate_metadata_buffer = core.allocator.get_buffer(propagate_metadata_storage_id);
+            core.allocator.allocate_general_buffer::<PropagateMetadataD3D11>(
+                &core.device,
+                propagate_metadata.len() as u64,
+                BufferTag("PropagateMetadataD3D11"));
+        let propagate_metadata_buffer =
+            core.allocator.get_general_buffer(propagate_metadata_storage_id);
         core.device.upload_to_buffer(propagate_metadata_buffer,
                                      0,
                                      propagate_metadata,
                                      BufferTarget::Storage);
 
-        let backdrops_storage_id =
-            core.allocator.allocate_buffer::<BackdropInfoD3D11>(&core.device,
-                                                                backdrops.len() as u64,
-                                                                BufferTag("BackdropInfoD3D11"));
+        let backdrops_storage_id = core.allocator.allocate_general_buffer::<BackdropInfoD3D11>(
+            &core.device,
+            backdrops.len() as u64,
+            BufferTag("BackdropInfoD3D11"));
 
         PropagateMetadataBufferIDsD3D11 {
              propagate_metadata: propagate_metadata_storage_id,
@@ -137,9 +139,9 @@ impl<D> RendererD3D11<D> where D: Device {
 
     fn upload_initial_backdrops(&self,
                                 core: &RendererCore<D>,
-                                backdrops_buffer_id: BufferID,
+                                backdrops_buffer_id: GeneralBufferID,
                                 backdrops: &[BackdropInfoD3D11]) {
-        let backdrops_buffer = core.allocator.get_buffer(backdrops_buffer_id);
+        let backdrops_buffer = core.allocator.get_general_buffer(backdrops_buffer_id);
         core.device.upload_to_buffer(backdrops_buffer, 0, backdrops, BufferTarget::Storage);
     }
 
@@ -147,28 +149,29 @@ impl<D> RendererD3D11<D> where D: Device {
                     core: &mut RendererCore<D>,
                     microlines_storage: &MicrolinesBufferIDsD3D11,
                     propagate_metadata_buffer_ids: &PropagateMetadataBufferIDsD3D11,
-                    tiles_d3d11_buffer_id: BufferID,
-                    z_buffer_id: BufferID)
+                    tiles_d3d11_buffer_id: GeneralBufferID,
+                    z_buffer_id: GeneralBufferID)
                     -> Option<FillBufferInfoD3D11> {
         let bin_program = &self.programs.bin_program;
 
         let fill_vertex_buffer_id =
-            core.allocator.allocate_buffer::<Fill>(&core.device,
-                                                   self.allocated_fill_count as u64,
-                                                   BufferTag("Fill"));
+            core.allocator.allocate_general_buffer::<Fill>(&core.device,
+                                                           self.allocated_fill_count as u64,
+                                                           BufferTag("Fill"));
 
-        let fill_vertex_buffer = core.allocator.get_buffer(fill_vertex_buffer_id);
-        let microlines_buffer = core.allocator.get_buffer(microlines_storage.buffer_id);
-        let tiles_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
+        let fill_vertex_buffer = core.allocator.get_general_buffer(fill_vertex_buffer_id);
+        let microlines_buffer = core.allocator.get_general_buffer(microlines_storage.buffer_id);
+        let tiles_buffer = core.allocator.get_general_buffer(tiles_d3d11_buffer_id);
         let propagate_metadata_buffer =
-            core.allocator.get_buffer(propagate_metadata_buffer_ids.propagate_metadata);
-        let backdrops_buffer = core.allocator.get_buffer(propagate_metadata_buffer_ids.backdrops);
+            core.allocator.get_general_buffer(propagate_metadata_buffer_ids.propagate_metadata);
+        let backdrops_buffer =
+            core.allocator.get_general_buffer(propagate_metadata_buffer_ids.backdrops);
 
         // Upload fill indirect draw params to header of the Z-buffer.
         //
         // This is in the Z-buffer, not its own buffer, to work around the 8 SSBO limitation on
         // some drivers (#373).
-        let z_buffer = core.allocator.get_buffer(z_buffer_id);
+        let z_buffer = core.allocator.get_general_buffer(z_buffer_id);
         let indirect_draw_params = [6, 0, 0, 0, 0, microlines_storage.count, 0, 0];
         core.device.upload_to_buffer::<u32>(&z_buffer,
                                             0,
@@ -233,10 +236,10 @@ impl<D> RendererD3D11<D> where D: Device {
         self.scene_buffers.upload(&mut core.allocator, &core.device, draw_segments, clip_segments);
     }
 
-    fn allocate_tiles(&mut self, core: &mut RendererCore<D>, tile_count: u32) -> BufferID {
-        core.allocator.allocate_buffer::<TileD3D11>(&core.device,
-                                                    tile_count as u64,
-                                                    BufferTag("TileD3D11"))
+    fn allocate_tiles(&mut self, core: &mut RendererCore<D>, tile_count: u32) -> GeneralBufferID {
+        core.allocator.allocate_general_buffer::<TileD3D11>(&core.device,
+                                                            tile_count as u64,
+                                                            BufferTag("TileD3D11"))
     }
 
     fn dice_segments(&mut self,
@@ -248,23 +251,24 @@ impl<D> RendererD3D11<D> where D: Device {
                      -> Option<MicrolinesBufferIDsD3D11> {
         let dice_program = &self.programs.dice_program;
 
-        let microlines_buffer_id =
-            core.allocator.allocate_buffer::<MicrolineD3D11>(&core.device,
-                                                             self.allocated_microline_count as u64,
-                                                             BufferTag("MicrolineD3D11"));
-        let dice_metadata_buffer_id =
-            core.allocator.allocate_buffer::<DiceMetadataD3D11>(&core.device,
-                                                                dice_metadata.len() as u64,
-                                                                BufferTag("DiceMetadataD3D11"));
-        let dice_indirect_draw_params_buffer_id =
-            core.allocator.allocate_buffer::<u32>(&core.device,
-                                                  8,
-                                                  BufferTag("DiceIndirectDrawParamsD3D11"));
+        let microlines_buffer_id = core.allocator.allocate_general_buffer::<MicrolineD3D11>(
+            &core.device,
+            self.allocated_microline_count as u64,
+            BufferTag("MicrolineD3D11"));
+        let dice_metadata_buffer_id = core.allocator.allocate_general_buffer::<DiceMetadataD3D11>(
+            &core.device,
+            dice_metadata.len() as u64,
+            BufferTag("DiceMetadataD3D11"));
+        let dice_indirect_draw_params_buffer_id = core.allocator.allocate_general_buffer::<u32>(
+            &core.device,
+            8,
+            BufferTag("DiceIndirectDrawParamsD3D11"));
 
-        let microlines_buffer = core.allocator.get_buffer(microlines_buffer_id);
-        let dice_metadata_storage_buffer = core.allocator.get_buffer(dice_metadata_buffer_id);
+        let microlines_buffer = core.allocator.get_general_buffer(microlines_buffer_id);
+        let dice_metadata_storage_buffer =
+            core.allocator.get_general_buffer(dice_metadata_buffer_id);
         let dice_indirect_draw_params_buffer =
-            core.allocator.get_buffer(dice_indirect_draw_params_buffer_id);
+            core.allocator.get_general_buffer(dice_indirect_draw_params_buffer_id);
 
         let scene_buffers = &self.scene_buffers;
         let scene_source_buffers = match path_source {
@@ -278,11 +282,10 @@ impl<D> RendererD3D11<D> where D: Device {
             ..
         } = *scene_source_buffers;
 
-        let points_buffer =
-            core.allocator.get_buffer(points_buffer_id.expect("Where's the points buffer?"));
-        let point_indices_buffer =
-            core.allocator
-                .get_buffer(point_indices_buffer_id.expect("Where's the point indices buffer?"));
+        let points_buffer = core.allocator.get_general_buffer(
+            points_buffer_id.expect("Where's the points buffer?"));
+        let point_indices_buffer = core.allocator.get_general_buffer(
+            point_indices_buffer_id.expect("Where's the point indices buffer?"));
 
         core.device.upload_to_buffer(dice_indirect_draw_params_buffer,
                                      0,
@@ -335,8 +338,8 @@ impl<D> RendererD3D11<D> where D: Device {
         let indirect_compute_params = core.device.recv_buffer(&indirect_compute_params_receiver);
         let indirect_compute_params: &[u32] = indirect_compute_params.as_slice_of().unwrap();
 
-        core.allocator.free_buffer(dice_metadata_buffer_id);
-        core.allocator.free_buffer(dice_indirect_draw_params_buffer_id);
+        core.allocator.free_general_buffer(dice_metadata_buffer_id);
+        core.allocator.free_general_buffer(dice_indirect_draw_params_buffer_id);
 
         let microline_count =
             indirect_compute_params[BIN_INDIRECT_DRAW_PARAMS_MICROLINE_COUNT_INDEX];
@@ -351,22 +354,22 @@ impl<D> RendererD3D11<D> where D: Device {
     fn draw_fills(&mut self,
                   core: &mut RendererCore<D>,
                   fill_storage_info: &FillBufferInfoD3D11,
-                  tiles_d3d11_buffer_id: BufferID,
-                  alpha_tiles_buffer_id: BufferID,
+                  tiles_d3d11_buffer_id: GeneralBufferID,
+                  alpha_tiles_buffer_id: GeneralBufferID,
                   propagate_tiles_info: &PropagateTilesInfoD3D11) {
         let &FillBufferInfoD3D11 { fill_vertex_buffer_id } = fill_storage_info;
         let &PropagateTilesInfoD3D11 { ref alpha_tile_range } = propagate_tiles_info;
 
         let fill_program = &self.programs.fill_program;
-        let fill_vertex_buffer = core.allocator.get_buffer(fill_vertex_buffer_id);
+        let fill_vertex_buffer = core.allocator.get_general_buffer(fill_vertex_buffer_id);
 
         let mask_storage = core.mask_storage.as_ref().expect("Where's the mask storage?");
         let mask_framebuffer_id = mask_storage.framebuffer_id;
         let mask_framebuffer = core.allocator.get_framebuffer(mask_framebuffer_id);
         let image_texture = core.device.framebuffer_texture(mask_framebuffer);
 
-        let tiles_d3d11_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
-        let alpha_tiles_buffer = core.allocator.get_buffer(alpha_tiles_buffer_id);
+        let tiles_d3d11_buffer = core.allocator.get_general_buffer(tiles_d3d11_buffer_id);
+        let alpha_tiles_buffer = core.allocator.get_general_buffer(alpha_tiles_buffer_id);
 
         let area_lut_texture = core.allocator.get_texture(core.area_lut_texture_id);
 
@@ -491,7 +494,7 @@ impl<D> RendererD3D11<D> where D: Device {
         let fill_buffer_info =
             fill_buffer_info.expect("Ran out of space for fills when binning!");
 
-        core.allocator.free_buffer(microlines_storage.buffer_id);
+        core.allocator.free_general_buffer(microlines_storage.buffer_id);
 
         // TODO(pcwalton): If we run out of space for alpha tile indices, propagate
         // multiple times.
@@ -508,7 +511,7 @@ impl<D> RendererD3D11<D> where D: Device {
                                  &propagate_metadata_buffer_ids,
                                  clip_buffer_ids.as_ref());
 
-        core.allocator.free_buffer(propagate_metadata_buffer_ids.backdrops);
+        core.allocator.free_general_buffer(propagate_metadata_buffer_ids.backdrops);
 
         // FIXME(pcwalton): Don't unconditionally pass true for copying here.
         core.reallocate_alpha_tile_pages_if_necessary(true);
@@ -518,8 +521,8 @@ impl<D> RendererD3D11<D> where D: Device {
                         alpha_tiles_buffer_id,
                         &propagate_tiles_info);
 
-        core.allocator.free_buffer(fill_buffer_info.fill_vertex_buffer_id);
-        core.allocator.free_buffer(alpha_tiles_buffer_id);
+        core.allocator.free_general_buffer(fill_buffer_info.fill_vertex_buffer_id);
+        core.allocator.free_general_buffer(alpha_tiles_buffer_id);
 
         // FIXME(pcwalton): This seems like the wrong place to do this...
         self.sort_tiles(core, tiles_d3d11_buffer_id, first_tile_map_buffer_id, z_buffer_id);
@@ -537,35 +540,36 @@ impl<D> RendererD3D11<D> where D: Device {
     fn propagate_tiles(&mut self,
                        core: &mut RendererCore<D>,
                        column_count: u32,
-                       tiles_d3d11_buffer_id: BufferID,
-                       z_buffer_id: BufferID,
-                       first_tile_map_buffer_id: BufferID,
-                       alpha_tiles_buffer_id: BufferID,
+                       tiles_d3d11_buffer_id: GeneralBufferID,
+                       z_buffer_id: GeneralBufferID,
+                       first_tile_map_buffer_id: GeneralBufferID,
+                       alpha_tiles_buffer_id: GeneralBufferID,
                        propagate_metadata_buffer_ids: &PropagateMetadataBufferIDsD3D11,
                        clip_buffer_ids: Option<&ClipBufferIDs>)
                        -> PropagateTilesInfoD3D11 {
         let propagate_program = &self.programs.propagate_program;
 
-        let tiles_d3d11_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
+        let tiles_d3d11_buffer = core.allocator.get_general_buffer(tiles_d3d11_buffer_id);
         let propagate_metadata_storage_buffer =
-            core.allocator.get_buffer(propagate_metadata_buffer_ids.propagate_metadata);
+            core.allocator.get_general_buffer(propagate_metadata_buffer_ids.propagate_metadata);
         let backdrops_storage_buffer =
-            core.allocator.get_buffer(propagate_metadata_buffer_ids.backdrops);
+            core.allocator.get_general_buffer(propagate_metadata_buffer_ids.backdrops);
 
         // TODO(pcwalton): Zero out the Z-buffer on GPU?
-        let z_buffer = core.allocator.get_buffer(z_buffer_id);
+        let z_buffer = core.allocator.get_general_buffer(z_buffer_id);
         let z_buffer_size = core.tile_size();
         let tile_area = z_buffer_size.area() as usize;
         core.device.upload_to_buffer(z_buffer, 0, &vec![0i32; tile_area], BufferTarget::Storage);
 
         // TODO(pcwalton): Initialize the first tiles buffer on GPU?
-        let first_tile_map_storage_buffer = core.allocator.get_buffer(first_tile_map_buffer_id);
+        let first_tile_map_storage_buffer = core.allocator
+                                                .get_general_buffer(first_tile_map_buffer_id);
         core.device.upload_to_buffer::<FirstTileD3D11>(&first_tile_map_storage_buffer,
                                                        0,
                                                        &vec![FirstTileD3D11::default(); tile_area],
                                                        BufferTarget::Storage);
 
-        let alpha_tiles_storage_buffer = core.allocator.get_buffer(alpha_tiles_buffer_id);
+        let alpha_tiles_storage_buffer = core.allocator.get_general_buffer(alpha_tiles_buffer_id);
 
         let mut storage_buffers = vec![
             (&propagate_program.draw_metadata_storage_buffer, propagate_metadata_storage_buffer),
@@ -580,8 +584,9 @@ impl<D> RendererD3D11<D> where D: Device {
             Some(clip_buffer_ids) => {
                 let clip_metadata_buffer_id =
                     clip_buffer_ids.metadata.expect("Where's the clip metadata storage?");
-                let clip_metadata_buffer = core.allocator.get_buffer(clip_metadata_buffer_id);
-                let clip_tile_buffer = core.allocator.get_buffer(clip_buffer_ids.tiles);
+                let clip_metadata_buffer = core.allocator
+                                               .get_general_buffer(clip_metadata_buffer_id);
+                let clip_tile_buffer = core.allocator.get_general_buffer(clip_buffer_ids.tiles);
                 storage_buffers.push((&propagate_program.clip_metadata_storage_buffer,
                                     clip_metadata_buffer));
                 storage_buffers.push((&propagate_program.clip_tiles_storage_buffer,
@@ -641,14 +646,14 @@ impl<D> RendererD3D11<D> where D: Device {
 
     fn sort_tiles(&mut self,
                   core: &mut RendererCore<D>,
-                  tiles_d3d11_buffer_id: BufferID,
-                  first_tile_map_buffer_id: BufferID,
-                  z_buffer_id: BufferID) {
+                  tiles_d3d11_buffer_id: GeneralBufferID,
+                  first_tile_map_buffer_id: GeneralBufferID,
+                  z_buffer_id: GeneralBufferID) {
         let sort_program = &self.programs.sort_program;
 
-        let tiles_d3d11_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
-        let first_tile_map_buffer = core.allocator.get_buffer(first_tile_map_buffer_id);
-        let z_buffer = core.allocator.get_buffer(z_buffer_id);
+        let tiles_d3d11_buffer = core.allocator.get_general_buffer(tiles_d3d11_buffer_id);
+        let first_tile_map_buffer = core.allocator.get_general_buffer(first_tile_map_buffer_id);
+        let z_buffer = core.allocator.get_general_buffer(z_buffer_id);
 
         let tile_count = core.framebuffer_tile_size().area();
 
@@ -677,30 +682,32 @@ impl<D> RendererD3D11<D> where D: Device {
         core.current_timer.as_mut().unwrap().push_query(TimeCategory::Other, timer_query);
     }
 
-    fn allocate_first_tile_map(&mut self, core: &mut RendererCore<D>) -> BufferID {
-        core.allocator.allocate_buffer::<FirstTileD3D11>(&core.device,
-                                                         core.tile_size().area() as u64,
-                                                         BufferTag("FirstTileD3D11"))
+    fn allocate_first_tile_map(&mut self, core: &mut RendererCore<D>) -> GeneralBufferID {
+        core.allocator.allocate_general_buffer::<FirstTileD3D11>(&core.device,
+                                                                 core.tile_size().area() as u64,
+                                                                 BufferTag("FirstTileD3D11"))
     }
 
     fn allocate_alpha_tile_info(&mut self, core: &mut RendererCore<D>, index_count: u32)
-                                -> BufferID {
-        core.allocator.allocate_buffer::<AlphaTileD3D11>(&core.device,
-                                                         index_count as u64,
-                                                         BufferTag("AlphaTileD3D11"))
+                                -> GeneralBufferID {
+        core.allocator.allocate_general_buffer::<AlphaTileD3D11>(&core.device,
+                                                                 index_count as u64,
+                                                                 BufferTag("AlphaTileD3D11"))
     }
 
-    fn allocate_z_buffer(&mut self, core: &mut RendererCore<D>) -> BufferID {
+    fn allocate_z_buffer(&mut self, core: &mut RendererCore<D>) -> GeneralBufferID {
         // This includes the fill indirect draw params because some drivers limit the number of
         // SSBOs to 8 (#373).
         let size = core.tile_size().area() as u64 + FILL_INDIRECT_DRAW_PARAMS_SIZE as u64;
-        core.allocator.allocate_buffer::<i32>( &core.device, size, BufferTag("ZBufferD3D11"))
+        core.allocator.allocate_general_buffer::<i32>(&core.device,
+                                                      size,
+                                                      BufferTag("ZBufferD3D11"))
     }
 
     pub(crate) fn draw_tiles(&mut self,
                              core: &mut RendererCore<D>,
-                             tiles_d3d11_buffer_id: BufferID,
-                             first_tile_map_buffer_id: BufferID,
+                             tiles_d3d11_buffer_id: GeneralBufferID,
+                             first_tile_map_buffer_id: GeneralBufferID,
                              color_texture_0: Option<TileBatchTexture>) {
         let timer_query = core.timer_query_cache.start_timing_draw_call(&core.device,
                                                                         &core.options);
@@ -741,8 +748,9 @@ impl<D> RendererD3D11<D> where D: Device {
             }
         }
 
-        let tiles_d3d11_buffer = core.allocator.get_buffer(tiles_d3d11_buffer_id);
-        let first_tile_map_storage_buffer = core.allocator.get_buffer(first_tile_map_buffer_id);
+        let tiles_d3d11_buffer = core.allocator.get_general_buffer(tiles_d3d11_buffer_id);
+        let first_tile_map_storage_buffer = core.allocator
+                                                .get_general_buffer(first_tile_map_buffer_id);
 
         let framebuffer_tile_size = core.framebuffer_tile_size().0;
         let compute_dimensions = ComputeDimensions {
@@ -775,10 +783,10 @@ impl<D> RendererD3D11<D> where D: Device {
 
     fn free_tile_batch_buffers(&mut self, core: &mut RendererCore<D>) {
         for (_, tile_batch_info) in self.tile_batch_info.drain() {
-            core.allocator.free_buffer(tile_batch_info.z_buffer_id);
-            core.allocator.free_buffer(tile_batch_info.tiles_d3d11_buffer_id);
-            core.allocator.free_buffer(tile_batch_info.propagate_metadata_buffer_id);
-            core.allocator.free_buffer(tile_batch_info.first_tile_map_buffer_id);
+            core.allocator.free_general_buffer(tile_batch_info.z_buffer_id);
+            core.allocator.free_general_buffer(tile_batch_info.tiles_d3d11_buffer_id);
+            core.allocator.free_general_buffer(tile_batch_info.propagate_metadata_buffer_id);
+            core.allocator.free_general_buffer(tile_batch_info.first_tile_map_buffer_id);
         }
     }
 }
@@ -788,32 +796,32 @@ impl<D> RendererD3D11<D> where D: Device {
 #[derive(Clone)]
 struct TileBatchInfoD3D11 {
     tile_count: u32,
-    z_buffer_id: BufferID,
-    tiles_d3d11_buffer_id: BufferID,
-    propagate_metadata_buffer_id: BufferID,
-    first_tile_map_buffer_id: BufferID,
+    z_buffer_id: GeneralBufferID,
+    tiles_d3d11_buffer_id: GeneralBufferID,
+    propagate_metadata_buffer_id: GeneralBufferID,
+    first_tile_map_buffer_id: GeneralBufferID,
 }
 
 #[derive(Clone)]
 struct FillBufferInfoD3D11 {
-    fill_vertex_buffer_id: BufferID,
+    fill_vertex_buffer_id: GeneralBufferID,
 }
 
 #[derive(Debug)]
 struct PropagateMetadataBufferIDsD3D11 {
-    propagate_metadata: BufferID,
-    backdrops: BufferID,
+    propagate_metadata: GeneralBufferID,
+    backdrops: GeneralBufferID,
 }
 
 struct MicrolinesBufferIDsD3D11 {
-    buffer_id: BufferID,
+    buffer_id: GeneralBufferID,
     count: u32,
 }
 
 #[derive(Clone, Debug)]
 struct ClipBufferIDs {
-    metadata: Option<BufferID>,
-    tiles: BufferID,
+    metadata: Option<GeneralBufferID>,
+    tiles: GeneralBufferID,
 }
 
 struct SceneBuffers {
@@ -822,9 +830,9 @@ struct SceneBuffers {
 }
 
 struct SceneSourceBuffers {
-    points_buffer: Option<BufferID>,
+    points_buffer: Option<GeneralBufferID>,
     points_capacity: u32,
-    point_indices_buffer: Option<BufferID>,
+    point_indices_buffer: Option<GeneralBufferID>,
     point_indices_count: u32,
     point_indices_capacity: u32,
 }
@@ -870,23 +878,24 @@ impl SceneSourceBuffers {
         let needed_point_indices_capacity = (segments.indices.len() as u32).next_power_of_two();
         if self.points_capacity < needed_points_capacity {
             self.points_buffer =
-                Some(allocator.allocate_buffer::<Vector2F>(device,
-                                                           needed_points_capacity as u64,
-                                                           BufferTag("PointsD3D11")));
+                Some(allocator.allocate_general_buffer::<Vector2F>(device,
+                                                                   needed_points_capacity as u64,
+                                                                   BufferTag("PointsD3D11")));
             self.points_capacity = needed_points_capacity;
         }
         if self.point_indices_capacity < needed_point_indices_capacity {
-            self.point_indices_buffer = Some(allocator.allocate_buffer::<SegmentIndicesD3D11>(
-                device,
-                needed_point_indices_capacity as u64,
-                BufferTag("PointIndicesD3D11")));
+            self.point_indices_buffer =
+                Some(allocator.allocate_general_buffer::<SegmentIndicesD3D11>(
+                    device,
+                    needed_point_indices_capacity as u64,
+                    BufferTag("PointIndicesD3D11")));
             self.point_indices_capacity = needed_point_indices_capacity;
         }
-        device.upload_to_buffer(allocator.get_buffer(self.points_buffer.unwrap()),
+        device.upload_to_buffer(allocator.get_general_buffer(self.points_buffer.unwrap()),
                                 0,
                                 &segments.points,
                                 BufferTarget::Storage);
-        device.upload_to_buffer(allocator.get_buffer(self.point_indices_buffer.unwrap()),
+        device.upload_to_buffer(allocator.get_general_buffer(self.point_indices_buffer.unwrap()),
                                 0,
                                 &segments.indices,
                                 BufferTarget::Storage);

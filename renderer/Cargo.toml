@@ -22,7 +22,10 @@ serde = "1.0"
 serde_json = "1.0"
 smallvec = "1.2"
 vec_map = "0.8"
-instant = { version = "0.1.2", features = ["wasm-bindgen"] }
+
+[dependencies.instant]
+version = "0.1"
+features = ["wasm-bindgen"]
 
 [dependencies.pathfinder_color]
 path = "../color"

@@ -177,15 +177,15 @@ impl<D> UIPresenter<D> where D: Device {
                                          color: ColorU,
                                          filled: bool) {
         let vertex_buffer_id =
-            allocator.allocate_buffer::<DebugSolidVertex>(device,
-                                                          vertex_data.len() as u64,
-                                                          BufferTag("SolidVertexDebug"));
-        let index_buffer_id = allocator.allocate_buffer::<u32>(device,
-                                                               index_data.len() as u64,
-                                                               BufferTag("SolidIndexDebug"));
+            allocator.allocate_general_buffer::<DebugSolidVertex>(device,
+                                                                  vertex_data.len() as u64,
+                                                                  BufferTag("SolidVertexDebug"));
+        let index_buffer_id = allocator.allocate_index_buffer::<u32>(device,
+                                                                     index_data.len() as u64,
+                                                                     BufferTag("SolidIndexDebug"));
         {
-            let vertex_buffer = allocator.get_buffer(vertex_buffer_id);
-            let index_buffer = allocator.get_buffer(index_buffer_id);
+            let vertex_buffer = allocator.get_general_buffer(vertex_buffer_id);
+            let index_buffer = allocator.get_index_buffer(index_buffer_id);
             device.upload_to_buffer(&vertex_buffer, 0, vertex_data, BufferTarget::Vertex);
             device.upload_to_buffer(&index_buffer, 0, index_data, BufferTarget::Index);
             let solid_vertex_array = DebugSolidVertexArray::new(device,
@@ -215,8 +215,8 @@ impl<D> UIPresenter<D> where D: Device {
             });
         }
 
-        allocator.free_buffer(index_buffer_id);
-        allocator.free_buffer(vertex_buffer_id);
+        allocator.free_index_buffer(index_buffer_id);
+        allocator.free_general_buffer(vertex_buffer_id);
     }
 
     pub fn draw_text(&self,
@@ -465,16 +465,17 @@ impl<D> UIPresenter<D> where D: Device {
                                      index_data: &[u32],
                                      texture: &D::Texture,
                                      color: ColorU) {
-        let vertex_buffer_id =
-            allocator.allocate_buffer::<DebugTextureVertex>(device,
-                                                            vertex_data.len() as u64,
-                                                            BufferTag("TextureVertexDebug"));
-        let index_buffer_id = allocator.allocate_buffer::<u32>(device,
-                                                               index_data.len() as u64,
-                                                               BufferTag("TextureIndexDebug"));
+        let vertex_buffer_id = allocator.allocate_general_buffer::<DebugTextureVertex>(
+            device,
+            vertex_data.len() as u64,
+            BufferTag("TextureVertexDebug"));
+        let index_buffer_id =
+            allocator.allocate_index_buffer::<u32>(device,
+                                                   index_data.len() as u64,
+                                                   BufferTag("TextureIndexDebug"));
         {
-            let vertex_buffer = allocator.get_buffer(vertex_buffer_id);
-            let index_buffer = allocator.get_buffer(index_buffer_id);
+            let vertex_buffer = allocator.get_general_buffer(vertex_buffer_id);
+            let index_buffer = allocator.get_index_buffer(index_buffer_id);
             device.upload_to_buffer(&vertex_buffer, 0, vertex_data, BufferTarget::Vertex);
             device.upload_to_buffer(&index_buffer, 0, index_data, BufferTarget::Index);
 
@@ -506,8 +507,8 @@ impl<D> UIPresenter<D> where D: Device {
             });
         }
 
-        allocator.free_buffer(index_buffer_id);
-        allocator.free_buffer(vertex_buffer_id);
+        allocator.free_index_buffer(index_buffer_id);
+        allocator.free_general_buffer(vertex_buffer_id);
     }
 
     pub fn draw_button(&mut self,

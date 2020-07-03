@@ -11,7 +11,6 @@
 use crate::gpu_data::{TILE_CTRL_MASK_0_SHIFT, TILE_CTRL_MASK_EVEN_ODD};
 use crate::gpu_data::{TILE_CTRL_MASK_WINDING, TileObjectPrimitive};
 use crate::paint::PaintId;
-use crate::scene::ClipPathId;
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_geometry::rect::{RectF, RectI};

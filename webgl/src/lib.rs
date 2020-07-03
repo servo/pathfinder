@@ -375,11 +375,6 @@ impl WebGlDevice {
             pos = end_index + 2;
         }
         output.push_str(&source[pos..]);
-        /*
-        for (line_nr, line) in output.lines().enumerate() {
-            debug!("{:3}: {}", line_nr + 1, line);
-        }
-        */
         output
     }
 }
@@ -441,6 +436,17 @@ impl Device for WebGlDevice {
     type Uniform = WebGlUniform;
     type VertexArray = WebGlVertexArray;
     type VertexAttr = WebGlVertexAttr;
+
+    #[inline]
+    fn backend_name(&self) -> &'static str {
+        "WebGL"
+    }
+
+    #[inline]
+    fn device_name(&self) -> String {
+        // TODO(pcwalton): Use `WEBGL_debug_renderer_info` if available.
+        "WebGL Device".to_owned()
+    }
 
     #[inline]
     fn feature_level(&self) -> FeatureLevel {
