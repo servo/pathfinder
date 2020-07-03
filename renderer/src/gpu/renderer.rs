@@ -29,8 +29,8 @@ use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F, vec2f, vec2i};
-use pathfinder_gpu::allocator::{BufferID, BufferTag, FramebufferID, FramebufferTag};
-use pathfinder_gpu::allocator::{GPUMemoryAllocator, TextureID, TextureTag};
+use pathfinder_gpu::allocator::{BufferTag, FramebufferID, FramebufferTag, GeneralBufferID};
+use pathfinder_gpu::allocator::{GPUMemoryAllocator, IndexBufferID, TextureID, TextureTag};
 use pathfinder_gpu::{BufferData, BufferTarget, ClearOps, DepthFunc, DepthState, Device, Primitive};
 use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, StencilFunc, StencilState};
 use pathfinder_gpu::{TextureBinding, TextureDataRef, TextureFormat, UniformBinding, UniformData};
@@ -111,8 +111,8 @@ pub(crate) struct RendererCore<D> where D: Device {
     pub(crate) vertex_arrays: VertexArraysCore<D>,
 
     // Read-only static core resources
-    pub(crate) quad_vertex_positions_buffer_id: BufferID,
-    pub(crate) quad_vertex_indices_buffer_id: BufferID,
+    pub(crate) quad_vertex_positions_buffer_id: GeneralBufferID,
+    pub(crate) quad_vertex_indices_buffer_id: IndexBufferID,
     pub(crate) area_lut_texture_id: TextureID,
     pub(crate) gamma_lut_texture_id: TextureID,
 
@@ -154,18 +154,18 @@ impl<D> Renderer<D> where D: Device {
         device.begin_commands();
 
         let quad_vertex_positions_buffer_id =
-            allocator.allocate_buffer::<u16>(&device,
-                                             QUAD_VERTEX_POSITIONS.len() as u64,
-                                             BufferTag("QuadVertexPositions"));
-        device.upload_to_buffer(allocator.get_buffer(quad_vertex_positions_buffer_id),
+            allocator.allocate_general_buffer::<u16>(&device,
+                                                     QUAD_VERTEX_POSITIONS.len() as u64,
+                                                     BufferTag("QuadVertexPositions"));
+        device.upload_to_buffer(allocator.get_general_buffer(quad_vertex_positions_buffer_id),
                                 0,
                                 &QUAD_VERTEX_POSITIONS,
                                 BufferTarget::Vertex);
         let quad_vertex_indices_buffer_id =
-            allocator.allocate_buffer::<u32>(&device,
-                                             QUAD_VERTEX_INDICES.len() as u64,
-                                             BufferTag("QuadVertexIndices"));
-        device.upload_to_buffer(allocator.get_buffer(quad_vertex_indices_buffer_id),
+            allocator.allocate_index_buffer::<u32>(&device,
+                                                   QUAD_VERTEX_INDICES.len() as u64,
+                                                   BufferTag("QuadVertexIndices"));
+        device.upload_to_buffer(allocator.get_index_buffer(quad_vertex_indices_buffer_id),
                                 0,
                                 &QUAD_VERTEX_INDICES,
                                 BufferTarget::Index);
@@ -206,8 +206,8 @@ impl<D> Renderer<D> where D: Device {
         let core_vertex_arrays =
              VertexArraysCore::new(&device,
                                    &core_programs,
-                                   allocator.get_buffer(quad_vertex_positions_buffer_id),
-                                   allocator.get_buffer(quad_vertex_indices_buffer_id));
+                                   allocator.get_general_buffer(quad_vertex_positions_buffer_id),
+                                   allocator.get_index_buffer(quad_vertex_indices_buffer_id));
 
         let mut core = RendererCore {
             device,
@@ -508,12 +508,12 @@ impl<D> Renderer<D> where D: Device {
 
     #[inline]
     pub fn quad_vertex_positions_buffer(&self) -> &D::Buffer {
-        self.core.allocator.get_buffer(self.core.quad_vertex_positions_buffer_id)
+        self.core.allocator.get_general_buffer(self.core.quad_vertex_positions_buffer_id)
     }
 
     #[inline]
     pub fn quad_vertex_indices_buffer(&self) -> &D::Buffer {
-        self.core.allocator.get_buffer(self.core.quad_vertex_indices_buffer_id)
+        self.core.allocator.get_index_buffer(self.core.quad_vertex_indices_buffer_id)
     }
 
     fn allocate_pattern_texture_page(&mut self,
@@ -1146,11 +1146,13 @@ impl<D> Frame<D> where D: Device {
            clear_program: &ClearProgram<D>,
            reprojection_program: &ReprojectionProgram<D>,
            stencil_program: &StencilProgram<D>,
-           quad_vertex_positions_buffer_id: BufferID,
-           quad_vertex_indices_buffer_id: BufferID)
+           quad_vertex_positions_buffer_id: GeneralBufferID,
+           quad_vertex_indices_buffer_id: IndexBufferID)
            -> Frame<D> {
-        let quad_vertex_positions_buffer = allocator.get_buffer(quad_vertex_positions_buffer_id);
-        let quad_vertex_indices_buffer = allocator.get_buffer(quad_vertex_indices_buffer_id);
+        let quad_vertex_positions_buffer =
+            allocator.get_general_buffer(quad_vertex_positions_buffer_id);
+        let quad_vertex_indices_buffer =
+            allocator.get_index_buffer(quad_vertex_indices_buffer_id);
 
         let blit_vertex_array = BlitVertexArray::new(device,
                                                      &blit_program,

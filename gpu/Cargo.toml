@@ -19,6 +19,10 @@ version = "0.23"
 default-features = false
 features = ["png"]
 
+[dependencies.instant]
+version = "0.1"
+features = ["wasm-bindgen"]
+
 [dependencies.pathfinder_color]
 path = "../color"
 version = "0.5"

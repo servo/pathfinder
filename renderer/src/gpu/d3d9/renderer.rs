@@ -24,8 +24,8 @@ use pathfinder_content::effects::BlendMode;
 use pathfinder_geometry::rect::RectI;
 use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, Vector4F, vec2i};
-use pathfinder_gpu::allocator::{BufferID, BufferTag, FramebufferID, FramebufferTag};
-use pathfinder_gpu::allocator::{TextureID, TextureTag};
+use pathfinder_gpu::allocator::{BufferTag, FramebufferID, FramebufferTag, GeneralBufferID};
+use pathfinder_gpu::allocator::{IndexBufferID, TextureID, TextureTag};
 use pathfinder_gpu::{BlendFactor, BlendState, BufferTarget, ClearOps, Device, Primitive};
 use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, StencilFunc, StencilState};
 use pathfinder_gpu::{TextureDataRef, TextureFormat, UniformData};
@@ -38,7 +38,7 @@ const MAX_FILLS_PER_BATCH: usize = 0x10000;
 pub(crate) struct RendererD3D9<D> where D: Device {
     // Basic data
     programs: ProgramsD3D9<D>,
-    quads_vertex_indices_buffer_id: Option<BufferID>,
+    quads_vertex_indices_buffer_id: Option<IndexBufferID>,
     quads_vertex_indices_length: usize,
 
     // Fills.
@@ -79,7 +79,7 @@ impl<D> RendererD3D9<D> where D: Device {
         if !batch.clips.is_empty() {
             let clip_buffer_info = self.upload_clip_tiles(core, &batch.clips);
             self.clip_tiles(core, &clip_buffer_info);
-            core.allocator.free_buffer(clip_buffer_info.clip_buffer_id);
+            core.allocator.free_general_buffer(clip_buffer_info.clip_buffer_id);
         }
 
         let tile_buffer = self.upload_tiles(core, &batch.tiles);
@@ -93,16 +93,16 @@ impl<D> RendererD3D9<D> where D: Device {
                         z_buffer_texture_id);
 
         core.allocator.free_texture(z_buffer_texture_id);
-        core.allocator.free_buffer(tile_buffer.tile_vertex_buffer_id);
+        core.allocator.free_general_buffer(tile_buffer.tile_vertex_buffer_id);
     }
 
     fn upload_tiles(&mut self, core: &mut RendererCore<D>, tiles: &[TileObjectPrimitive])
                     -> TileBufferD3D9 {
         let tile_vertex_buffer_id =
-            core.allocator.allocate_buffer::<TileObjectPrimitive>(&core.device,
-                                                                  tiles.len() as u64,
-                                                                  BufferTag("TileD3D9"));
-        let tile_vertex_buffer = &core.allocator.get_buffer(tile_vertex_buffer_id);
+            core.allocator.allocate_general_buffer::<TileObjectPrimitive>(&core.device,
+                                                                          tiles.len() as u64,
+                                                                          BufferTag("TileD3D9"));
+        let tile_vertex_buffer = &core.allocator.get_general_buffer(tile_vertex_buffer_id);
         core.device.upload_to_buffer(tile_vertex_buffer, 0, tiles, BufferTarget::Vertex);
         self.ensure_index_buffer(core, tiles.len());
 
@@ -126,14 +126,14 @@ impl<D> RendererD3D9<D> where D: Device {
         }
 
         if let Some(quads_vertex_indices_buffer_id) = self.quads_vertex_indices_buffer_id.take() {
-            core.allocator.free_buffer(quads_vertex_indices_buffer_id);
+            core.allocator.free_index_buffer(quads_vertex_indices_buffer_id);
         }
         let quads_vertex_indices_buffer_id =
-            core.allocator.allocate_buffer::<u32>(&core.device,
-                                                  indices.len() as u64,
-                                                  BufferTag("QuadsVertexIndicesD3D9"));
+            core.allocator.allocate_index_buffer::<u32>(&core.device,
+                                                        indices.len() as u64,
+                                                        BufferTag("QuadsVertexIndicesD3D9"));
         let quads_vertex_indices_buffer =
-            core.allocator.get_buffer(quads_vertex_indices_buffer_id);
+            core.allocator.get_index_buffer(quads_vertex_indices_buffer_id);
         core.device.upload_to_buffer(quads_vertex_indices_buffer,
                                      0,
                                      &indices,
@@ -175,17 +175,18 @@ impl<D> RendererD3D9<D> where D: Device {
 
         let fill_storage_info = self.upload_buffered_fills(core);
         self.draw_fills(core, fill_storage_info.fill_buffer_id, fill_storage_info.fill_count);
-        core.allocator.free_buffer(fill_storage_info.fill_buffer_id);
+        core.allocator.free_general_buffer(fill_storage_info.fill_buffer_id);
     }
 
     fn upload_buffered_fills(&mut self, core: &mut RendererCore<D>) -> FillBufferInfoD3D9 {
         let buffered_fills = &mut self.buffered_fills;
         debug_assert!(!buffered_fills.is_empty());
 
-        let fill_buffer_id = core.allocator.allocate_buffer::<Fill>(&core.device,
-                                                                    MAX_FILLS_PER_BATCH as u64,
-                                                                    BufferTag("Fill"));
-        let fill_vertex_buffer = core.allocator.get_buffer(fill_buffer_id);
+        let fill_buffer_id = core.allocator
+                                 .allocate_general_buffer::<Fill>(&core.device,
+                                                                  MAX_FILLS_PER_BATCH as u64,
+                                                                  BufferTag("Fill"));
+        let fill_vertex_buffer = core.allocator.get_general_buffer(fill_buffer_id);
         debug_assert!(buffered_fills.len() <= u32::MAX as usize);
         core.device.upload_to_buffer(fill_vertex_buffer, 0, &buffered_fills, BufferTarget::Vertex);
 
@@ -197,15 +198,15 @@ impl<D> RendererD3D9<D> where D: Device {
 
     fn draw_fills(&mut self,
                   core: &mut RendererCore<D>,
-                  fill_buffer_id: BufferID,
+                  fill_buffer_id: GeneralBufferID,
                   fill_count: u32) {
         let fill_raster_program = &self.programs.fill_program;
 
-        let fill_vertex_buffer = core.allocator.get_buffer(fill_buffer_id);
-        let quad_vertex_positions_buffer = core.allocator
-                                               .get_buffer(core.quad_vertex_positions_buffer_id);
+        let fill_vertex_buffer = core.allocator.get_general_buffer(fill_buffer_id);
+        let quad_vertex_positions_buffer =
+            core.allocator.get_general_buffer(core.quad_vertex_positions_buffer_id);
         let quad_vertex_indices_buffer = core.allocator
-                                             .get_buffer(core.quad_vertex_indices_buffer_id);
+                                             .get_index_buffer(core.quad_vertex_indices_buffer_id);
 
         let area_lut_texture = core.allocator.get_texture(core.area_lut_texture_id);
 
@@ -278,11 +279,12 @@ impl<D> RendererD3D9<D> where D: Device {
         let mask_texture = core.device.framebuffer_texture(mask_framebuffer);
         let mask_texture_size = core.device.texture_size(&mask_texture);
 
-        let clip_vertex_buffer = core.allocator.get_buffer(clip_buffer_info.clip_buffer_id);
-        let quad_vertex_positions_buffer = core.allocator
-                                               .get_buffer(core.quad_vertex_positions_buffer_id);
+        let clip_vertex_buffer = core.allocator
+                                     .get_general_buffer(clip_buffer_info.clip_buffer_id);
+        let quad_vertex_positions_buffer =
+            core.allocator.get_general_buffer(core.quad_vertex_positions_buffer_id);
         let quad_vertex_indices_buffer = core.allocator
-                                             .get_buffer(core.quad_vertex_indices_buffer_id);
+                                             .get_index_buffer(core.quad_vertex_indices_buffer_id);
 
         let tile_clip_copy_vertex_array =   
             ClipTileCopyVertexArrayD3D9::new(&core.device,
@@ -372,10 +374,10 @@ impl<D> RendererD3D9<D> where D: Device {
 
     // Uploads clip tiles from CPU to GPU.
     fn upload_clip_tiles(&mut self, core: &mut RendererCore<D>, clips: &[Clip]) -> ClipBufferInfo {
-        let clip_buffer_id = core.allocator.allocate_buffer::<Clip>(&core.device,
-                                                                    clips.len() as u64,
-                                                                    BufferTag("ClipD3D9"));
-        let clip_buffer = core.allocator.get_buffer(clip_buffer_id);
+        let clip_buffer_id = core.allocator.allocate_general_buffer::<Clip>(&core.device,
+                                                                            clips.len() as u64,
+                                                                            BufferTag("ClipD3D9"));
+        let clip_buffer = core.allocator.get_general_buffer(clip_buffer_id);
         core.device.upload_to_buffer(clip_buffer, 0, clips, BufferTarget::Vertex);
         ClipBufferInfo { clip_buffer_id, clip_count: clips.len() as u32 }
     }
@@ -383,7 +385,7 @@ impl<D> RendererD3D9<D> where D: Device {
     fn draw_tiles(&mut self,
                   core: &mut RendererCore<D>,
                   tile_count: u32,
-                  tile_vertex_buffer_id: BufferID,
+                  tile_vertex_buffer_id: GeneralBufferID,
                   color_texture_0: Option<TileBatchTexture>,
                   blend_mode: BlendMode,
                   z_buffer_texture_id: TextureID) {
@@ -408,11 +410,11 @@ impl<D> RendererD3D9<D> where D: Device {
 
         let tile_raster_program = &self.programs.tile_program;
 
-        let tile_vertex_buffer = core.allocator.get_buffer(tile_vertex_buffer_id);
-        let quad_vertex_positions_buffer = core.allocator
-                                               .get_buffer(core.quad_vertex_positions_buffer_id);
+        let tile_vertex_buffer = core.allocator.get_general_buffer(tile_vertex_buffer_id);
+        let quad_vertex_positions_buffer =
+            core.allocator.get_general_buffer(core.quad_vertex_positions_buffer_id);
         let quad_vertex_indices_buffer = core.allocator
-                                             .get_buffer(core.quad_vertex_indices_buffer_id);
+                                             .get_index_buffer(core.quad_vertex_indices_buffer_id);
         let dest_blend_framebuffer = core.allocator
                                          .get_framebuffer(self.dest_blend_framebuffer_id);
 
@@ -467,7 +469,7 @@ impl<D> RendererD3D9<D> where D: Device {
     fn copy_alpha_tiles_to_dest_blend_texture(&mut self,
                                               core: &mut RendererCore<D>,
                                               tile_count: u32,
-                                              vertex_buffer_id: BufferID) {
+                                              vertex_buffer_id: GeneralBufferID) {
         let draw_viewport = core.draw_viewport();
 
         let mut textures = vec![];
@@ -491,8 +493,8 @@ impl<D> RendererD3D9<D> where D: Device {
         let quads_vertex_indices_buffer_id = self.quads_vertex_indices_buffer_id
                                                  .expect("Where's the quads vertex buffer?");
         let quads_vertex_indices_buffer = core.allocator
-                                              .get_buffer(quads_vertex_indices_buffer_id);
-        let vertex_buffer = core.allocator.get_buffer(vertex_buffer_id);
+                                              .get_index_buffer(quads_vertex_indices_buffer_id);
+        let vertex_buffer = core.allocator.get_general_buffer(vertex_buffer_id);
 
         let tile_copy_vertex_array = CopyTileVertexArray::new(&core.device,
                                                               &self.programs.tile_copy_program,
@@ -556,21 +558,21 @@ impl<D> RendererD3D9<D> where D: Device {
 #[derive(Clone)]
 pub(crate) struct TileBatchInfoD3D9 {
     pub(crate) tile_count: u32,
-    pub(crate) z_buffer_id: BufferID,
-    tile_vertex_buffer_id: BufferID,
+    pub(crate) z_buffer_id: GeneralBufferID,
+    tile_vertex_buffer_id: GeneralBufferID,
 }
 
 #[derive(Clone)]
 struct FillBufferInfoD3D9 {
-    fill_buffer_id: BufferID,
+    fill_buffer_id: GeneralBufferID,
     fill_count: u32,
 }
 
 struct TileBufferD3D9 {
-    tile_vertex_buffer_id: BufferID,
+    tile_vertex_buffer_id: GeneralBufferID,
 }
 
 struct ClipBufferInfo {
-    clip_buffer_id: BufferID,
+    clip_buffer_id: GeneralBufferID,
     clip_count: u32,
 }
