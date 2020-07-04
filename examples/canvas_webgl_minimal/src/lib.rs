@@ -25,11 +25,6 @@ use web_sys::{self, HtmlCanvasElement, WebGl2RenderingContext};
 mod utils;
 
 #[wasm_bindgen]
-extern {
-    fn alert(s: &str);
-}
-
-#[wasm_bindgen]
 pub fn rust_main() {
     utils::set_panic_hook();
 

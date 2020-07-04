@@ -89,6 +89,15 @@ impl Canvas {
         Canvas { scene }
     }
 
+    /// Returns the inner scene, replacing it with a blank scene.
+    #[inline]
+    pub fn take_scene(&mut self) -> Scene {
+        let view_box = self.scene.view_box();
+        let mut new_scene = Scene::new();
+        new_scene.set_view_box(view_box);
+        mem::replace(&mut self.scene, new_scene)
+    }
+
     #[inline]
     pub fn into_scene(self) -> Scene {
         self.scene
@@ -129,6 +138,11 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn canvas(&self) -> &Canvas {
         &self.canvas
+    }
+
+    #[inline]
+    pub fn canvas_mut(&mut self) -> &mut Canvas {
+        &mut self.canvas
     }
 
     #[inline]
