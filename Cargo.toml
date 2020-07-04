@@ -69,10 +69,3 @@ default-members = [
 [patch.crates-io]
 pathfinder_geometry = { path = "geometry" }
 pathfinder_simd = { path = "simd" }
-
-[patch."https://github.com/s3bk/pathfinder"]
-pathfinder_geometry = { path = "geometry" }
-pathfinder_simd = { path = "simd" }
-pathfinder_renderer = { path = "renderer" }
-pathfinder_content = { path = "content" }
-pathfinder_color = { path = "color" }
