@@ -290,6 +290,10 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
+    pub fn destroy(self) -> D {
+        self.core.device
+    }
+
     pub fn begin_scene(&mut self) {
         self.core.framebuffer_flags = FramebufferFlags::empty();
 
