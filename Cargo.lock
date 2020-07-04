@@ -950,7 +950,7 @@ checksum = "7bad48618fdb549078c333a7a8528acb57af271d0433bdecd523eb620628364e"
 [[package]]
 name = "font"
 version = "0.1.0"
-source = "git+https://github.com/pdf-rs/font/#6047031ce86dd5fb075c4225f7deeaaeb596918f"
+source = "git+https://github.com/pdf-rs/font/#17d3c1d19d937440c760c79be373798326f02bcb"
 dependencies = [
  "brotli-decompressor",
  "decorum",
@@ -960,7 +960,6 @@ dependencies = [
  "itertools 0.8.2",
  "log",
  "nom",
- "pathfinder_builder",
  "pathfinder_color",
  "pathfinder_content",
  "pathfinder_geometry",
@@ -2012,15 +2011,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder_builder"
-version = "0.1.0"
-source = "git+https://github.com/s3bk/pathfinder/#6197446b8c7816227ebcd6d81009df357b9f0c0b"
-dependencies = [
- "pathfinder_content",
- "pathfinder_geometry",
-]
-
-[[package]]
 name = "pathfinder_c"
 version = "0.1.0"
 dependencies = [
@@ -2323,7 +2313,7 @@ dependencies = [
 [[package]]
 name = "pdf"
 version = "0.7.0"
-source = "git+https://github.com/pdf-rs/pdf#f7b0acb4ac8c37cb0eb37dfa3ebeedb5b431cc8c"
+source = "git+https://github.com/pdf-rs/pdf#2beb20e6396722a1a6771d0caabc4fe6e05b671c"
 dependencies = [
  "byteorder",
  "chrono",
@@ -2345,7 +2335,7 @@ dependencies = [
 [[package]]
 name = "pdf_derive"
 version = "0.1.19"
-source = "git+https://github.com/pdf-rs/pdf#f7b0acb4ac8c37cb0eb37dfa3ebeedb5b431cc8c"
+source = "git+https://github.com/pdf-rs/pdf#2beb20e6396722a1a6771d0caabc4fe6e05b671c"
 dependencies = [
  "quote 1.0.7",
  "syn 1.0.33",
@@ -2354,13 +2344,12 @@ dependencies = [
 [[package]]
 name = "pdf_render"
 version = "0.1.0"
-source = "git+https://github.com/pdf-rs/pdf#f7b0acb4ac8c37cb0eb37dfa3ebeedb5b431cc8c"
+source = "git+https://github.com/pdf-rs/pdf#2beb20e6396722a1a6771d0caabc4fe6e05b671c"
 dependencies = [
  "encoding",
  "font",
  "itertools 0.9.0",
  "log",
- "pathfinder_builder",
  "pathfinder_color",
  "pathfinder_content",
  "pathfinder_geometry",

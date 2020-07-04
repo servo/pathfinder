@@ -85,7 +85,11 @@ mod ui;
 
 enum Content {
     Svg(SvgTree),
-    Pdf(PdfFile<Vec<u8>>, PdfRenderCache, u32)
+    Pdf {
+        file: PdfFile<Vec<u8>>,
+        cache: PdfRenderCache,
+        page_nr: u32
+    }
 }
 
 pub struct DemoApp<W> where W: Window {
@@ -765,7 +769,7 @@ impl Content {
                 let message = get_svg_building_message(&built_svg);
                 (built_svg.scene, message)
             }
-            Content::Pdf(ref file, ref mut cache, page_nr) => {
+            Content::Pdf { ref file, ref mut cache, page_nr } => {
                 let page = file.get_page(page_nr).expect("no such page");
                 let (scene, _) = cache.render_page(file, &page).unwrap();
                 (scene, String::new())
@@ -785,9 +789,8 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
 
     if let Ok(tree) = SvgTree::from_data(&data, &UsvgOptions::default()) {
         Content::Svg(tree)
-    }
-    else if let Ok(pdf) = PdfFile::from_data(data) {
-        Content::Pdf(pdf, PdfRenderCache::new(), 0)
+    } else if let Ok(file) = PdfFile::from_data(data) {
+        Content::Pdf { file, cache: PdfRenderCache::new(), page_nr: 0 }
     } else {
         panic!("can't load data");
     }
