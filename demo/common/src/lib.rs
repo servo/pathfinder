@@ -292,7 +292,9 @@ impl<W> DemoApp<W> where W: Window {
                     let viewport = self.window.viewport(self.ui_model.mode.view(0));
                     self.scene_proxy.set_view_box(RectF::new(Vector2F::zero(),
                                                              viewport.size().to_f32()));
-                    self.renderer.set_main_framebuffer_size(self.window_size.device_size());
+                    self.renderer.options_mut().dest =
+                        DestFramebuffer::full_window(self.window_size.device_size());
+                    self.renderer.dest_framebuffer_size_changed();
                     self.dirty = true;
                 }
                 Event::MouseDown(new_position) => {
