@@ -489,7 +489,8 @@ impl<D> Renderer<D> where D: Device {
     }
 
     #[inline]
-    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Vector2I) {
+    pub fn dest_framebuffer_size_changed(&mut self) {
+        let new_framebuffer_size = self.core.main_viewport().size();
         if let Some(ref mut debug_ui_presenter) = self.debug_ui_presenter {
             debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
         }
