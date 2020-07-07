@@ -21,7 +21,6 @@ use pathfinder_geometry::transform2d::{Transform2F, Matrix2x2F};
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::unit_vector::UnitVector;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
-use pathfinder_geometry::util::{reflection};
 use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -603,7 +602,7 @@ impl Contour {
 
         if r.x().is_finite() & r.y().is_finite() {
             let r = r.abs();
-            let r_inv = r.inv();
+            let r_inv = r.recip();
             let sign = match (large_arc, direction) {
                 (false, ArcDirection::CW) | (true, ArcDirection::CCW) => 1.0,
                 (false, ArcDirection::CCW) | (true, ArcDirection::CW) => -1.0

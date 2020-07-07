@@ -806,11 +806,6 @@ impl Path2D {
         self.current_contour = last_contour.unwrap_or_else(Contour::new);
     }
 
-    #[inline]
-    pub fn mirror_and_close_last(&mut self) {
-        self.current_contour.mirror_and_close();
-    }
-
     pub fn into_outline(mut self) -> Outline {
         self.flush_current_contour();
         self.outline
