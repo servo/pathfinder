@@ -2,9 +2,9 @@
 # It is not intended for manual editing.
 [[package]]
 name = "addr2line"
-version = "0.12.2"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "602d785912f476e480434627e8732e6766b760c045bbf897d9dfaa9f4fbd399c"
+checksum = "1b6a2d3371669ab3ca9797670853d61402b03d0b4b9ebf33d677dfa720203072"
 dependencies = [
  "gimli",
 ]
@@ -135,14 +135,14 @@ checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
 name = "backtrace"
-version = "0.3.49"
+version = "0.3.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05100821de9e028f12ae3d189176b41ee198341eb8f369956407fea2f5cc666c"
+checksum = "46254cf2fdcdf1badb5934448c1bcbe046a56537b3987d96c51a7afc5d03f293"
 dependencies = [
  "addr2line",
  "cfg-if",
  "libc 0.2.71",
- "miniz_oxide 0.3.7",
+ "miniz_oxide 0.4.0",
  "object",
  "rustc-demangle",
 ]
@@ -231,24 +231,6 @@ dependencies = [
  "mio",
  "mio-extras",
  "nix",
-]
-
-[[package]]
-name = "canvas-webgl-minimal"
-version = "0.1.0"
-dependencies = [
- "pathfinder_canvas",
- "pathfinder_color",
- "pathfinder_content",
- "pathfinder_geometry",
- "pathfinder_gl",
- "pathfinder_gpu",
- "pathfinder_renderer",
- "pathfinder_resources",
- "pathfinder_webgl",
- "wasm-bindgen",
- "wasm-bindgen-test",
- "web-sys",
 ]
 
 [[package]]
@@ -367,6 +349,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "canvas_webgl_minimal"
+version = "0.1.0"
+dependencies = [
+ "pathfinder_canvas",
+ "pathfinder_color",
+ "pathfinder_content",
+ "pathfinder_geometry",
+ "pathfinder_gl",
+ "pathfinder_gpu",
+ "pathfinder_renderer",
+ "pathfinder_resources",
+ "pathfinder_webgl",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "cbindgen"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -418,9 +418,9 @@ dependencies = [
 
 [[package]]
 name = "chrono"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0fee792e164f78f5fe0c296cc2eb3688a2ca2b70cdff33040922d298203f0c4"
+checksum = "c74d84029116787153e02106bf53e66828452a4b325cc8652b788b5967c0a0b6"
 dependencies = [
  "num-integer",
  "num-traits 0.2.12",
@@ -701,7 +701,7 @@ dependencies = [
  "autocfg",
  "cfg-if",
  "crossbeam-utils",
- "lazy_static",
+ "lazy_static 1.4.0",
  "maybe-uninit",
  "memoffset",
  "scopeguard",
@@ -726,7 +726,16 @@ checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
 dependencies = [
  "autocfg",
  "cfg-if",
- "lazy_static",
+ "lazy_static 1.4.0",
+]
+
+[[package]]
+name = "css-color-parser"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ccb6ce7ef97e6dc6e575e51b596c9889a5cc88a307b5ef177d215c61fd7581d"
+dependencies = [
+ "lazy_static 0.1.16",
 ]
 
 [[package]]
@@ -751,9 +760,9 @@ dependencies = [
 
 [[package]]
 name = "deflate"
-version = "0.8.4"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7e5d2a2273fed52a7f947ee55b092c4057025d7a3e04e5ecdbd25d6c3fb1bd7"
+checksum = "73770f8e1fe7d64df17ca66ad28994a0a623ea497fa69486e14984e715c5d174"
 dependencies = [
  "adler32",
  "byteorder",
@@ -769,7 +778,7 @@ dependencies = [
  "gl",
  "io-surface",
  "jemallocator",
- "lazy_static",
+ "lazy_static 1.4.0",
  "metal 0.18.0",
  "nfd",
  "objc",
@@ -851,7 +860,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcdf488e3a52a7aa30a05732a3e58420e22acb4b2b75635a561fc6ffbcab59ef"
 dependencies = [
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "winapi 0.3.9",
  "wio",
@@ -878,7 +887,7 @@ name = "encoding"
 version = "0.1.0"
 source = "git+https://github.com/pdf-rs/encoding/#44cafed01e9c40af58bd569a002c379e09da85bf"
 dependencies = [
- "lazy_static",
+ "lazy_static 1.4.0",
 ]
 
 [[package]]
@@ -950,7 +959,7 @@ checksum = "7bad48618fdb549078c333a7a8528acb57af271d0433bdecd523eb620628364e"
 [[package]]
 name = "font"
 version = "0.1.0"
-source = "git+https://github.com/pdf-rs/font/#17d3c1d19d937440c760c79be373798326f02bcb"
+source = "git+https://github.com/pdf-rs/font/#4c32bbab70d077cbf2322f500bb8c1a8f611fb75"
 dependencies = [
  "brotli-decompressor",
  "decorum",
@@ -985,7 +994,7 @@ dependencies = [
  "dwrote",
  "float-ord",
  "freetype",
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "log",
  "pathfinder_geometry",
@@ -1090,9 +1099,9 @@ dependencies = [
 
 [[package]]
 name = "gimli"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcc8e0c9bce37868955864dbecd2b1ab2bdf967e6f28066d65aaac620444b65c"
+checksum = "aaf91faf136cb47367fa430cd46e37a788775e7fa104f8b4bcb3861dc389b724"
 
 [[package]]
 name = "gl"
@@ -1156,7 +1165,7 @@ dependencies = [
  "glutin_gles2_sys",
  "glutin_glx_sys",
  "glutin_wgl_sys",
- "lazy_static",
+ "lazy_static 1.4.0",
  "libloading 0.5.2",
  "log",
  "objc",
@@ -1264,9 +1273,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9586eedd4ce6b3c498bc3b4dd92fc9f11166aa908a914071953768066c67909"
+checksum = "3deed196b6e7f9e44a2ae8d94225d80302d81208b1bb673fd21fe634645c85a9"
 dependencies = [
  "libc 0.2.71",
 ]
@@ -1324,9 +1333,9 @@ dependencies = [
 
 [[package]]
 name = "instant"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69da7ce1490173c2bf4d26bc8be429aaeeaf4cce6c4b970b7949651fa17655fe"
+checksum = "5b141fdc7836c525d4d594027d318c84161ca17aaf8113ab1f81ab93ae897485"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -1431,9 +1440,9 @@ checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
 
 [[package]]
 name = "jpeg-decoder"
-version = "0.1.19"
+version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b47b4c4e017b01abdc5bcc126d2d1002e5a75bbe3ce73f9f4f311a916363704"
+checksum = "cc797adac5f083b8ff0ca6f6294a999393d76e197c36488e2ef732c4715f6fa3"
 dependencies = [
  "byteorder",
  "rayon",
@@ -1481,6 +1490,12 @@ checksum = "305989d523da0de59dd5e9b66c7c1eb2bcf7c18f538059f21a42ddf72b7333f7"
 dependencies = [
  "arrayvec",
 ]
+
+[[package]]
+name = "lazy_static"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf186d1a8aa5f5bee5fd662bc9c1b949e0259e1bcc379d1f006847b0080c7417"
 
 [[package]]
 name = "lazy_static"
@@ -1992,7 +2007,7 @@ dependencies = [
  "cloudabi",
  "libc 0.2.71",
  "redox_syscall",
- "smallvec 1.4.0",
+ "smallvec 1.4.1",
  "winapi 0.3.9",
 ]
 
@@ -2003,7 +2018,7 @@ dependencies = [
  "egl",
  "gl",
  "jni",
- "lazy_static",
+ "lazy_static 1.4.0",
  "pathfinder_demo",
  "pathfinder_geometry",
  "pathfinder_gl",
@@ -2068,7 +2083,7 @@ dependencies = [
  "pathfinder_geometry",
  "pathfinder_simd",
  "quickcheck",
- "smallvec 1.4.0",
+ "smallvec 1.4.1",
 ]
 
 [[package]]
@@ -2175,7 +2190,7 @@ dependencies = [
  "pathfinder_svg",
  "pathfinder_ui",
  "rayon",
- "smallvec 1.4.0",
+ "smallvec 1.4.1",
  "usvg",
 ]
 
@@ -2225,7 +2240,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "smallvec 1.4.0",
+ "smallvec 1.4.1",
  "vec_map",
 ]
 
@@ -2295,6 +2310,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder_web_canvas"
+version = "0.1.0"
+dependencies = [
+ "css-color-parser",
+ "pathfinder_canvas",
+ "pathfinder_color",
+ "pathfinder_content",
+ "pathfinder_geometry",
+ "pathfinder_gl",
+ "pathfinder_gpu",
+ "pathfinder_renderer",
+ "pathfinder_resources",
+ "pathfinder_webgl",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "pathfinder_webgl"
 version = "0.1.0"
 dependencies = [
@@ -2313,7 +2347,7 @@ dependencies = [
 [[package]]
 name = "pdf"
 version = "0.7.0"
-source = "git+https://github.com/pdf-rs/pdf#2beb20e6396722a1a6771d0caabc4fe6e05b671c"
+source = "git+https://github.com/pdf-rs/pdf#249b9b0ac7d508344c2cdffd48c9e031763d0405"
 dependencies = [
  "byteorder",
  "chrono",
@@ -2335,7 +2369,7 @@ dependencies = [
 [[package]]
 name = "pdf_derive"
 version = "0.1.19"
-source = "git+https://github.com/pdf-rs/pdf#2beb20e6396722a1a6771d0caabc4fe6e05b671c"
+source = "git+https://github.com/pdf-rs/pdf#249b9b0ac7d508344c2cdffd48c9e031763d0405"
 dependencies = [
  "quote 1.0.7",
  "syn 1.0.33",
@@ -2344,7 +2378,7 @@ dependencies = [
 [[package]]
 name = "pdf_render"
 version = "0.1.0"
-source = "git+https://github.com/pdf-rs/pdf#2beb20e6396722a1a6771d0caabc4fe6e05b671c"
+source = "git+https://github.com/pdf-rs/pdf#249b9b0ac7d508344c2cdffd48c9e031763d0405"
 dependencies = [
  "encoding",
  "font",
@@ -2522,7 +2556,7 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-queue",
  "crossbeam-utils",
- "lazy_static",
+ "lazy_static 1.4.0",
  "num_cpus",
 ]
 
@@ -2672,7 +2706,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f74124048ea86b5cd50236b2443f6f57cf4625a8e8818009b4e50dbb8729a43"
 dependencies = [
  "bitflags",
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "sdl2-sys",
 ]
@@ -2770,7 +2804,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a9e7e0f2bfae24d8a5b5a66c5b257a83c7412304311512a0c054cd5e619da11"
 dependencies = [
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
 ]
 
@@ -2826,9 +2860,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7cb5678e1615754284ec264d9bb5b4c27d2018577fd90ac0ceb578591ed5ee4"
+checksum = "3757cb9d89161a2f24e1cf78efa0c1fcff485d18e3f55e0aa3480824ddaa0f3f"
 
 [[package]]
 name = "smithay-client-toolkit"
@@ -2839,7 +2873,7 @@ dependencies = [
  "andrew",
  "bitflags",
  "dlib",
- "lazy_static",
+ "lazy_static 1.4.0",
  "memmap",
  "nix",
  "wayland-client 0.21.13",
@@ -2856,7 +2890,7 @@ dependencies = [
  "andrew",
  "bitflags",
  "dlib",
- "lazy_static",
+ "lazy_static 1.4.0",
  "memmap",
  "nix",
  "wayland-client 0.23.6",
@@ -2921,7 +2955,7 @@ dependencies = [
  "euclid",
  "gl_generator 0.13.1",
  "io-surface",
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "log",
  "mach",
@@ -3064,7 +3098,7 @@ version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d40c6d1b69745a6ec6fb1ca717914848da4b44ae29d9b3080cbee91d72a69b14"
 dependencies = [
- "lazy_static",
+ "lazy_static 1.4.0",
 ]
 
 [[package]]
@@ -3258,7 +3292,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e53963b583d18a5aa3aaae4b4c1cb535218246131ba22a71f05b518098571df"
 dependencies = [
  "bumpalo",
- "lazy_static",
+ "lazy_static 1.4.0",
  "log",
  "proc-macro2 1.0.18",
  "quote 1.0.7",
@@ -3437,7 +3471,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "520ab0fd578017a0ee2206623ba9ef4afe5e8f23ca7b42f6acfba2f4e66b1628"
 dependencies = [
  "dlib",
- "lazy_static",
+ "lazy_static 1.4.0",
 ]
 
 [[package]]
@@ -3447,7 +3481,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d94e89a86e6d6d7c7c9b19ebf48a03afaac4af6bc22ae570e9a24124b75358f4"
 dependencies = [
  "dlib",
- "lazy_static",
+ "lazy_static 1.4.0",
 ]
 
 [[package]]
@@ -3457,7 +3491,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "537500923d50be11d95a63c4cb538145e4c82edf61296b7debc1f94a1a6514ed"
 dependencies = [
  "dlib",
- "lazy_static",
+ "lazy_static 1.4.0",
 ]
 
 [[package]]
@@ -3525,7 +3559,7 @@ dependencies = [
  "cocoa 0.18.5",
  "core-foundation 0.6.4",
  "core-graphics 0.17.3",
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "log",
  "objc",
@@ -3551,7 +3585,7 @@ dependencies = [
  "core-video-sys",
  "dispatch",
  "instant",
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "log",
  "mio",
@@ -3601,7 +3635,7 @@ version = "2.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bf981e3a5b3301209754218f962052d4d9ee97e478f4d26d4a6eced34c1fef8"
 dependencies = [
- "lazy_static",
+ "lazy_static 1.4.0",
  "libc 0.2.71",
  "maybe-uninit",
  "pkg-config",

@@ -1,5 +1,5 @@
 [package]
-name = "canvas_webgl_minimal"
+name = "pathfinder_web_canvas"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
@@ -7,46 +7,54 @@ edition = "2018"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = []
-
 [dependencies]
+css-color-parser = "0.1"
 wasm-bindgen = "0.2"
 
 [dependencies.pathfinder_canvas]
-path = "../../canvas"
+path = "../canvas"
 
 [dependencies.pathfinder_color]
-path = "../../color"
+path = "../color"
 
 [dependencies.pathfinder_content]
-path = "../../content"
+path = "../content"
 
 [dependencies.pathfinder_geometry]
-path = "../../geometry"
+path = "../geometry"
 
 [dependencies.pathfinder_gl]
-path = "../../gl"
+path = "../gl"
 
 [dependencies.pathfinder_gpu]
-path = "../../gpu"
+path = "../gpu"
 
 [dependencies.pathfinder_renderer]
-path = "../../renderer"
+path = "../renderer"
 
 [dependencies.pathfinder_resources]
-path = "../../resources"
+path = "../resources"
 
 [dependencies.pathfinder_webgl]
-path = "../../webgl"
+path = "../webgl"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window"]
+features = ["Window", "console"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
 
 [profile.release]
 # Tell `rustc` to optimize for small code size.
-opt-level = "s"
+# opt-level = "s"
+debug = 1
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = false
+dwarf-debug-info = true
+
+[package.metadata.wasm-pack.profile.profiling.wasm-bindgen]
+debug-js-glue = false
+demangle-name-section = true
+dwarf-debug-info = true

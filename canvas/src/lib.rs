@@ -89,6 +89,22 @@ impl Canvas {
         Canvas { scene }
     }
 
+    /// Returns the inner scene.
+    #[inline]
+    pub fn scene(&self) -> &Scene {
+        &self.scene
+    }
+
+    /// Returns the inner scene, replacing it with a blank scene.
+    #[inline]
+    pub fn take_scene(&mut self) -> Scene {
+        let view_box = self.scene.view_box();
+        let mut new_scene = Scene::new();
+        new_scene.set_view_box(view_box);
+        mem::replace(&mut self.scene, new_scene)
+    }
+
+    /// Destroys this canvas and returns the inner scene.
     #[inline]
     pub fn into_scene(self) -> Scene {
         self.scene
@@ -113,6 +129,12 @@ impl Canvas {
     pub fn size(&self) -> Vector2I {
         self.scene.view_box().size().ceil().to_i32()
     }
+
+    pub fn set_size(&mut self, new_size: Vector2I) {
+        let new_view_box = RectI::new(Vector2I::default(), new_size).to_f32();
+        self.scene.set_bounds(new_view_box);
+        self.scene.set_view_box(new_view_box);
+    }
 }
 
 pub struct CanvasRenderingContext2D {
@@ -132,8 +154,20 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
+    pub fn canvas_mut(&mut self) -> &mut Canvas {
+        &mut self.canvas
+    }
+
+    #[inline]
     pub fn into_canvas(self) -> Canvas {
         self.canvas
+    }
+
+    // Extensions
+
+    /// Clears the current canvas.
+    pub fn clear(&mut self) {
+        drop(self.canvas.take_scene())
     }
 
     // Drawing rectangles
@@ -171,8 +205,18 @@ impl CanvasRenderingContext2D {
     // Line styles
 
     #[inline]
+    pub fn line_width(&self) -> f32 {
+        self.current_state.line_width
+    }
+
+    #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
         self.current_state.line_width = new_line_width
+    }
+
+    #[inline]
+    pub fn line_cap(&self) -> LineCap {
+        self.current_state.line_cap
     }
 
     #[inline]
@@ -181,13 +225,28 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
+    pub fn line_join(&self) -> LineJoin {
+        self.current_state.line_join
+    }
+
+    #[inline]
     pub fn set_line_join(&mut self, new_line_join: LineJoin) {
         self.current_state.line_join = new_line_join
     }
 
     #[inline]
+    pub fn miter_limit(&self) -> f32 {
+        self.current_state.miter_limit
+    }
+
+    #[inline]
     pub fn set_miter_limit(&mut self, new_miter_limit: f32) {
         self.current_state.miter_limit = new_miter_limit
+    }
+
+    #[inline]
+    pub fn line_dash(&mut self) -> &[f32] {
+        &self.current_state.line_dash
     }
 
     #[inline]
@@ -200,6 +259,11 @@ impl CanvasRenderingContext2D {
         }
 
         self.current_state.line_dash = new_line_dash
+    }
+
+    #[inline]
+    pub fn line_dash_offset(&self) -> f32 {
+        self.current_state.line_dash_offset
     }
 
     #[inline]
@@ -657,7 +721,6 @@ impl Path2D {
 
     #[inline]
     pub fn move_to(&mut self, to: Vector2F) {
-        // TODO(pcwalton): Cull degenerate contours.
         self.flush_current_contour();
         self.current_contour.push_endpoint(to);
     }

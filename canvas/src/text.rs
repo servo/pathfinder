@@ -446,29 +446,6 @@ impl IntoFontCollection for Vec<FontFamily> {
     }
 }
 
-/*
-impl IntoFontCollection for Handle {
-    #[inline]
-    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
-        self.load().expect("Failed to load the font!").into_font_collection(context)
-    }
-}
-
-impl<'a> IntoFontCollection for &'a [Handle] {
-    #[inline]
-    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
-        let mut font_collection = FontCollection::new();
-        for handle in self {
-            let postscript_name = handle.postscript_name();
-
-            let font = handle.load().expect("Failed to load the font!");
-            font_collection.add_family(FontFamily::new_from_font(font));
-        }
-        Arc::new(font_collection)
-    }
-}
-*/
-
 impl IntoFontCollection for Font {
     #[inline]
     fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
