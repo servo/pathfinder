@@ -20,7 +20,7 @@ use crate::camera::Camera;
 use crate::concurrent::DemoExecutor;
 use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
-use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
+use crate::window::{Event, Keycode, DataPath, Window, WindowSize};
 use clap::{App, Arg};
 use pathfinder_content::effects::DEFRINGING_KERNEL_CORE_GRAPHICS;
 use pathfinder_content::effects::PatternFilter;
@@ -49,7 +49,9 @@ use std::io::{BufWriter, Read};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
-use usvg::{Options as UsvgOptions, Tree};
+use usvg::{Options as UsvgOptions, Tree as SvgTree};
+use pdf::file::File as PdfFile;
+use pdf_render::Cache as PdfRenderCache;
 
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use pathfinder_gl::GLDevice as DeviceImpl;
@@ -81,6 +83,15 @@ mod device;
 mod renderer;
 mod ui;
 
+enum Content {
+    Svg(SvgTree),
+    Pdf {
+        file: PdfFile<Vec<u8>>,
+        cache: PdfRenderCache,
+        page_nr: u32
+    }
+}
+
 pub struct DemoApp<W> where W: Window {
     pub window: W,
     pub should_exit: bool,
@@ -88,7 +99,7 @@ pub struct DemoApp<W> where W: Window {
 
     window_size: WindowSize,
 
-    svg_tree: Tree,
+    content: Content,
     scene_metadata: SceneMetadata,
     render_transform: Option<RenderTransform>,
 
@@ -154,20 +165,18 @@ impl<W> DemoApp<W> where W: Window {
 
         let filter = build_filter(&ui_model);
 
-        let (mut built_svg, svg_tree) = load_scene(resources,
-                                                   &options.input_path,
-                                                   viewport.size(),
-                                                   filter);
+        let viewport = window.viewport(options.mode.view(0));
+        let mut content = load_scene(resources, &options.input_path);
 
-        let message = get_svg_building_message(&built_svg);
+        let (mut scene, message) = content.render(viewport.size(), filter);
 
         let renderer = Renderer::new(device, resources, render_mode, render_options);
 
-        let scene_metadata = SceneMetadata::new_clipping_view_box(&mut built_svg.scene,
+        let scene_metadata = SceneMetadata::new_clipping_view_box(&mut scene,
                                                                   viewport.size());
         let camera = Camera::new(options.mode, scene_metadata.view_box, viewport.size());
 
-        let scene_proxy = SceneProxy::from_scene(built_svg.scene, level, executor);
+        let scene_proxy = SceneProxy::from_scene(scene, level, executor);
 
         let ground_program = GroundProgram::new(renderer.device(), resources);
         let ground_vertex_array = GroundVertexArray::new(renderer.device(),
@@ -192,7 +201,7 @@ impl<W> DemoApp<W> where W: Window {
 
             window_size,
 
-            svg_tree,
+            content,
             scene_metadata,
             render_transform: None,
 
@@ -432,25 +441,22 @@ impl<W> DemoApp<W> where W: Window {
                     }
                 }
 
-                Event::OpenSVG(ref svg_path) => {
+                Event::OpenData(ref data_path) => {
                     let viewport = self.window.viewport(self.ui_model.mode.view(0));
                     let filter = build_filter(&self.ui_model);
-                    let (mut built_svg, svg_tree) = load_scene(self.window.resource_loader(),
-                                                               svg_path,
-                                                               viewport.size(),
-                                                               filter);
+                    self.content = load_scene(self.window.resource_loader(), data_path);
 
-                    self.ui_model.message = get_svg_building_message(&built_svg);
+                    let (mut scene, message) = self.content.render(viewport.size(), filter);
+                    self.ui_model.message = message;
 
                     let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
                     self.scene_metadata =
-                        SceneMetadata::new_clipping_view_box(&mut built_svg.scene, viewport_size);
+                        SceneMetadata::new_clipping_view_box(&mut scene, viewport_size);
                     self.camera = Camera::new(self.ui_model.mode,
                                               self.scene_metadata.view_box,
                                               viewport_size);
 
-                    self.scene_proxy.replace_scene(built_svg.scene);
-                    self.svg_tree = svg_tree;
+                    self.scene_proxy.replace_scene(scene);
 
                     self.dirty = true;
                 }
@@ -572,10 +578,10 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::EffectsChanged => {
                 let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
                 let filter = build_filter(&self.ui_model);
-                let mut built_svg = build_svg_tree(&self.svg_tree, viewport_size, filter);
+                let (mut scene, message) = self.content.render(viewport_size, filter);
                 self.scene_metadata =
-                    SceneMetadata::new_clipping_view_box(&mut built_svg.scene, viewport_size);
-                self.scene_proxy.replace_scene(built_svg.scene);
+                    SceneMetadata::new_clipping_view_box(&mut scene, viewport_size);
+                self.scene_proxy.replace_scene(scene);
                 self.dirty = true;
             }
             UIAction::TakeScreenshot(ref info) => {
@@ -621,7 +627,7 @@ impl<W> DemoApp<W> where W: Window {
 pub struct Options {
     pub jobs: Option<usize>,
     pub mode: Mode,
-    pub input_path: SVGPath,
+    pub input_path: DataPath,
     pub ui: UIVisibility,
     pub background_color: BackgroundColor,
     pub high_performance_gpu: bool,
@@ -634,7 +640,7 @@ impl Default for Options {
         Options {
             jobs: None,
             mode: Mode::TwoD,
-            input_path: SVGPath::Default,
+            input_path: DataPath::Default,
             ui: UIVisibility::All,
             background_color: BackgroundColor::Light,
             high_performance_gpu: false,
@@ -745,8 +751,8 @@ impl Options {
         }
 
         if let Some(path) = matches.value_of("INPUT") {
-            self.input_path = SVGPath::Path(PathBuf::from(path));
-        }
+            self.input_path = DataPath::Path(PathBuf::from(path));
+        };
     }
 }
 
@@ -757,30 +763,44 @@ pub enum UIVisibility {
     All,
 }
 
-fn load_scene(resource_loader: &dyn ResourceLoader,
-              input_path: &SVGPath,
-              viewport_size: Vector2I,
-              filter: Option<PatternFilter>)
-              -> (SVGScene, Tree) {
-    let mut data;
-    match *input_path {
-        SVGPath::Default => data = resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
-        SVGPath::Resource(ref name) => data = resource_loader.slurp(name).unwrap(),
-        SVGPath::Path(ref path) => {
-            data = vec![];
-            File::open(path).unwrap().read_to_end(&mut data).unwrap();
+impl Content {
+    fn render(&mut self, viewport_size: Vector2I, filter: Option<PatternFilter>) -> (Scene, String) {
+        match *self {
+            Content::Svg(ref tree) => {
+                let built_svg = build_svg_tree(&tree, viewport_size, filter);
+                let message = get_svg_building_message(&built_svg);
+                (built_svg.scene, message)
+            }
+            Content::Pdf { ref file, ref mut cache, page_nr } => {
+                let page = file.get_page(page_nr).expect("no such page");
+                let (scene, _) = cache.render_page(file, &page).unwrap();
+                (scene, String::new())
+            }
         }
+    }
+}
+
+fn load_scene(resource_loader: &dyn ResourceLoader,
+              input_path: &DataPath,)
+              -> Content {
+    let data = match *input_path {
+        DataPath::Default => resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
+        DataPath::Resource(ref name) => resource_loader.slurp(name).unwrap(),
+        DataPath::Path(ref path) => std::fs::read(path).unwrap().into()
     };
 
-    let tree = Tree::from_data(&data, &UsvgOptions::default()).expect("Failed to parse the SVG!");
-    let built_svg = build_svg_tree(&tree, viewport_size, filter);
-    (built_svg, tree)
+    if let Ok(tree) = SvgTree::from_data(&data, &UsvgOptions::default()) {
+        Content::Svg(tree)
+    } else if let Ok(file) = PdfFile::from_data(data) {
+        Content::Pdf { file, cache: PdfRenderCache::new(), page_nr: 0 }
+    } else {
+        panic!("can't load data");
+    }
 }
 
 // FIXME(pcwalton): Rework how transforms work in the demo. The transform affects the final
 // composite steps, breaking this approach.
-fn build_svg_tree(tree: &Tree, viewport_size: Vector2I, filter: Option<PatternFilter>)
-                  -> SVGScene {
+fn build_svg_tree(tree: &SvgTree, viewport_size: Vector2I, filter: Option<PatternFilter>) -> SVGScene {
     let mut scene = Scene::new();
     let filter_info = filter.map(|filter| {
         let scale = match filter {
