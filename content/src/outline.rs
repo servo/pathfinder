@@ -73,14 +73,6 @@ impl Outline {
     }
 
     #[inline]
-    pub fn with_capacity(capacity: usize) -> Outline {
-        Outline {
-            contours: Vec::with_capacity(capacity),
-            bounds: RectF::default(),
-        }
-    }
-
-    #[inline]
     pub fn from_segments<I>(segments: I) -> Outline
     where
         I: Iterator<Item = Segment>,
@@ -143,11 +135,6 @@ impl Outline {
         outline
     }
 
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.contours.len()
-    }
-    
     #[inline]
     pub fn bounds(&self) -> RectF {
         self.bounds
