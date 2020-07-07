@@ -788,31 +788,6 @@ impl Contour {
             Some(bounds) => bounds.union_rect(self.bounds),
         })
     }
-    
-    pub fn mirror_and_close(&mut self) {
-        if self.points.len() < 2 {
-            return;
-        }
-        let a = self.first_position().unwrap();
-        let b = self.last_position().unwrap();
-        if a == b {
-            self.close();
-            return;
-        }
-        let tr = reflection(a, b);
-
-        let mut segments: Vec<_> = self
-            .iter(ContourIterFlags::empty())
-            .map(|segment| segment.reversed().transform(&tr))
-            .collect();
-        segments.reverse();
-        
-        for segment in &segments {
-            self.push_segment(segment, PushSegmentFlags::UPDATE_BOUNDS);
-        }
-
-        self.close();
-    }
 }
 
 impl Debug for Contour {
