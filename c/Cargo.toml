@@ -3,7 +3,6 @@ name = "pathfinder_c"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
-build = "build.rs"
 
 [lib]
 crate-type = ["staticlib"]
@@ -13,6 +12,7 @@ font-kit = "0.6"
 foreign-types = "0.3"
 gl = "0.14"
 libc = "0.2"
+usvg = "0.9"
 
 [dependencies.pathfinder_canvas]
 features = ["pf-text"]
@@ -42,8 +42,13 @@ path = "../resources"
 [dependencies.pathfinder_simd]
 path = "../simd"
 
+[dependencies.pathfinder_svg]
+path = "../svg"
+
 [target.'cfg(target_os = "macos")'.dependencies]
-metal = "0.17"
+core-foundation = "0.6"
+io-surface = "0.12"
+metal = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
 path = "../metal"

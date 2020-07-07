@@ -20,10 +20,11 @@
 //! You don't need to use this API to use Pathfinder; it's only a convenience.
 
 use crate::concurrent::executor::Executor;
+use crate::gpu::options::RendererLevel;
 use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
 use crate::options::{BuildOptions, RenderCommandListener};
-use crate::scene::Scene;
+use crate::scene::{Scene, SceneSink};
 use crossbeam_channel::{self, Receiver, Sender};
 use pathfinder_geometry::rect::RectF;
 use pathfinder_gpu::Device;
@@ -33,19 +34,28 @@ const MAX_MESSAGES_IN_FLIGHT: usize = 1024;
 
 pub struct SceneProxy {
     sender: Sender<MainToWorkerMsg>,
+    receiver: Receiver<RenderCommand>,
 }
 
 impl SceneProxy {
-    pub fn new<E>(executor: E) -> SceneProxy where E: Executor + Send + 'static {
-        SceneProxy::from_scene(Scene::new(), executor)
+    pub fn new<E>(renderer_level: RendererLevel, executor: E) -> SceneProxy
+                  where E: Executor + Send + 'static {
+        SceneProxy::from_scene(Scene::new(), renderer_level, executor)
     }
 
-    pub fn from_scene<E>(scene: Scene, executor: E) -> SceneProxy
+    pub fn from_scene<E>(scene: Scene, renderer_level: RendererLevel, executor: E)
+                         -> SceneProxy
                          where E: Executor + Send + 'static {
         let (main_to_worker_sender, main_to_worker_receiver) =
             crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);
-        thread::spawn(move || scene_thread(scene, executor, main_to_worker_receiver));
-        SceneProxy { sender: main_to_worker_sender }
+        let (worker_to_main_sender, worker_to_main_receiver) =
+            crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);
+        let listener = RenderCommandListener::new(Box::new(move |command| {
+            drop(worker_to_main_sender.send(command))
+        }));
+        let sink = SceneSink::new(listener, renderer_level);
+        thread::spawn(move || scene_thread(scene, executor, sink, main_to_worker_receiver));
+        SceneProxy { sender: main_to_worker_sender, receiver: worker_to_main_receiver }
     }
 
     #[inline]
@@ -59,18 +69,22 @@ impl SceneProxy {
     }
 
     #[inline]
-    pub fn build_with_listener(&self,
-                               options: BuildOptions,
-                               listener: Box<dyn RenderCommandListener>) {
-        self.sender.send(MainToWorkerMsg::Build(options, listener)).unwrap();
+    pub fn build(&self, options: BuildOptions) {
+        self.sender.send(MainToWorkerMsg::Build(options)).unwrap();
     }
 
+    /// Sends all queued commands to the given renderer.
     #[inline]
-    pub fn build_with_stream(&self, options: BuildOptions) -> RenderCommandStream {
-        let (sender, receiver) = crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);
-        let listener = Box::new(move |command| drop(sender.send(command)));
-        self.build_with_listener(options, listener);
-        RenderCommandStream::new(receiver)
+    pub fn render<D>(&mut self, renderer: &mut Renderer<D>) where D: Device {
+        renderer.begin_scene();
+        while let Ok(command) = self.receiver.recv() {
+            renderer.render_command(&command);
+            match command {
+                RenderCommand::Finish { .. } => break,
+                _ => {}
+            }
+        }
+        renderer.end_scene();
     }
 
     /// A convenience method to build a scene and send the resulting commands
@@ -79,18 +93,15 @@ impl SceneProxy {
     /// Exactly equivalent to:
     ///
     /// ```norun
-    /// for command in scene_proxy.build_with_stream(options) {
-    ///     renderer.render_command(&command)
+    /// scene_proxy.build(build_options);
+    /// scene_proxy.render(renderer);
     /// }
     /// ```
     #[inline]
-    pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, build_options: BuildOptions)
+    pub fn build_and_render<D>(&mut self, renderer: &mut Renderer<D>, build_options: BuildOptions)
                                where D: Device {
-        renderer.begin_scene();
-        for command in self.build_with_stream(build_options) {
-            renderer.render_command(&command);
-        }
-        renderer.end_scene();
+        self.build(build_options);
+        self.render(renderer);
     }
 
     #[inline]
@@ -103,6 +114,7 @@ impl SceneProxy {
 
 fn scene_thread<E>(mut scene: Scene,
                    executor: E,
+                   mut sink: SceneSink<'static>,
                    main_to_worker_receiver: Receiver<MainToWorkerMsg>)
                    where E: Executor {
     while let Ok(msg) = main_to_worker_receiver.recv() {
@@ -110,7 +122,7 @@ fn scene_thread<E>(mut scene: Scene,
             MainToWorkerMsg::ReplaceScene(new_scene) => scene = new_scene,
             MainToWorkerMsg::CopyScene(sender) => sender.send(scene.clone()).unwrap(),
             MainToWorkerMsg::SetViewBox(new_view_box) => scene.set_view_box(new_view_box),
-            MainToWorkerMsg::Build(options, listener) => scene.build(options, listener, &executor)
+            MainToWorkerMsg::Build(options) => scene.build(options, &mut sink, &executor),
         }
     }
 }
@@ -119,33 +131,5 @@ enum MainToWorkerMsg {
     ReplaceScene(Scene),
     CopyScene(Sender<Scene>),
     SetViewBox(RectF),
-    Build(BuildOptions, Box<dyn RenderCommandListener>),
-}
-
-pub struct RenderCommandStream {
-    receiver: Receiver<RenderCommand>,
-    done: bool,
-}
-
-impl RenderCommandStream {
-    fn new(receiver: Receiver<RenderCommand>) -> RenderCommandStream {
-        RenderCommandStream { receiver, done: false }
-    }
-}
-
-impl Iterator for RenderCommandStream {
-    type Item = RenderCommand;
-
-    #[inline]
-    fn next(&mut self) -> Option<RenderCommand> {
-        if self.done {
-            None
-        } else {
-            let command = self.receiver.recv().unwrap();
-            if let RenderCommand::Finish { .. } = command {
-                self.done = true;
-            }
-            Some(command)
-        }
-    }
+    Build(BuildOptions),
 }

@@ -30,7 +30,7 @@ use pathfinder_geometry::vector::{Vector2F, vec2f, vec2i};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::ResourceLoader;
@@ -1517,13 +1517,16 @@ fn main() {
     let pathfinder_device = GLDevice::new(GLVersion::GL3, default_framebuffer);
 
     // Create a Pathfinder renderer.
+    let renderer_mode = RendererMode::default_for_device(&pathfinder_device);
+    let renderer_options = RendererOptions {
+        background_color: Some(rgbf(0.3, 0.3, 0.32)),
+        dest: DestFramebuffer::full_window(framebuffer_size),
+        ..RendererOptions::default()
+    };
     let mut renderer = Renderer::new(pathfinder_device,
                                      &resources,
-                                     DestFramebuffer::full_window(framebuffer_size),
-                                     RendererOptions {
-                                         background_color: Some(rgbf(0.3, 0.3, 0.32)),
-                                         ..RendererOptions::default()
-                                     });
+                                     renderer_mode,
+                                     renderer_options);
 
     // Initialize font state.
     let font_source = Arc::new(MemSource::from_fonts(font_data.into_iter()).unwrap());
@@ -1566,7 +1569,9 @@ fn main() {
 
         // Render the canvas to screen.
         let canvas = context.into_canvas();
-        let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
+        let mut scene = SceneProxy::from_scene(canvas.into_scene(),
+                                               renderer.mode().level,
+                                               RayonExecutor);
         scene.build_and_render(&mut renderer, BuildOptions::default());
 
         // Present the rendered canvas via `surfman`.
@@ -1575,9 +1580,9 @@ fn main() {
         device.bind_surface_to_context(&mut gl_context, surface).unwrap();
 
         // Add stats to performance graphs.
-        if let Some(gpu_time) = renderer.shift_rendering_time() {
-            let cpu_build_time = renderer.stats.cpu_build_time.as_secs_f32();
-            let gpu_time = gpu_time.gpu_time.as_secs_f32();
+        if let Some(gpu_time) = renderer.last_rendering_time() {
+            let cpu_build_time = renderer.stats().cpu_build_time.as_secs_f32();
+            let gpu_time = gpu_time.total_time().as_secs_f32();
             fps_graph.push(cpu_frame_elapsed_time + cpu_build_time.max(gpu_time));
             cpu_graph.push(cpu_frame_elapsed_time + cpu_build_time);
             gpu_graph.push(gpu_time);

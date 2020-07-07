@@ -23,27 +23,33 @@ use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
 use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
+use pathfinder_gpu::Device;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
+use pathfinder_resources::embedded::EmbeddedResourceLoader;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererLevel};
+use pathfinder_renderer::gpu::options::{RendererMode, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_simd::default::F32x4;
+use pathfinder_svg::SVGScene;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::path::PathBuf;
+use std::ptr;
 use std::slice;
 use std::str;
+use usvg::{Options, Tree};
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use metal::{CAMetalLayer, CoreAnimationLayerRef, Device};
+use io_surface::IOSurfaceRef;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::{self, CoreAnimationDrawableRef, DeviceRef as NativeMetalDeviceRef};
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice;
-#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
-use foreign_types::ForeignTypeRef;
 
 // Constants
 
@@ -70,10 +76,15 @@ pub const PF_ARC_DIRECTION_CCW: u8 = 1;
 
 pub const PF_GL_VERSION_GL3:    u8 = 0;
 pub const PF_GL_VERSION_GLES3:  u8 = 1;
+pub const PF_GL_VERSION_GL4:    u8 = 2;
 
 // `renderer`
 
 pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
+pub const PF_RENDERER_OPTIONS_FLAGS_SHOW_DEBUG_UI: u8 = 0x2;
+
+pub const PF_RENDERER_LEVEL_D3D9: u8 = 0x1;
+pub const PF_RENDERER_LEVEL_D3D11: u8 = 0x2;
 
 // Types
 
@@ -182,13 +193,23 @@ pub type PFMetalDeviceRef = *mut MetalDevice;
 pub type PFSceneRef = *mut Scene;
 pub type PFSceneProxyRef = *mut SceneProxy;
 #[repr(C)]
+pub struct PFRendererMode {
+    pub level: PFRendererLevel,
+}
+pub type PFDestFramebufferRef = *mut c_void;
+#[repr(C)]
 pub struct PFRendererOptions {
+    pub dest: PFDestFramebufferRef,
     pub background_color: PFColorF,
     pub flags: PFRendererOptionsFlags,
 }
 pub type PFRendererOptionsFlags = u8;
 pub type PFBuildOptionsRef = *mut BuildOptions;
 pub type PFRenderTransformRef = *mut RenderTransform;
+pub type PFRendererLevel = u8;
+
+// `svg`
+pub type PFSVGSceneRef = *mut SVGScene;
 
 // `canvas`
 
@@ -290,18 +311,20 @@ pub unsafe extern "C" fn PFCanvasSetLineWidth(canvas: PFCanvasRef, new_line_widt
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineCap(canvas: PFCanvasRef, new_line_cap: PFLineCap) {
     (*canvas).set_line_cap(match new_line_cap {
+        PF_LINE_CAP_BUTT   => LineCap::Butt,
         PF_LINE_CAP_SQUARE => LineCap::Square,
         PF_LINE_CAP_ROUND  => LineCap::Round,
-        _                  => LineCap::Butt,
+        _                  => panic!("Invalid Pathfinder line cap style!"),
     });
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineJoin(canvas: PFCanvasRef, new_line_join: PFLineJoin) {
     (*canvas).set_line_join(match new_line_join {
+        PF_LINE_JOIN_MITER => LineJoin::Miter,
         PF_LINE_JOIN_BEVEL => LineJoin::Bevel,
         PF_LINE_JOIN_ROUND => LineJoin::Round,
-        _                  => LineJoin::Miter,
+        _                  => panic!("Invalid Pathfinder line join style!"),
     });
 }
 
@@ -439,7 +462,11 @@ pub unsafe extern "C" fn PFPathArc(path: PFPathRef,
                                    start_angle: f32,
                                    end_angle: f32,
                                    direction: PFArcDirection) {
-    let direction = if direction == 0 { ArcDirection::CW } else { ArcDirection::CCW };
+    let direction = match direction {
+        PF_ARC_DIRECTION_CW  => ArcDirection::CW,
+        PF_ARC_DIRECTION_CCW => ArcDirection::CCW,
+        _                    => panic!("Invalid Pathfinder arc direction!"),
+    };
     (*path).arc((*center).to_rust(), radius, start_angle, end_angle, direction)
 }
 
@@ -481,7 +508,13 @@ pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
     drop(Box::from_raw(fill_style))
 }
 
-// `gl`
+// `resources`
+
+#[no_mangle]
+pub unsafe extern "C" fn PFEmbeddedResourceLoaderCreate() -> PFResourceLoaderRef {
+    let loader = Box::new(EmbeddedResourceLoader::new());
+    Box::into_raw(Box::new(ResourceLoaderWrapper(loader as Box<dyn ResourceLoader>)))
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn PFFilesystemResourceLoaderLocate() -> PFResourceLoaderRef {
@@ -498,6 +531,13 @@ pub unsafe extern "C" fn PFFilesystemResourceLoaderFromPath(path: *const c_char)
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn PFResourceLoaderDestroy(loader: PFResourceLoaderRef) {
+    drop(Box::from_raw(loader))
+}
+
+// `gl`
+
+#[no_mangle]
 pub unsafe extern "C" fn PFGLLoadWith(loader: PFGLFunctionLoader, userdata: *mut c_void) {
     gl::load_with(|name| {
         let name = CString::new(name).unwrap();
@@ -508,18 +548,18 @@ pub unsafe extern "C" fn PFGLLoadWith(loader: PFGLFunctionLoader, userdata: *mut
 #[no_mangle]
 pub unsafe extern "C" fn PFGLDeviceCreate(version: PFGLVersion, default_framebuffer: u32)
                                           -> PFGLDeviceRef {
-    let version = match version { PF_GL_VERSION_GLES3 => GLVersion::GLES3, _ => GLVersion::GL3 };
+    let version = match version {
+        PF_GL_VERSION_GL3   => GLVersion::GL3,
+        PF_GL_VERSION_GLES3 => GLVersion::GLES3,
+        PF_GL_VERSION_GL4   => GLVersion::GL4,
+        _ => panic!("Invalid Pathfinder OpenGL version!"),
+    };
     Box::into_raw(Box::new(GLDevice::new(version, default_framebuffer)))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFGLDeviceDestroy(device: PFGLDeviceRef) {
     drop(Box::from_raw(device))
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn PFResourceLoaderDestroy(loader: PFResourceLoaderRef) {
-    drop(Box::from_raw(loader))
 }
 
 // `gpu`
@@ -541,12 +581,12 @@ pub unsafe extern "C" fn PFGLDestFramebufferDestroy(dest_framebuffer: PFGLDestFr
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererCreate(device: PFGLDeviceRef,
                                             resources: PFResourceLoaderRef,
-                                            dest_framebuffer: PFGLDestFramebufferRef,
+                                            mode: *const PFRendererMode,
                                             options: *const PFRendererOptions)
                                             -> PFGLRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
                                          &*((*resources).0),
-                                         *Box::from_raw(dest_framebuffer),
+                                         (*mode).to_rust(),
                                          (*options).to_rust())))
 }
 
@@ -557,7 +597,7 @@ pub unsafe extern "C" fn PFGLRendererDestroy(renderer: PFGLRendererRef) {
 
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFGLDeviceRef {
-    &mut (*renderer).device
+    (*renderer).device_mut()
 }
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
@@ -581,12 +621,12 @@ pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
                                                resources: PFResourceLoaderRef,
-                                               dest_framebuffer: PFMetalDestFramebufferRef,
+                                               mode: *const PFRendererMode,
                                                options: *const PFRendererOptions)
                                                -> PFMetalRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
                                          &*((*resources).0),
-                                         *Box::from_raw(dest_framebuffer),
+                                         (*mode).to_rust(),
                                          (*options).to_rust())))
 }
 
@@ -603,7 +643,7 @@ pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
 #[no_mangle]
 pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef)
                                                   -> PFMetalDeviceRef {
-    &mut (*renderer).device
+    (*renderer).device_mut()
 }
 
 /// This function does not take ownership of `renderer` or `build_options`. Therefore, if you
@@ -629,11 +669,39 @@ pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFScenePro
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 #[no_mangle]
-pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
-                                             -> PFMetalDeviceRef {
-    let device = Device::system_default().expect("Failed to get Metal system default device!");
-    let layer = CoreAnimationLayerRef::from_ptr(layer);
-    Box::into_raw(Box::new(MetalDevice::new(device, layer.next_drawable().unwrap())))
+pub unsafe extern "C" fn PFMetalDeviceCreateWithIOSurface(metal_device: &NativeMetalDeviceRef,
+                                                          io_surface: IOSurfaceRef)
+                                                          -> PFMetalDeviceRef {
+    Box::into_raw(Box::new(MetalDevice::new(metal_device, io_surface)))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceCreateWithDrawable(metal_device: &NativeMetalDeviceRef,
+                                                         ca_drawable: &CoreAnimationDrawableRef)
+                                                         -> PFMetalDeviceRef {
+    Box::into_raw(Box::new(MetalDevice::new(metal_device, ca_drawable)))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceSwapIOSurface(device: PFMetalDeviceRef,
+                                                    new_io_surface: IOSurfaceRef) {
+    drop((*device).swap_texture(new_io_surface))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceSwapDrawable(device: PFMetalDeviceRef,
+                                                   new_ca_drawable: &CoreAnimationDrawableRef) {
+    drop((*device).swap_texture(new_ca_drawable))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDevicePresentDrawable(device: PFMetalDeviceRef,
+                                                      ca_drawable: &CoreAnimationDrawableRef) {
+    (*device).present_drawable(ca_drawable)
 }
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
@@ -696,14 +764,51 @@ pub unsafe extern "C" fn PFSceneDestroy(scene: PFSceneRef) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFSceneProxyCreateFromSceneAndRayonExecutor(scene: PFSceneRef)
+pub unsafe extern "C" fn PFSceneProxyCreateFromSceneAndRayonExecutor(scene: PFSceneRef,
+                                                                     level: PFRendererLevel)
                                                                      -> PFSceneProxyRef {
-    Box::into_raw(Box::new(SceneProxy::from_scene(*Box::from_raw(scene), RayonExecutor)))
+    Box::into_raw(Box::new(SceneProxy::from_scene(*Box::from_raw(scene),
+                                                  to_rust_renderer_level(level),
+                                                  RayonExecutor)))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyDestroy(scene_proxy: PFSceneProxyRef) {
     drop(Box::from_raw(scene_proxy))
+}
+
+// `svg`
+
+/// Returns `NULL` on failure.
+#[no_mangle]
+pub unsafe extern "C" fn PFSVGSceneCreateWithMemory(bytes: *const c_char, byte_len: usize)
+                                                    -> PFSVGSceneRef {
+    let data = slice::from_raw_parts(bytes as *const _, byte_len);
+    let tree = match Tree::from_data(data, &Options::default()) {
+        Ok(tree) => tree,
+        Err(_) => return ptr::null_mut(),
+    };
+    let svg_scene = SVGScene::from_tree(&tree);
+    Box::into_raw(Box::new(svg_scene))
+}
+
+/// Returns `NULL` on failure.
+#[no_mangle]
+pub unsafe extern "C" fn PFSVGSceneCreateWithPath(path: *const c_char) -> PFSVGSceneRef {
+    let string = to_rust_string(&path, 0);
+    let path = PathBuf::from(string);
+    let tree = match Tree::from_file(path, &Options::default()) {
+        Ok(tree) => tree,
+        Err(_) => return ptr::null_mut(),
+    };
+    let svg_scene = SVGScene::from_tree(&tree);
+    Box::into_raw(Box::new(svg_scene))
+}
+
+/// Destroys the SVG and returns the scene.
+#[no_mangle]
+pub unsafe extern "C" fn PFSVGSceneIntoScene(svg: PFSVGSceneRef) -> PFSceneRef {
+    Box::into_raw(Box::new((*Box::from_raw(svg)).scene))
 }
 
 // Helpers for `canvas`
@@ -807,17 +912,36 @@ impl PFPerspective {
 
 // Helpers for `renderer`
 
-impl PFRendererOptions {
-    pub fn to_rust(&self) -> RendererOptions {
-        let has_background_color = self.flags & PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR;
-        RendererOptions {
-            background_color: if has_background_color != 0 {
-                Some(self.background_color.to_rust())
-            } else {
-                None
-            },
-            // TODO(pcwalton): Expose this in the C API.
-            no_compute: false,
+impl PFRendererMode {
+    pub fn to_rust(&self) -> RendererMode {
+        RendererMode {
+            level: to_rust_renderer_level(self.level),
         }
+    }
+}
+
+impl PFRendererOptions {
+    pub fn to_rust<D>(&self) -> RendererOptions<D> where D: Device {
+        let has_background_color = self.flags & PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR;
+        let show_debug_ui = (self.flags & PF_RENDERER_OPTIONS_FLAGS_SHOW_DEBUG_UI) != 0;
+        unsafe {
+            RendererOptions {
+                background_color: if has_background_color != 0 {
+                    Some(self.background_color.to_rust())
+                } else {
+                    None
+                },
+                dest: *Box::from_raw(self.dest as *mut DestFramebuffer<D>),
+                show_debug_ui,
+            }
+        }
+    }
+}
+
+fn to_rust_renderer_level(level: PFRendererLevel) -> RendererLevel {
+    match level {
+        PF_RENDERER_LEVEL_D3D9  => RendererLevel::D3D9,
+        PF_RENDERER_LEVEL_D3D11 => RendererLevel::D3D11,
+        _                       => panic!("Invalid Pathfinder renderer level!"),
     }
 }

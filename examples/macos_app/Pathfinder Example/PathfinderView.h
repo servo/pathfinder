@@ -8,7 +8,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
-#include <pathfinder/pathfinder.h>
+#include <pathfinder_c.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -19,8 +19,10 @@ NS_ASSUME_NONNULL_BEGIN
     PFBuildOptionsRef mBuildOptions;
     CVDisplayLinkRef mDisplayLink;
     int32_t mFrameNumber;
+    CAMetalLayer *mLayer;
     CGSize mLayerSize;
     NSLock *mRenderLock;
+    id<CAMetalDrawable> mCurrentDrawable;
 }
 
 - (void)_render;

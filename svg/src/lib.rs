@@ -37,10 +37,10 @@ use usvg::{Transform as UsvgTransform, Tree, Visibility};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
-pub struct BuiltSVG {
+pub struct SVGScene {
     pub scene: Scene,
     pub result_flags: BuildResultFlags,
-    pub clip_paths: HashMap<String, ClipPathId>,
+    pub clip_paths: HashMap<String, Outline>,
     gradients: HashMap<String, GradientInfo>,
 }
 
@@ -52,27 +52,26 @@ bitflags! {
         const UNSUPPORTED_IMAGE_NODE             = 0x0002;
         const UNSUPPORTED_MASK_NODE              = 0x0004;
         const UNSUPPORTED_PATTERN_NODE           = 0x0008;
-        const UNSUPPORTED_NESTED_SVG_NODE        = 0x0010;
-        const UNSUPPORTED_MULTIPLE_CLIP_PATHS    = 0x0020;
-        const UNSUPPORTED_LINK_PAINT             = 0x0040;
-        const UNSUPPORTED_FILTER_ATTR            = 0x0080;
-        const UNSUPPORTED_MASK_ATTR              = 0x0100;
-        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x0200;
+        const UNSUPPORTED_MULTIPLE_CLIP_PATHS    = 0x0010;
+        const UNSUPPORTED_LINK_PAINT             = 0x0020;
+        const UNSUPPORTED_FILTER_ATTR            = 0x0040;
+        const UNSUPPORTED_MASK_ATTR              = 0x0080;
+        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x0100;
     }
 }
 
-impl BuiltSVG {
+impl SVGScene {
     // TODO(pcwalton): Allow a global transform to be set.
     #[inline]
-    pub fn from_tree(tree: &Tree) -> BuiltSVG {
-        BuiltSVG::from_tree_and_scene(tree, Scene::new())
+    pub fn from_tree(tree: &Tree) -> SVGScene {
+        SVGScene::from_tree_and_scene(tree, Scene::new())
     }
 
     // TODO(pcwalton): Allow a global transform to be set.
-    pub fn from_tree_and_scene(tree: &Tree, scene: Scene) -> BuiltSVG {
+    pub fn from_tree_and_scene(tree: &Tree, scene: Scene) -> SVGScene {
         // TODO(pcwalton): Maybe have a `SVGBuilder` type to hold the clip path IDs and other
-        // transient data separate from `BuiltSVG`?
-        let mut built_svg = BuiltSVG {
+        // transient data separate from `SVGScene`?
+        let mut built_svg = SVGScene {
             scene,
             result_flags: BuildResultFlags::empty(),
             clip_paths: HashMap::new(),
@@ -111,13 +110,12 @@ impl BuiltSVG {
                 }
 
                 if let Some(ref clip_path_name) = group.clip_path {
-                    if let Some(clip_path_id) = self.clip_paths.get(clip_path_name) {
-                        // TODO(pcwalton): Combine multiple clip paths if there's already one.
-                        if state.clip_path.is_some() {
-                            self.result_flags
-                                .insert(BuildResultFlags::UNSUPPORTED_MULTIPLE_CLIP_PATHS);
-                        }
-                        state.clip_path = Some(*clip_path_id);
+                    if let Some(clip_outline) = self.clip_paths.get(clip_path_name) {
+                        let mut clip_path = ClipPath::new((*clip_outline).clone());
+                        clip_path.set_clip_path(state.clip_path);
+                        clip_path.set_name(format!("ClipPath({})", clip_path_name));
+                        let clip_path_id = self.scene.push_clip_path(clip_path);
+                        state.clip_path = Some(clip_path_id);
                     }
                 }
 
@@ -188,13 +186,7 @@ impl BuiltSVG {
                     self.process_node(&kid, &state, &mut clip_outline);
                 }
 
-                if let Some(clip_outline) = clip_outline {
-                    // FIXME(pcwalton): Is the winding fill rule correct to use?
-                    let mut clip_path = ClipPath::new(clip_outline);
-                    clip_path.set_name(format!("ClipPath({})", node.id()));
-                    let clip_path_id = self.scene.push_clip_path(clip_path);
-                    self.clip_paths.insert(node.id().to_owned(), clip_path_id);
-                }
+                self.clip_paths.insert(node.id().to_owned(), clip_outline.unwrap());
             }
             NodeKind::Defs => {
                 // FIXME(pcwalton): This is wrong.
@@ -236,10 +228,7 @@ impl BuiltSVG {
                 self.result_flags
                     .insert(BuildResultFlags::UNSUPPORTED_PATTERN_NODE);
             }
-            NodeKind::Svg(..) => {
-                self.result_flags
-                    .insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
-            }
+            NodeKind::Svg(..) => unreachable!(),
         }
     }
 
@@ -280,7 +269,7 @@ impl BuiltSVG {
         path.set_clip_path(state.clip_path);
         path.set_fill_rule(fill_rule);
         path.set_name(name);
-        self.scene.push_path(path);
+        self.scene.push_draw_path(path);
     }
 }
 
@@ -311,7 +300,6 @@ impl Display for BuildResultFlags {
             "<image>",
             "<mask>",
             "<pattern>",
-            "nested <svg>",
             "multiple clip paths",
             "non-color paint",
             "filter attribute",

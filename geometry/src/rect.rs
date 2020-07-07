@@ -328,6 +328,11 @@ impl RectI {
     }
 
     #[inline]
+    pub fn area(self) -> i32 {
+        self.width() * self.height()
+    }
+
+    #[inline]
     pub fn upper_right(&self) -> Vector2I {
         Vector2I(self.0.zy())
     }

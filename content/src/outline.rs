@@ -63,6 +63,15 @@ impl Outline {
         }
     }
 
+    /// Returns a new `Outline` with storage for `capacity` contours preallocated.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Outline {
+        Outline {
+            contours: Vec::with_capacity(capacity),
+            bounds: RectF::default(),
+        }
+    }
+
     #[inline]
     pub fn with_capacity(capacity: usize) -> Outline {
         Outline {
@@ -200,7 +209,7 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
-    pub fn transformed(mut self, transform: &Transform2F) -> Self {
+    pub fn transformed(mut self, transform: &Transform2F) -> Outline {
         self.transform(transform);
         self
     }
@@ -246,12 +255,24 @@ impl Outline {
         self.contours.iter_mut().for_each(|contour| contour.close());
     }
 
-    pub fn merge(&mut self, other: Outline) {
-        if other.len() == 0 {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.contours.iter().all(Contour::is_empty)
+    }
+
+    /// Returns the number of contours in this outline.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.contours.len()
+    }
+
+    /// Appends the contours in another outline to this one.
+    pub fn push_outline(&mut self, other: Outline) {
+        if other.is_empty() {
             return;
         }
 
-        if self.len() == 0 {
+        if self.is_empty() {
             self.bounds = other.bounds;
         } else {
             self.bounds = self.bounds.union_rect(other.bounds);
@@ -446,6 +467,11 @@ impl Contour {
     #[inline]
     pub(crate) fn position_of_last(&self, index: u32) -> Vector2F {
         self.points[self.points.len() - index as usize]
+    }
+
+    #[inline]
+    pub fn flags_of(&self, index: u32) -> PointFlags {
+        self.flags[index as usize]
     }
 
     #[inline]

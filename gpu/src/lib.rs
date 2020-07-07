@@ -12,6 +12,10 @@
 
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate log;
+
+pub mod allocator;
 
 use half::f16;
 use image::ImageFormat;
@@ -21,11 +25,13 @@ use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::vector::{Vector2I, vec2i};
 use pathfinder_resources::ResourceLoader;
 use pathfinder_simd::default::{F32x2, F32x4, I32x2};
+use std::ops::Range;
 use std::os::raw::c_void;
 use std::time::Duration;
 
 pub trait Device: Sized {
     type Buffer;
+    type BufferDataReceiver;
     type Fence;
     type Framebuffer;
     type ImageParameter;
@@ -40,6 +46,8 @@ pub trait Device: Sized {
     type VertexArray;
     type VertexAttr;
 
+    fn backend_name(&self) -> &'static str;
+    fn device_name(&self) -> String;
     fn feature_level(&self) -> FeatureLevel;
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, format: TextureFormat, size: Vector2I, data: TextureDataRef)
@@ -90,6 +98,8 @@ pub trait Device: Sized {
     fn upload_to_texture(&self, texture: &Self::Texture, rect: RectI, data: TextureDataRef);
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI)
                    -> Self::TextureDataReceiver;
+    fn read_buffer(&self, buffer: &Self::Buffer, target: BufferTarget, range: Range<usize>)
+                   -> Self::BufferDataReceiver;
     fn begin_commands(&self);
     fn end_commands(&self);
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
@@ -108,6 +118,8 @@ pub trait Device: Sized {
     fn recv_timer_query(&self, query: &Self::TimerQuery) -> Duration;
     fn try_recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> Option<TextureData>;
     fn recv_texture_data(&self, receiver: &Self::TextureDataReceiver) -> TextureData;
+    fn try_recv_buffer(&self, receiver: &Self::BufferDataReceiver) -> Option<Vec<u8>>;
+    fn recv_buffer(&self, receiver: &Self::BufferDataReceiver) -> Vec<u8>;
 
     fn create_texture_from_png(&self,
                                resources: &dyn ResourceLoader,
@@ -126,6 +138,30 @@ pub trait Device: Sized {
                 let image = image.to_rgba();
                 let size = vec2i(image.width() as i32, image.height() as i32);
                 self.create_texture_from_data(format, size, TextureDataRef::U8(&image))
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    fn upload_png_to_texture(&self,
+                             resources: &dyn ResourceLoader,
+                             name: &str,
+                             texture: &Self::Texture,
+                             format: TextureFormat) {
+        let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
+        let image = image::load_from_memory_with_format(&data, ImageFormat::Png).unwrap();
+        match format {
+            TextureFormat::R8 => {
+                let image = image.to_luma();
+                let size = vec2i(image.width() as i32, image.height() as i32);
+                let rect = RectI::new(Vector2I::default(), size);
+                self.upload_to_texture(&texture, rect, TextureDataRef::U8(&image))
+            }
+            TextureFormat::RGBA8 => {
+                let image = image.to_rgba();
+                let size = vec2i(image.width() as i32, image.height() as i32);
+                let rect = RectI::new(Vector2I::default(), size);
+                self.upload_to_texture(&texture, rect, TextureDataRef::U8(&image))
             }
             _ => unimplemented!(),
         }
@@ -170,7 +206,7 @@ pub enum FeatureLevel {
     D3D11,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TextureFormat {
     R8,
     R16F,
@@ -182,10 +218,11 @@ pub enum TextureFormat {
 #[derive(Clone, Copy, Debug)]
 pub enum VertexAttrType {
     F32,
-    I16,
     I8,
-    U16,
+    I16,
+    I32,
     U8,
+    U16,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -258,6 +295,7 @@ pub struct RenderState<'a, D> where D: Device {
     pub uniforms: &'a [UniformBinding<'a, D::Uniform>],
     pub textures: &'a [TextureBinding<'a, D::TextureParameter, D::Texture>],
     pub images: &'a [ImageBinding<'a, D::ImageParameter, D::Texture>],
+    pub storage_buffers: &'a [(&'a D::StorageBuffer, &'a D::Buffer)],
     pub viewport: RectI,
     pub options: RenderOptions,
 }
