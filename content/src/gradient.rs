@@ -24,6 +24,7 @@ use std::mem;
 pub struct Gradient {
     pub geometry: GradientGeometry,
     stops: Vec<ColorStop>,
+    pub wrap: GradientWrap,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -47,6 +48,12 @@ pub enum GradientGeometry {
         /// transform.
         transform: Transform2F,
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum GradientWrap {
+    Clamp,
+    Repeat,
 }
 
 impl Eq for Gradient {}
@@ -90,7 +97,11 @@ impl Hash for ColorStop {
 impl Gradient {
     #[inline]
     pub fn linear(line: LineSegment2F) -> Gradient {
-        Gradient { geometry: GradientGeometry::Linear(line), stops: Vec::new() }
+        Gradient {
+            geometry: GradientGeometry::Linear(line),
+            stops: Vec::new(),
+            wrap: GradientWrap::Clamp,
+        }
     }
 
     #[inline]
@@ -104,6 +115,7 @@ impl Gradient {
         Gradient {
             geometry: GradientGeometry::Radial { line: line.to_line(), radii, transform },
             stops: Vec::new(),
+            wrap: GradientWrap::Clamp,
         }
     }
 
