@@ -17,13 +17,13 @@ extern crate log;
 
 pub mod concurrent;
 pub mod gpu;
-pub mod gpu_data;
 pub mod options;
 pub mod paint;
 pub mod scene;
 
 mod allocator;
 mod builder;
+mod gpu_data;
 mod tile_map;
 mod tiler;
 mod tiles;

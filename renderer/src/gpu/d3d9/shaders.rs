@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Shaders and vertex specifications for the Direct3D 9-level renderer.
+
 use crate::gpu::shaders::{TILE_INSTANCE_SIZE, TileProgramCommon};
 use pathfinder_gpu::{BufferTarget, Device, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_resources::ResourceLoader;
@@ -15,17 +17,17 @@ use pathfinder_resources::ResourceLoader;
 const FILL_INSTANCE_SIZE: usize = 12;
 const CLIP_TILE_INSTANCE_SIZE: usize = 16;
 
-pub struct FillVertexArrayD3D9<D> where D: Device {
-    pub vertex_array: D::VertexArray,
+pub(crate) struct FillVertexArrayD3D9<D> where D: Device {
+    pub(crate) vertex_array: D::VertexArray,
 }
 
 impl<D> FillVertexArrayD3D9<D> where D: Device {
-    pub fn new(device: &D,
-               fill_program: &FillProgramD3D9<D>,
-               vertex_buffer: &D::Buffer,
-               quad_vertex_positions_buffer: &D::Buffer,
-               quad_vertex_indices_buffer: &D::Buffer)
-               -> FillVertexArrayD3D9<D> {
+    pub(crate) fn new(device: &D,
+                      fill_program: &FillProgramD3D9<D>,
+                      vertex_buffer: &D::Buffer,
+                      quad_vertex_positions_buffer: &D::Buffer,
+                      quad_vertex_indices_buffer: &D::Buffer)
+                      -> FillVertexArrayD3D9<D> {
         let vertex_array = device.create_vertex_array();
 
         let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord").unwrap();
@@ -68,17 +70,17 @@ impl<D> FillVertexArrayD3D9<D> where D: Device {
     }
 }
 
-pub struct TileVertexArrayD3D9<D> where D: Device {
-    pub vertex_array: D::VertexArray,
+pub(crate) struct TileVertexArrayD3D9<D> where D: Device {
+    pub(crate) vertex_array: D::VertexArray,
 }
 
 impl<D> TileVertexArrayD3D9<D> where D: Device {
-    pub fn new(device: &D,
-               tile_program: &TileProgramD3D9<D>,
-               tile_vertex_buffer: &D::Buffer,
-               quad_vertex_positions_buffer: &D::Buffer,
-               quad_vertex_indices_buffer: &D::Buffer)
-               -> TileVertexArrayD3D9<D> {
+    pub(crate) fn new(device: &D,
+                      tile_program: &TileProgramD3D9<D>,
+                      tile_vertex_buffer: &D::Buffer,
+                      quad_vertex_positions_buffer: &D::Buffer,
+                      quad_vertex_indices_buffer: &D::Buffer)
+                      -> TileVertexArrayD3D9<D> {
         let vertex_array = device.create_vertex_array();
 
         let tile_offset_attr =
@@ -155,17 +157,17 @@ impl<D> TileVertexArrayD3D9<D> where D: Device {
     }
 }
 
-pub struct ClipTileCopyVertexArrayD3D9<D> where D: Device {
-    pub vertex_array: D::VertexArray,
+pub(crate) struct ClipTileCopyVertexArrayD3D9<D> where D: Device {
+    pub(crate) vertex_array: D::VertexArray,
 }
 
 impl<D> ClipTileCopyVertexArrayD3D9<D> where D: Device {
-    pub fn new(device: &D,
-               clip_tile_copy_program: &ClipTileCopyProgramD3D9<D>,
-               vertex_buffer: &D::Buffer,
-               quad_vertex_positions_buffer: &D::Buffer,
-               quad_vertex_indices_buffer: &D::Buffer)
-               -> ClipTileCopyVertexArrayD3D9<D> {
+    pub(crate) fn new(device: &D,
+                      clip_tile_copy_program: &ClipTileCopyProgramD3D9<D>,
+                      vertex_buffer: &D::Buffer,
+                      quad_vertex_positions_buffer: &D::Buffer,
+                      quad_vertex_indices_buffer: &D::Buffer)
+                      -> ClipTileCopyVertexArrayD3D9<D> {
         let vertex_array = device.create_vertex_array();
 
         let tile_offset_attr =
@@ -199,17 +201,17 @@ impl<D> ClipTileCopyVertexArrayD3D9<D> where D: Device {
     }
 }
 
-pub struct ClipTileCombineVertexArrayD3D9<D> where D: Device {
-    pub vertex_array: D::VertexArray,
+pub(crate) struct ClipTileCombineVertexArrayD3D9<D> where D: Device {
+    pub(crate) vertex_array: D::VertexArray,
 }
 
 impl<D> ClipTileCombineVertexArrayD3D9<D> where D: Device {
-    pub fn new(device: &D,
-               clip_tile_combine_program: &ClipTileCombineProgramD3D9<D>,
-               vertex_buffer: &D::Buffer,
-               quad_vertex_positions_buffer: &D::Buffer,
-               quad_vertex_indices_buffer: &D::Buffer)
-               -> ClipTileCombineVertexArrayD3D9<D> {
+    pub(crate) fn new(device: &D,
+                      clip_tile_combine_program: &ClipTileCombineProgramD3D9<D>,
+                      vertex_buffer: &D::Buffer,
+                      quad_vertex_positions_buffer: &D::Buffer,
+                      quad_vertex_indices_buffer: &D::Buffer)
+                      -> ClipTileCombineVertexArrayD3D9<D> {
         let vertex_array = device.create_vertex_array();
 
         let tile_offset_attr =
@@ -276,16 +278,16 @@ impl<D> ClipTileCombineVertexArrayD3D9<D> where D: Device {
     }
 }
 
-pub struct CopyTileVertexArray<D> where D: Device {
-    pub vertex_array: D::VertexArray,
+pub(crate) struct CopyTileVertexArray<D> where D: Device {
+    pub(crate) vertex_array: D::VertexArray,
 }
 
 impl<D> CopyTileVertexArray<D> where D: Device {
-    pub fn new(device: &D,
-               copy_tile_program: &CopyTileProgram<D>,
-               copy_tile_vertex_buffer: &D::Buffer,
-               quads_vertex_indices_buffer: &D::Buffer)
-               -> CopyTileVertexArray<D> {
+    pub(crate) fn new(device: &D,
+                      copy_tile_program: &CopyTileProgram<D>,
+                      copy_tile_vertex_buffer: &D::Buffer,
+                      quads_vertex_indices_buffer: &D::Buffer)
+                      -> CopyTileVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
         let tile_position_attr =
@@ -307,11 +309,11 @@ impl<D> CopyTileVertexArray<D> where D: Device {
     }
 }
 
-pub struct FillProgramD3D9<D> where D: Device {
-    pub program: D::Program,
-    pub framebuffer_size_uniform: D::Uniform,
-    pub tile_size_uniform: D::Uniform,
-    pub area_lut_texture: D::TextureParameter,
+pub(crate) struct FillProgramD3D9<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) framebuffer_size_uniform: D::Uniform,
+    pub(crate) tile_size_uniform: D::Uniform,
+    pub(crate) area_lut_texture: D::TextureParameter,
 }
 
 impl<D> FillProgramD3D9<D> where D: Device {
@@ -329,10 +331,10 @@ impl<D> FillProgramD3D9<D> where D: Device {
     }
 }
 
-pub struct TileProgramD3D9<D> where D: Device {
-    pub common: TileProgramCommon<D>,
-    pub dest_texture: D::TextureParameter,
-    pub transform_uniform: D::Uniform,
+pub(crate) struct TileProgramD3D9<D> where D: Device {
+    pub(crate) common: TileProgramCommon<D>,
+    pub(crate) dest_texture: D::TextureParameter,
+    pub(crate) transform_uniform: D::Uniform,
 }
 
 impl<D> TileProgramD3D9<D> where D: Device {
@@ -345,14 +347,15 @@ impl<D> TileProgramD3D9<D> where D: Device {
     }
 }
 
-pub struct ClipTileCombineProgramD3D9<D> where D: Device {
-    pub program: D::Program,
-    pub src_texture: D::TextureParameter,
-    pub framebuffer_size_uniform: D::Uniform,
+pub(crate) struct ClipTileCombineProgramD3D9<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) src_texture: D::TextureParameter,
+    pub(crate) framebuffer_size_uniform: D::Uniform,
 }
 
 impl<D> ClipTileCombineProgramD3D9<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> ClipTileCombineProgramD3D9<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader)
+                      -> ClipTileCombineProgramD3D9<D> {
         let program = device.create_raster_program(resources, "d3d9/tile_clip_combine");
         let src_texture = device.get_texture_parameter(&program, "Src");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
@@ -360,14 +363,14 @@ impl<D> ClipTileCombineProgramD3D9<D> where D: Device {
     }
 }
 
-pub struct ClipTileCopyProgramD3D9<D> where D: Device {
-    pub program: D::Program,
-    pub src_texture: D::TextureParameter,
-    pub framebuffer_size_uniform: D::Uniform,
+pub(crate) struct ClipTileCopyProgramD3D9<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) src_texture: D::TextureParameter,
+    pub(crate) framebuffer_size_uniform: D::Uniform,
 }
 
 impl<D> ClipTileCopyProgramD3D9<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> ClipTileCopyProgramD3D9<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> ClipTileCopyProgramD3D9<D> {
         let program = device.create_raster_program(resources, "d3d9/tile_clip_copy");
         let src_texture = device.get_texture_parameter(&program, "Src");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
@@ -375,16 +378,16 @@ impl<D> ClipTileCopyProgramD3D9<D> where D: Device {
     }
 }
 
-pub struct CopyTileProgram<D> where D: Device {
-    pub program: D::Program,
-    pub transform_uniform: D::Uniform,
-    pub tile_size_uniform: D::Uniform,
-    pub framebuffer_size_uniform: D::Uniform,
-    pub src_texture: D::TextureParameter,
+pub(crate) struct CopyTileProgram<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) transform_uniform: D::Uniform,
+    pub(crate) tile_size_uniform: D::Uniform,
+    pub(crate) framebuffer_size_uniform: D::Uniform,
+    pub(crate) src_texture: D::TextureParameter,
 }
 
 impl<D> CopyTileProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> CopyTileProgram<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> CopyTileProgram<D> {
         let program = device.create_raster_program(resources, "d3d9/tile_copy");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
@@ -400,36 +403,16 @@ impl<D> CopyTileProgram<D> where D: Device {
     }
 }
 
-pub struct D3D9Programs<D> where D: Device {
-    pub fill_program: FillProgramD3D9<D>,
-    pub tile_program: TileProgramD3D9<D>,
-    pub tile_clip_combine_program: ClipTileCombineProgramD3D9<D>,
-    pub tile_clip_copy_program: ClipTileCopyProgramD3D9<D>,
-    pub tile_copy_program: CopyTileProgram<D>,
-}
-
-impl<D> D3D9Programs<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> D3D9Programs<D> {
-        D3D9Programs {
-            fill_program: FillProgramD3D9::new(device, resources),
-            tile_program: TileProgramD3D9::new(device, resources),
-            tile_clip_combine_program: ClipTileCombineProgramD3D9::new(device, resources),
-            tile_clip_copy_program: ClipTileCopyProgramD3D9::new(device, resources),
-            tile_copy_program: CopyTileProgram::new(device, resources),
-        }
-    }
-}
-
-pub struct ProgramsD3D9<D> where D: Device {
-    pub fill_program: FillProgramD3D9<D>,
-    pub tile_program: TileProgramD3D9<D>,
-    pub tile_clip_copy_program: ClipTileCopyProgramD3D9<D>,
-    pub tile_clip_combine_program: ClipTileCombineProgramD3D9<D>,
-    pub tile_copy_program: CopyTileProgram<D>,
+pub(crate) struct ProgramsD3D9<D> where D: Device {
+    pub(crate) fill_program: FillProgramD3D9<D>,
+    pub(crate) tile_program: TileProgramD3D9<D>,
+    pub(crate) tile_clip_copy_program: ClipTileCopyProgramD3D9<D>,
+    pub(crate) tile_clip_combine_program: ClipTileCombineProgramD3D9<D>,
+    pub(crate) tile_copy_program: CopyTileProgram<D>,
 }
 
 impl<D> ProgramsD3D9<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> ProgramsD3D9<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> ProgramsD3D9<D> {
         ProgramsD3D9 {
             fill_program: FillProgramD3D9::new(device, resources),
             tile_program: TileProgramD3D9::new(device, resources),

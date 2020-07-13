@@ -32,17 +32,30 @@ use std::thread;
 
 const MAX_MESSAGES_IN_FLIGHT: usize = 1024;
 
+/// A version of `Scene` that proxies all method calls out to a separate thread.
 pub struct SceneProxy {
     sender: Sender<MainToWorkerMsg>,
     receiver: Receiver<RenderCommand>,
 }
 
 impl SceneProxy {
+    /// Creates a new scene proxy using the given renderer GPU API level and executor to execute
+    /// CPU tasks.
+    /// 
+    /// If you want to use multiple threads, you typically pass in a `RayonExecutor` here. If you
+    /// want to use a single thread (perhaps because you're in a WebAssembly environment), pass a
+    /// `SequentialExecutor`.
     pub fn new<E>(renderer_level: RendererLevel, executor: E) -> SceneProxy
                   where E: Executor + Send + 'static {
         SceneProxy::from_scene(Scene::new(), renderer_level, executor)
     }
 
+    /// Wraps an existing scene in a scene proxy using the given renderer GPU API level an executor
+    /// to execute CPU tasks.
+    /// 
+    /// If you want to use multiple threads, you typically pass in a `RayonExecutor` here. If you
+    /// want to use a single thread (perhaps because you're in a WebAssembly environment), pass a
+    /// `SequentialExecutor`.
     pub fn from_scene<E>(scene: Scene, renderer_level: RendererLevel, executor: E)
                          -> SceneProxy
                          where E: Executor + Send + 'static {
@@ -58,22 +71,25 @@ impl SceneProxy {
         SceneProxy { sender: main_to_worker_sender, receiver: worker_to_main_receiver }
     }
 
+    /// Replaces the wrapped scene with a new one, discarding the old scene.
     #[inline]
     pub fn replace_scene(&self, new_scene: Scene) {
         self.sender.send(MainToWorkerMsg::ReplaceScene(new_scene)).unwrap();
     }
 
+    /// Sets the view box of the scene, which defines the visible rectangle.
     #[inline]
     pub fn set_view_box(&self, new_view_box: RectF) {
         self.sender.send(MainToWorkerMsg::SetViewBox(new_view_box)).unwrap();
     }
 
+    /// Constructs a scene and queues up the commands needed to render it.
     #[inline]
     pub fn build(&self, options: BuildOptions) {
         self.sender.send(MainToWorkerMsg::Build(options)).unwrap();
     }
 
-    /// Sends all queued commands to the given renderer.
+    /// Sends all queued commands to the given renderer to render the wrapped scene.
     #[inline]
     pub fn render<D>(&mut self, renderer: &mut Renderer<D>) where D: Device {
         renderer.begin_scene();
@@ -104,6 +120,7 @@ impl SceneProxy {
         self.render(renderer);
     }
 
+    /// Returns a copy of the wrapped scene.
     #[inline]
     pub fn copy_scene(&self) -> Scene {
         let (sender, receiver) = crossbeam_channel::bounded(MAX_MESSAGES_IN_FLIGHT);

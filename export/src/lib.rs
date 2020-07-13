@@ -54,7 +54,7 @@ fn export_svg<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         view_box.size().y()
     )?;
     for &DrawPath { paint: paint_id, ref outline, ref name, .. } in scene.draw_paths() {
-        let paint = scene.palette().paints.get(paint_id.0 as usize).unwrap();
+        let paint = scene.get_paint(paint_id);
         write!(writer, "    <path")?;
         if !name.is_empty() {
             write!(writer, " id=\"{}\"", name)?;
@@ -78,7 +78,7 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
 
     for &DrawPath { paint: paint_id, ref outline, .. } in scene.draw_paths() {
         // TODO(pcwalton): Gradients and patterns.
-        let paint = scene.palette().paints.get(paint_id.0 as usize).unwrap();
+        let paint = scene.get_paint(paint_id);
         if paint.is_color() {
             pdf.set_fill_color(paint.base_color());
         }
@@ -182,7 +182,7 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         }
 
         // TODO(pcwalton): Gradients and patterns.
-        let paint = scene.palette().paints.get(paint_id.0 as usize).unwrap();
+        let paint = scene.get_paint(paint_id);
         if paint.is_color() {
             let color = paint.base_color();
             writeln!(writer, "{} {} {} setrgbcolor", color.r, color.g, color.b)?;

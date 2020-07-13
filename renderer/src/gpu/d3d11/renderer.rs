@@ -8,6 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! A GPU compute-based renderer that uses functionality available in Direct3D 11.
+//! 
+//! This renderer supports OpenGL at least 4.3, OpenGL ES at least 3.1, and Metal of any version.
+
 use crate::gpu::d3d11::shaders::{BOUND_WORKGROUP_SIZE, DICE_WORKGROUP_SIZE};
 use crate::gpu::d3d11::shaders::{PROPAGATE_WORKGROUP_SIZE, ProgramsD3D11, SORT_WORKGROUP_SIZE};
 use crate::gpu::perf::TimeCategory;

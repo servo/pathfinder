@@ -8,5 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! A GPU compute-based renderer that uses functionality available in Direct3D 11.
+//! 
+//! This renderer supports OpenGL at least 4.3, OpenGL ES at least 3.1, and Metal of any version.
+
 pub mod renderer;
 pub mod shaders;

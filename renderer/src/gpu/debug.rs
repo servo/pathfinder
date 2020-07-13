@@ -39,8 +39,13 @@ const PERFORMANCE_WINDOW_HEIGHT_D3D11: i32 = LINE_HEIGHT * 10 + PADDING + 2;
 const INFO_WINDOW_WIDTH: i32 = 425;
 const INFO_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
 
+/// Manages the debug UI.
 pub struct DebugUIPresenter<D> where D: Device {
+    /// The general UI presenter object.
+    /// 
+    /// You can use this to draw your own application-specific debug widgets.
     pub ui_presenter: UIPresenter<D>,
+
     cpu_samples: SampleBuffer<RenderStats>,
     gpu_samples: SampleBuffer<RenderTime>,
     backend_name: &'static str,
@@ -49,11 +54,11 @@ pub struct DebugUIPresenter<D> where D: Device {
 }
 
 impl<D> DebugUIPresenter<D> where D: Device {
-    pub fn new(device: &D,
-               resources: &dyn ResourceLoader,
-               framebuffer_size: Vector2I,
-               renderer_level: RendererLevel)
-               -> DebugUIPresenter<D> {
+    pub(crate) fn new(device: &D,
+                      resources: &dyn ResourceLoader,
+                      framebuffer_size: Vector2I,
+                      renderer_level: RendererLevel)
+                      -> DebugUIPresenter<D> {
         let ui_presenter = UIPresenter::new(device, resources, framebuffer_size);
         DebugUIPresenter {
             ui_presenter,
@@ -65,19 +70,19 @@ impl<D> DebugUIPresenter<D> where D: Device {
         }
     }
 
-    pub fn add_sample(&mut self, stats: RenderStats, rendering_time: RenderTime) {
+    pub(crate) fn add_sample(&mut self, stats: RenderStats, rendering_time: RenderTime) {
         self.cpu_samples.push(stats);
         self.gpu_samples.push(rendering_time);
     }
 
-    pub fn draw(&self, device: &D, allocator: &mut GPUMemoryAllocator<D>) {
+    pub(crate) fn draw(&self, device: &D, allocator: &mut GPUMemoryAllocator<D>) {
         self.draw_stats_window(device, allocator);
         self.draw_performance_window(device, allocator);
         self.draw_info_window(device, allocator);
     }
 
     #[inline]
-    pub fn set_framebuffer_size(&mut self, new_framebuffer_size: Vector2I) {
+    pub(crate) fn set_framebuffer_size(&mut self, new_framebuffer_size: Vector2I) {
         self.ui_presenter.set_framebuffer_size(new_framebuffer_size)
     }
 

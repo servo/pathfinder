@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! A set of paths to be rendered.
+//! The vector scene to be rendered.
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
@@ -34,6 +34,7 @@ use std::u64;
 
 static NEXT_SCENE_ID: AtomicUsize = AtomicUsize::new(0);
 
+/// The vector scene to be rendered.
 #[derive(Clone)]
 pub struct Scene {
     display_list: Vec<DisplayItem>,
@@ -156,7 +157,7 @@ impl Scene {
     }
 
     #[inline]
-    pub fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
+    pub(crate) fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
         self.palette.build_paint_info(render_transform)
     }
 
@@ -281,8 +282,8 @@ impl Scene {
     }
 
     #[inline]
-    pub fn palette(&self) -> &Palette {
-        &self.palette
+    pub fn get_paint(&self, paint_id: PaintId) -> &Paint {
+        self.palette.paints.get(paint_id.0 as usize).expect("No paint with that ID!")
     }
 
     #[inline]

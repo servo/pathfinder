@@ -8,29 +8,31 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Shaders and vertex specifications for the Direct3D 11-level renderer.
+
 use crate::gpu::shaders::TileProgramCommon;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_gpu::{ComputeDimensions, Device};
 use pathfinder_resources::ResourceLoader;
 
-pub const BOUND_WORKGROUP_SIZE: u32 = 64;
-pub const DICE_WORKGROUP_SIZE: u32 = 64;
-pub const BIN_WORKGROUP_SIZE: u32 = 64;
-pub const PROPAGATE_WORKGROUP_SIZE: u32 = 64;
-pub const SORT_WORKGROUP_SIZE: u32 = 64;
+pub(crate) const BOUND_WORKGROUP_SIZE: u32 = 64;
+pub(crate) const DICE_WORKGROUP_SIZE: u32 = 64;
+pub(crate) const BIN_WORKGROUP_SIZE: u32 = 64;
+pub(crate) const PROPAGATE_WORKGROUP_SIZE: u32 = 64;
+pub(crate) const SORT_WORKGROUP_SIZE: u32 = 64;
 
-pub struct ProgramsD3D11<D> where D: Device {
-    pub bound_program: BoundProgramD3D11<D>,
-    pub dice_program: DiceProgramD3D11<D>,
-    pub bin_program: BinProgramD3D11<D>,
-    pub propagate_program: PropagateProgramD3D11<D>,
-    pub sort_program: SortProgramD3D11<D>,
-    pub fill_program: FillProgramD3D11<D>,
-    pub tile_program: TileProgramD3D11<D>,
+pub(crate) struct ProgramsD3D11<D> where D: Device {
+    pub(crate) bound_program: BoundProgramD3D11<D>,
+    pub(crate) dice_program: DiceProgramD3D11<D>,
+    pub(crate) bin_program: BinProgramD3D11<D>,
+    pub(crate) propagate_program: PropagateProgramD3D11<D>,
+    pub(crate) sort_program: SortProgramD3D11<D>,
+    pub(crate) fill_program: FillProgramD3D11<D>,
+    pub(crate) tile_program: TileProgramD3D11<D>,
 }
 
 impl<D> ProgramsD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> ProgramsD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> ProgramsD3D11<D> {
         ProgramsD3D11 {
             bound_program: BoundProgramD3D11::new(device, resources),
             dice_program: DiceProgramD3D11::new(device, resources),
@@ -43,23 +45,23 @@ impl<D> ProgramsD3D11<D> where D: Device {
     }
 }
 
-pub struct PropagateProgramD3D11<D> where D: Device {
-    pub program: D::Program,
-    pub framebuffer_tile_size_uniform: D::Uniform,
-    pub column_count_uniform: D::Uniform,
-    pub first_alpha_tile_index_uniform: D::Uniform,
-    pub draw_metadata_storage_buffer: D::StorageBuffer,
-    pub clip_metadata_storage_buffer: D::StorageBuffer,
-    pub backdrops_storage_buffer: D::StorageBuffer,
-    pub draw_tiles_storage_buffer: D::StorageBuffer,
-    pub clip_tiles_storage_buffer: D::StorageBuffer,
-    pub z_buffer_storage_buffer: D::StorageBuffer,
-    pub first_tile_map_storage_buffer: D::StorageBuffer,
-    pub alpha_tiles_storage_buffer: D::StorageBuffer,
+pub(crate) struct PropagateProgramD3D11<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) framebuffer_tile_size_uniform: D::Uniform,
+    pub(crate) column_count_uniform: D::Uniform,
+    pub(crate) first_alpha_tile_index_uniform: D::Uniform,
+    pub(crate) draw_metadata_storage_buffer: D::StorageBuffer,
+    pub(crate) clip_metadata_storage_buffer: D::StorageBuffer,
+    pub(crate) backdrops_storage_buffer: D::StorageBuffer,
+    pub(crate) draw_tiles_storage_buffer: D::StorageBuffer,
+    pub(crate) clip_tiles_storage_buffer: D::StorageBuffer,
+    pub(crate) z_buffer_storage_buffer: D::StorageBuffer,
+    pub(crate) first_tile_map_storage_buffer: D::StorageBuffer,
+    pub(crate) alpha_tiles_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> PropagateProgramD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> PropagateProgramD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> PropagateProgramD3D11<D> {
         let mut program = device.create_compute_program(resources, "d3d11/propagate");
         let local_size = ComputeDimensions { x: PROPAGATE_WORKGROUP_SIZE, y: 1, z: 1 };
         device.set_compute_program_local_size(&mut program, local_size);
@@ -93,18 +95,18 @@ impl<D> PropagateProgramD3D11<D> where D: Device {
     }
 }
 
-pub struct FillProgramD3D11<D> where D: Device {
-    pub program: D::Program,
-    pub dest_image: D::ImageParameter,
-    pub area_lut_texture: D::TextureParameter,
-    pub alpha_tile_range_uniform: D::Uniform,
-    pub fills_storage_buffer: D::StorageBuffer,
-    pub tiles_storage_buffer: D::StorageBuffer,
-    pub alpha_tiles_storage_buffer: D::StorageBuffer,
+pub(crate) struct FillProgramD3D11<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) dest_image: D::ImageParameter,
+    pub(crate) area_lut_texture: D::TextureParameter,
+    pub(crate) alpha_tile_range_uniform: D::Uniform,
+    pub(crate) fills_storage_buffer: D::StorageBuffer,
+    pub(crate) tiles_storage_buffer: D::StorageBuffer,
+    pub(crate) alpha_tiles_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> FillProgramD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> FillProgramD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> FillProgramD3D11<D> {
         let mut program = device.create_compute_program(resources, "d3d11/fill");
         let local_size = ComputeDimensions { x: TILE_WIDTH, y: TILE_HEIGHT / 4, z: 1 };
         device.set_compute_program_local_size(&mut program, local_size);
@@ -128,14 +130,14 @@ impl<D> FillProgramD3D11<D> where D: Device {
     }
 }
 
-pub struct TileProgramD3D11<D> where D: Device {
-    pub common: TileProgramCommon<D>,
-    pub load_action_uniform: D::Uniform,
-    pub clear_color_uniform: D::Uniform,
-    pub framebuffer_tile_size_uniform: D::Uniform,
-    pub dest_image: D::ImageParameter,
-    pub tiles_storage_buffer: D::StorageBuffer,
-    pub first_tile_map_storage_buffer: D::StorageBuffer,
+pub(crate) struct TileProgramD3D11<D> where D: Device {
+    pub(crate) common: TileProgramCommon<D>,
+    pub(crate) load_action_uniform: D::Uniform,
+    pub(crate) clear_color_uniform: D::Uniform,
+    pub(crate) framebuffer_tile_size_uniform: D::Uniform,
+    pub(crate) dest_image: D::ImageParameter,
+    pub(crate) tiles_storage_buffer: D::StorageBuffer,
+    pub(crate) first_tile_map_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> TileProgramD3D11<D> where D: Device {
@@ -164,20 +166,20 @@ impl<D> TileProgramD3D11<D> where D: Device {
     }
 }
 
-pub struct BinProgramD3D11<D> where D: Device {
-    pub program: D::Program,
-    pub microline_count_uniform: D::Uniform,
-    pub max_fill_count_uniform: D::Uniform,
-    pub microlines_storage_buffer: D::StorageBuffer,
-    pub metadata_storage_buffer: D::StorageBuffer,
-    pub indirect_draw_params_storage_buffer: D::StorageBuffer,
-    pub fills_storage_buffer: D::StorageBuffer,
-    pub tiles_storage_buffer: D::StorageBuffer,
-    pub backdrops_storage_buffer: D::StorageBuffer,
+pub(crate) struct BinProgramD3D11<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) microline_count_uniform: D::Uniform,
+    pub(crate) max_fill_count_uniform: D::Uniform,
+    pub(crate) microlines_storage_buffer: D::StorageBuffer,
+    pub(crate) metadata_storage_buffer: D::StorageBuffer,
+    pub(crate) indirect_draw_params_storage_buffer: D::StorageBuffer,
+    pub(crate) fills_storage_buffer: D::StorageBuffer,
+    pub(crate) tiles_storage_buffer: D::StorageBuffer,
+    pub(crate) backdrops_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> BinProgramD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> BinProgramD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> BinProgramD3D11<D> {
         let mut program = device.create_compute_program(resources, "d3d11/bin");
         let dimensions = ComputeDimensions { x: BIN_WORKGROUP_SIZE, y: 1, z: 1 };
         device.set_compute_program_local_size(&mut program, dimensions);
@@ -207,22 +209,22 @@ impl<D> BinProgramD3D11<D> where D: Device {
     }
 }
 
-pub struct DiceProgramD3D11<D> where D: Device {
-    pub program: D::Program,
-    pub transform_uniform: D::Uniform,
-    pub translation_uniform: D::Uniform,
-    pub path_count_uniform: D::Uniform,
-    pub last_batch_segment_index_uniform: D::Uniform,
-    pub max_microline_count_uniform: D::Uniform,
-    pub compute_indirect_params_storage_buffer: D::StorageBuffer,
-    pub dice_metadata_storage_buffer: D::StorageBuffer,
-    pub points_storage_buffer: D::StorageBuffer,
-    pub input_indices_storage_buffer: D::StorageBuffer,
-    pub microlines_storage_buffer: D::StorageBuffer,
+pub(crate) struct DiceProgramD3D11<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) transform_uniform: D::Uniform,
+    pub(crate) translation_uniform: D::Uniform,
+    pub(crate) path_count_uniform: D::Uniform,
+    pub(crate) last_batch_segment_index_uniform: D::Uniform,
+    pub(crate) max_microline_count_uniform: D::Uniform,
+    pub(crate) compute_indirect_params_storage_buffer: D::StorageBuffer,
+    pub(crate) dice_metadata_storage_buffer: D::StorageBuffer,
+    pub(crate) points_storage_buffer: D::StorageBuffer,
+    pub(crate) input_indices_storage_buffer: D::StorageBuffer,
+    pub(crate) microlines_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> DiceProgramD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> DiceProgramD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> DiceProgramD3D11<D> {
         let mut program = device.create_compute_program(resources, "d3d11/dice");
         let dimensions = ComputeDimensions { x: DICE_WORKGROUP_SIZE, y: 1, z: 1 };
         device.set_compute_program_local_size(&mut program, dimensions);
@@ -257,16 +259,16 @@ impl<D> DiceProgramD3D11<D> where D: Device {
     }
 }
 
-pub struct BoundProgramD3D11<D> where D: Device {
-    pub program: D::Program,
-    pub path_count_uniform: D::Uniform,
-    pub tile_count_uniform: D::Uniform,
-    pub tile_path_info_storage_buffer: D::StorageBuffer,
-    pub tiles_storage_buffer: D::StorageBuffer,
+pub(crate) struct BoundProgramD3D11<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) path_count_uniform: D::Uniform,
+    pub(crate) tile_count_uniform: D::Uniform,
+    pub(crate) tile_path_info_storage_buffer: D::StorageBuffer,
+    pub(crate) tiles_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> BoundProgramD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> BoundProgramD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> BoundProgramD3D11<D> {
         let mut program = device.create_compute_program(resources, "d3d11/bound");
         let dimensions = ComputeDimensions { x: BOUND_WORKGROUP_SIZE, y: 1, z: 1 };
         device.set_compute_program_local_size(&mut program, dimensions);
@@ -287,16 +289,16 @@ impl<D> BoundProgramD3D11<D> where D: Device {
     }
 }
 
-pub struct SortProgramD3D11<D> where D: Device {
-    pub program: D::Program,
-    pub tile_count_uniform: D::Uniform,
-    pub tiles_storage_buffer: D::StorageBuffer,
-    pub first_tile_map_storage_buffer: D::StorageBuffer,
-    pub z_buffer_storage_buffer: D::StorageBuffer,
+pub(crate) struct SortProgramD3D11<D> where D: Device {
+    pub(crate) program: D::Program,
+    pub(crate) tile_count_uniform: D::Uniform,
+    pub(crate) tiles_storage_buffer: D::StorageBuffer,
+    pub(crate) first_tile_map_storage_buffer: D::StorageBuffer,
+    pub(crate) z_buffer_storage_buffer: D::StorageBuffer,
 }
 
 impl<D> SortProgramD3D11<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader) -> SortProgramD3D11<D> {
+    pub(crate) fn new(device: &D, resources: &dyn ResourceLoader) -> SortProgramD3D11<D> {
         let mut program = device.create_compute_program(resources, "d3d11/sort");
         let dimensions = ComputeDimensions { x: SORT_WORKGROUP_SIZE, y: 1, z: 1 };
         device.set_compute_program_local_size(&mut program, dimensions);
