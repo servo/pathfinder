@@ -21,6 +21,7 @@ pub trait Executor {
                           where T: Send, F: Fn(usize) -> T + Send + Sync;
 }
 
+/// An executor that simply executes tasks sequentially in the same thread.
 pub struct SequentialExecutor;
 
 impl Executor for SequentialExecutor {

@@ -8,11 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! An implementation of the executor using the Rayon library.
+//! An executor that parallelizes tasks across all CPUs using the Rayon library.
 
 use crate::concurrent::executor::Executor;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
+/// An executor that parallelizes tasks across all CPUs using the Rayon library.
 pub struct RayonExecutor;
 
 impl Executor for RayonExecutor {

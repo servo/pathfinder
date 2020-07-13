@@ -34,8 +34,8 @@ use std::sync::Arc;
 const GRADIENT_TILE_LENGTH: u32 = 256;
 
 #[derive(Clone)]
-pub struct Palette {
-    pub paints: Vec<Paint>,
+pub(crate) struct Palette {
+    pub(crate) paints: Vec<Paint>,
     render_targets: Vec<RenderTargetData>,
     cache: HashMap<Paint, PaintId>,
     allocator: TextureAllocator,
@@ -90,7 +90,7 @@ impl Debug for PaintContents {
 
 impl Palette {
     #[inline]
-    pub fn new(scene_id: SceneId) -> Palette {
+    pub(crate) fn new(scene_id: SceneId) -> Palette {
         Palette {
             paints: vec![],
             render_targets: vec![],
@@ -266,62 +266,62 @@ impl PaintOverlay {
     }
 }
 
-pub struct PaintInfo {
+pub(crate) struct PaintInfo {
     /// The render commands needed to prepare the textures.
-    pub render_commands: Vec<RenderCommand>,
+    pub(crate) render_commands: Vec<RenderCommand>,
     /// The metadata for each paint.
     ///
     /// The indices of this vector are paint IDs.
-    pub paint_metadata: Vec<PaintMetadata>,
+    pub(crate) paint_metadata: Vec<PaintMetadata>,
     /// The metadata for each render target.
     ///
     /// The indices of this vector are render target IDs.
-    pub render_target_metadata: Vec<RenderTargetMetadata>,
+    pub(crate) render_target_metadata: Vec<RenderTargetMetadata>,
 }
 
 #[derive(Debug)]
-pub struct PaintMetadata {
+pub(crate) struct PaintMetadata {
     /// Metadata associated with the color texture, if applicable.
-    pub color_texture_metadata: Option<PaintColorTextureMetadata>,
+    pub(crate) color_texture_metadata: Option<PaintColorTextureMetadata>,
     /// The base color that the color texture gets mixed into.
-    pub base_color: ColorU,
-    pub blend_mode: BlendMode,
+    pub(crate) base_color: ColorU,
+    pub(crate) blend_mode: BlendMode,
     /// True if this paint is fully opaque.
-    pub is_opaque: bool,
+    pub(crate) is_opaque: bool,
 }
 
 #[derive(Debug)]
-pub struct PaintColorTextureMetadata {
+pub(crate) struct PaintColorTextureMetadata {
     /// The location of the paint.
-    pub location: TextureLocation,
+    pub(crate) location: TextureLocation,
     /// The scale for the page this paint is on.
-    pub page_scale: Vector2F,
+    pub(crate) page_scale: Vector2F,
     /// The transform to apply to screen coordinates to translate them into UVs.
-    pub transform: Transform2F,
+    pub(crate) transform: Transform2F,
     /// The sampling mode for the texture.
-    pub sampling_flags: TextureSamplingFlags,
+    pub(crate) sampling_flags: TextureSamplingFlags,
     /// The filter to be applied to this paint.
-    pub filter: PaintFilter,
+    pub(crate) filter: PaintFilter,
     /// How the color texture is to be composited over the base color.
-    pub composite_op: PaintCompositeOp,
+    pub(crate) composite_op: PaintCompositeOp,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct RadialGradientMetadata {
+pub(crate) struct RadialGradientMetadata {
     /// The line segment that connects the two circles.
-    pub line: LineSegment2F,
+    pub(crate) line: LineSegment2F,
     /// The radii of the two circles.
-    pub radii: F32x2,
+    pub(crate) radii: F32x2,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct RenderTargetMetadata {
+pub(crate) struct RenderTargetMetadata {
     /// The location of the render target.
-    pub location: TextureLocation,
+    pub(crate) location: TextureLocation,
 }
 
 #[derive(Debug)]
-pub enum PaintFilter {
+pub(crate) enum PaintFilter {
     None,
     RadialGradient {
         /// The line segment that connects the two circles.
@@ -334,7 +334,7 @@ pub enum PaintFilter {
 
 impl Palette {
     #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
+    pub(crate) fn push_paint(&mut self, paint: &Paint) -> PaintId {
         if let Some(paint_id) = self.cache.get(paint) {
             return *paint_id;
         }
@@ -345,7 +345,7 @@ impl Palette {
         paint_id
     }
 
-    pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
+    pub(crate) fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
         let id = self.render_targets.len() as u32;
 
         let metadata = RenderTargetMetadata {
@@ -356,7 +356,7 @@ impl Palette {
         RenderTargetId { scene: self.scene_id.0, render_target: id }
     }
 
-    pub fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
+    pub(crate) fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
         let mut paint_metadata = vec![];
 
         // Assign paint locations.

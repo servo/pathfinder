@@ -144,6 +144,23 @@ pub(crate) struct MaskStorage {
 }
 
 impl<D> Renderer<D> where D: Device {
+    /// Creates a new renderer ready to render Pathfinder content.
+    /// 
+    /// Arguments:
+    /// 
+    /// * `device`: The GPU device to render with. This effectively specifies the system GPU API
+    ///   Pathfinder will use (OpenGL, Metal, etc.)
+    /// 
+    /// * `resources`: Where Pathfinder should find shaders, lookup tables, and other data.
+    ///   This is typically either an `EmbeddedResourceLoader` to use resources included in the
+    ///   Pathfinder library or (less commonly) a `FilesystemResourceLoader` to use resources
+    ///   stored in a directory on disk.
+    /// 
+    /// * `mode`: Renderer options that can't be changed after the renderer is created. Most
+    ///   notably, this specifies the API level (D3D9 or D3D11).
+    /// 
+    /// * `options`: Renderer options that can be changed after the renderer is created. Most
+    ///   importantly, this specifies where the output should go (to a window or off-screen).
     pub fn new(device: D,
                resources: &dyn ResourceLoader,
                mode: RendererMode,
@@ -290,10 +307,14 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
+    /// Destroys this renderer and returns the embedded GPU device.
     pub fn destroy(self) -> D {
         self.core.device
     }
 
+    /// Performs work necessary to begin rendering a scene.
+    /// 
+    /// This must be called before `render_command()`.
     pub fn begin_scene(&mut self) {
         self.core.framebuffer_flags = FramebufferFlags::empty();
 
@@ -304,6 +325,11 @@ impl<D> Renderer<D> where D: Device {
         self.core.alpha_tile_count = 0;
     }
 
+    /// Issues a rendering command to the renderer.
+    /// 
+    /// These commands are generated from methods like `Scene::build()`.
+    /// 
+    /// `begin_scene()` must have been called first.
     pub fn render_command(&mut self, command: &RenderCommand) {
         debug!("render command: {:?}", command);
         match *command {
@@ -352,6 +378,13 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
+    /// Finishes rendering a scene.
+    /// 
+    /// `begin_scene()` and all `render_command()` calls must have been issued before calling this
+    /// method.
+    /// 
+    /// Note that, after calling this method, you might need to flush the output to the screen via
+    /// `swap_buffers()`, `present()`, or a similar method that your windowing library offers.
     pub fn end_scene(&mut self) {
         self.clear_dest_framebuffer_if_necessary();
         self.blit_intermediate_dest_framebuffer_if_necessary();
@@ -451,34 +484,69 @@ impl<D> Renderer<D> where D: Device {
         self.last_rendering_time = None;
     }
 
+    /// Returns GPU timing information for the last frame, if present.
     pub fn last_rendering_time(&self) -> Option<RenderTime> {
         self.last_rendering_time
     }
 
+    /// Returns a reference to the GPU device.
+    /// 
+    /// This can be useful to issue GPU commands manually via the low-level `pathfinder_gpu`
+    /// abstraction. (Of course, you can also use your platform API such as OpenGL directly
+    /// alongside Pathfinder.)
     #[inline]
     pub fn device(&self) -> &D {
         &self.core.device
     }
 
+    /// Returns a mutable reference to the GPU device.
+    /// 
+    /// This can be useful to issue GPU commands manually via the low-level `pathfinder_gpu`
+    /// abstraction. (Of course, you can also use your platform API such as OpenGL directly
+    /// alongside Pathfinder.)
     #[inline]
     pub fn device_mut(&mut self) -> &mut D {
         &mut self.core.device
     }
 
+    /// Returns the `RendererMode` this renderer was created with.
     #[inline]
     pub fn mode(&self) -> &RendererMode {
         &self.core.mode
     }
 
+    /// Returns the current rendering options.
     #[inline]
     pub fn options(&self) -> &RendererOptions<D> {
         &self.core.options
     }
 
+    /// Returns a mutable reference to the current rendering options, allowing them to be changed.
+    /// 
+    /// Among other things, you can use this function to change the destination of rendering
+    /// output without having to recreate the renderer.
+    /// 
+    /// After changing the destination framebuffer size, you must call
+    /// `dest_framebuffer_size_changed()`.
     pub fn options_mut(&mut self) -> &mut RendererOptions<D> {
         &mut self.core.options
     }
 
+    /// Notifies Pathfinder that the size of the output framebuffer has changed.
+    /// 
+    /// You must call this function after changing the `dest_framebuffer` member of
+    /// `RendererOptions` to a target with a different size.
+    #[inline]
+    pub fn dest_framebuffer_size_changed(&mut self) {
+        let new_framebuffer_size = self.core.main_viewport().size();
+        if let Some(ref mut debug_ui_presenter) = self.debug_ui_presenter {
+            debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
+        }
+    }
+
+    /// Returns a mutable reference to the debug UI.
+    /// 
+    /// You can use this function to draw custom debug widgets on screen, as the demo does.
     #[inline]
     pub fn debug_ui_presenter_mut(&mut self) -> DebugUIPresenterInfo<D> {
         DebugUIPresenterInfo {
@@ -488,34 +556,38 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
+    /// Turns off Pathfinder's use of the depth buffer.
     #[inline]
-    pub fn dest_framebuffer_size_changed(&mut self) {
-        let new_framebuffer_size = self.core.main_viewport().size();
-        if let Some(ref mut debug_ui_presenter) = self.debug_ui_presenter {
-            debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
-        }
-    }
-
-    #[inline]
+    #[deprecated]
     pub fn disable_depth(&mut self) {
         self.core.renderer_flags.remove(RendererFlags::USE_DEPTH);
     }
 
+    /// Turns on Pathfinder's use of the depth buffer.
     #[inline]
+    #[deprecated]
     pub fn enable_depth(&mut self) {
         self.core.renderer_flags.insert(RendererFlags::USE_DEPTH);
     }
 
+    /// Returns various GPU-side statistics about rendering, averaged over the last few frames.
     #[inline]
     pub fn stats(&self) -> &RenderStats {
         &self.core.stats
     }
 
+    /// Returns a GPU-side vertex buffer containing 2D vertices of a unit square.
+    /// 
+    /// This can be handy for custom rendering.
     #[inline]
     pub fn quad_vertex_positions_buffer(&self) -> &D::Buffer {
         self.core.allocator.get_general_buffer(self.core.quad_vertex_positions_buffer_id)
     }
 
+    /// Returns a GPU-side 32-bit unsigned index buffer of triangles necessary to render a quad
+    /// with the buffer returned by `quad_vertex_positions_buffer()`.
+    /// 
+    /// This can be handy for custom rendering.
     #[inline]
     pub fn quad_vertex_indices_buffer(&self) -> &D::Buffer {
         self.core.allocator.get_index_buffer(self.core.quad_vertex_indices_buffer_id)
@@ -684,6 +756,10 @@ impl<D> Renderer<D> where D: Device {
         self.core.stats.drawcall_count += 1;
     }
 
+
+    /// Draws a texture that was originally drawn with `old_transform` with `new_transform` by
+    /// transforming in screen space.
+    #[deprecated]
     pub fn reproject_texture(&mut self,
                              texture: &D::Texture,
                              old_transform: &Transform4F,
@@ -814,19 +890,17 @@ impl<D> Renderer<D> where D: Device {
         self.core.stats.drawcall_count += 1;
     }
 
+    /// Returns the output viewport in the destination framebuffer, as specified in the render
+    /// options.
     #[inline]
     pub fn draw_viewport(&self) -> RectI {
         self.core.draw_viewport()
     }
 
+    /// Returns the destination framebuffer, wrapped in a render target.
     #[inline]
     pub fn draw_render_target(&self) -> RenderTarget<D> {
         self.core.draw_render_target()
-    }
-
-    #[inline]
-    pub fn render_stats(&self) -> &RenderStats {
-        &self.core.stats
     }
 
     fn compute_filter_params(&self,
@@ -1085,14 +1159,14 @@ impl<D> RendererCore<D> where D: Device {
         }
     }
 
-    pub fn draw_viewport(&self) -> RectI {
+    pub(crate) fn draw_viewport(&self) -> RectI {
         match self.render_target_stack.last() {
             Some(&render_target_id) => self.render_target_location(render_target_id).rect,
             None => self.main_viewport(),
         }
     }
 
-    pub fn draw_render_target(&self) -> RenderTarget<D> {
+    pub(crate) fn draw_render_target(&self) -> RenderTarget<D> {
         match self.render_target_stack.last() {
             Some(&render_target_id) => {
                 let texture_page_id = self.render_target_location(render_target_id).page;
@@ -1248,8 +1322,14 @@ pub(crate) struct PatternTexturePage {
     pub(crate) must_preserve_contents: bool,
 }
 
+/// A mutable reference to the debug UI presenter.
+/// 
+/// You can use this structure to draw custom debug widgets on screen, as the demo does.
 pub struct DebugUIPresenterInfo<'a, D> where D: Device {
+    /// The GPU device.
     pub device: &'a mut D,
+    /// The GPU memory allocator.
     pub allocator: &'a mut GPUMemoryAllocator<D>,
+    /// The debug UI presenter, useful for drawing custom debug widgets on screen.
     pub debug_ui_presenter: &'a mut DebugUIPresenter<D>,
 }

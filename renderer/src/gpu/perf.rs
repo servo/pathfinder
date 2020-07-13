@@ -16,15 +16,30 @@ use std::mem;
 use std::ops::{Add, Div};
 use std::time::Duration;
 
+/// Various GPU-side statistics about rendering.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RenderStats {
+    /// The total number of path objects in the scene.
     pub path_count: usize,
+    /// The number of fill operations it took to render the scene.
+    /// 
+    /// A fill operation is a single edge in a 16x16 device pixel tile.
     pub fill_count: usize,
+    /// The total number of 16x16 device pixel tile masks generated.
     pub alpha_tile_count: usize,
+    /// The total number of 16x16 tiles needed to render the scene, including both alpha tiles and
+    /// solid-color tiles.
     pub total_tile_count: usize,
+    /// The amount of CPU time it took to build the scene.
     pub cpu_build_time: Duration,
+    /// The number of GPU API draw calls it took to render the scene.
     pub drawcall_count: u32,
+    /// The number of bytes of VRAM Pathfinder has allocated.
+    /// 
+    /// This may be higher than `gpu_bytes_committed` because Pathfinder caches some data for
+    /// faster reuse.
     pub gpu_bytes_allocated: u64,
+    /// The number of bytes of VRAM Pathfinder actually used for the frame.
     pub gpu_bytes_committed: u64,
 }
 
@@ -203,16 +218,28 @@ fn total_time_of_timer_futures<D>(futures: &[TimerFuture<D>]) -> Option<Duration
     Some(total)
 }
 
+/// The amount of GPU time it took to render the scene, broken up into stages.
 #[derive(Clone, Copy, Debug)]
 pub struct RenderTime {
+    /// How much GPU time it took to divide all edges in the scene into small lines.
+    /// 
+    /// This will be zero in the D3D9-level backend, since in that backend dicing is done on CPU.
     pub dice_time: Duration,
+    /// How much GPU time it took to assign those diced microlines to tiles.
+    /// 
+    /// This will be zero in the D3D9-level backend, since in that backend binning is done on CPU.
     pub bin_time: Duration,
+    /// How much GPU time it took to draw fills (i.e. render edges) to masks.
     pub fill_time: Duration,
+    /// How much GPU time it took to draw the contents of the tiles to the output.
     pub composite_time: Duration,
+    /// How much GPU time it took to execute miscellaneous tasks other than dicing, binning,
+    /// filling, and compositing.
     pub other_time: Duration,
 }
 
 impl RenderTime {
+    /// The total GPU time it took to render the scene.
     #[inline]
     pub fn total_time(&self) -> Duration {
         self.dice_time + self.bin_time + self.fill_time + self.composite_time + self.other_time

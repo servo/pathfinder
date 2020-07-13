@@ -18,20 +18,30 @@ use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::vector::{Vector2F, Vector4F};
 use pathfinder_content::clip::PolygonClipper3D;
 
+/// A sink for the render commands that scenes build.
+/// 
+/// In single-threaded operation, this object typically buffers commands into an array and then,
+/// once scene building is complete, commands are all sent to the output at once. In multithreaded
+/// operation, on the other hand, commands are sent to the renderer on the fly as they're built.
+/// The latter is generally preferable for performance, because it allows the CPU and GPU to run
+/// concurrently. However, it requires a multithreaded environment, which may not always be
+/// available.
 pub struct RenderCommandListener<'a> {
     send_fn: RenderCommandSendFunction<'a>,
 }
 
+/// The callback function that receives the render commands from the scene builder.
 pub type RenderCommandSendFunction<'a> = Box<dyn Fn(RenderCommand) + Send + Sync + 'a>;
 
 impl<'a> RenderCommandListener<'a> {
+    /// Wraps a render command callback in a `RenderCommandListener`.
     #[inline]
     pub fn new(send_fn: RenderCommandSendFunction<'a>) -> RenderCommandListener<'a> {
         RenderCommandListener { send_fn }
     }
 
     #[inline]
-    pub fn send(&self, render_command: RenderCommand) {
+    pub(crate) fn send(&self, render_command: RenderCommand) {
         (self.send_fn)(render_command)
     }
 }
@@ -39,8 +49,12 @@ impl<'a> RenderCommandListener<'a> {
 /// Options that influence scene building.
 #[derive(Clone, Default)]
 pub struct BuildOptions {
+    /// A global transform to be applied to the scene.
     pub transform: RenderTransform,
+    /// Expands outlines by the given number of device pixels. This is useful to perform *stem
+    /// darkening* for fonts, to mitigate the thinness of gamma-corrected fonts.
     pub dilation: Vector2F,
+    /// True if subpixel antialiasing for LCD screens is to be performed.
     pub subpixel_aa_enabled: bool,
 }
 
@@ -54,9 +68,12 @@ impl BuildOptions {
     }
 }
 
+/// A global transform to apply to the scene.
 #[derive(Clone)]
 pub enum RenderTransform {
+    /// A 2D transform.
     Transform2D(Transform2F),
+    /// A perspective transform. (This will soon be removed in favor of a revised 3D approach.)
     Perspective(Perspective),
 }
 
