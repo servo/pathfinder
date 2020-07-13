@@ -9,13 +9,13 @@
 // except according to those terms.
 
 use crate::allocator::{AllocationMode, TextureAllocator};
-use crate::gpu_data::{ColorCombineMode, RenderCommand, TextureLocation, TextureMetadataEntry, TexturePageDescriptor};
-use crate::gpu_data::{TexturePageId, TileBatchTexture};
+use crate::gpu_data::{ColorCombineMode, RenderCommand, TextureLocation, TextureMetadataEntry};
+use crate::gpu_data::{TexturePageDescriptor, TexturePageId, TileBatchTexture};
 use crate::scene::{RenderTarget, SceneId};
 use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::effects::{BlendMode, Filter, PatternFilter};
-use pathfinder_content::gradient::{Gradient, GradientGeometry};
+use pathfinder_content::gradient::{Gradient, GradientGeometry, GradientWrap};
 use pathfinder_content::pattern::{Pattern, PatternSource};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_geometry::line_segment::LineSegment2F;
@@ -368,12 +368,20 @@ impl Palette {
             let color_texture_metadata = paint.overlay.as_ref().map(|overlay| {
                 match overlay.contents {
                     PaintContents::Gradient(ref gradient) => {
+                        let mut sampling_flags = TextureSamplingFlags::empty();
+                        match gradient.wrap {
+                            GradientWrap::Repeat => {
+                                sampling_flags.insert(TextureSamplingFlags::REPEAT_U);
+                            }
+                            GradientWrap::Clamp => {}
+                        }
+
                         // FIXME(pcwalton): The gradient size might not be big enough. Detect this.
                         let location = gradient_tile_builder.allocate(allocator, gradient);
                         PaintColorTextureMetadata {
                             location,
                             page_scale: allocator.page_scale(location.page),
-                            sampling_flags: TextureSamplingFlags::empty(),
+                            sampling_flags,
                             filter: match gradient.geometry {
                                 GradientGeometry::Linear(_) => PaintFilter::None,
                                 GradientGeometry::Radial { line, radii, .. } => {

@@ -17,7 +17,7 @@ use hashbrown::HashMap;
 use pathfinder_color::ColorU;
 use pathfinder_content::dash::OutlineDash;
 use pathfinder_content::fill::FillRule;
-use pathfinder_content::gradient::{ColorStop, Gradient};
+use pathfinder_content::gradient::{ColorStop, Gradient, GradientWrap};
 use pathfinder_content::outline::Outline;
 use pathfinder_content::segment::{Segment, SegmentFlags};
 use pathfinder_content::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
@@ -56,7 +56,6 @@ bitflags! {
         const UNSUPPORTED_LINK_PAINT             = 0x0020;
         const UNSUPPORTED_FILTER_ATTR            = 0x0040;
         const UNSUPPORTED_MASK_ATTR              = 0x0080;
-        const UNSUPPORTED_GRADIENT_SPREAD_METHOD = 0x0100;
     }
 }
 
@@ -237,11 +236,27 @@ impl SVGScene {
                     id: String,
                     usvg_base_gradient: &BaseGradient) {
         for stop in &usvg_base_gradient.stops {
-            gradient.add(ColorStop::from_usvg_stop(stop));
+            let mut stop = ColorStop::from_usvg_stop(stop);
+            if usvg_base_gradient.spread_method == SpreadMethod::Reflect {
+                stop.offset *= 0.5;
+            }
+            gradient.add(stop);
         }
 
-        if usvg_base_gradient.spread_method != SpreadMethod::Pad {
-            self.result_flags.insert(BuildResultFlags::UNSUPPORTED_GRADIENT_SPREAD_METHOD);
+        // Reflect gradient if necessary.
+        if usvg_base_gradient.spread_method == SpreadMethod::Reflect {
+            for stop in &usvg_base_gradient.stops {
+                let mut stop = ColorStop::from_usvg_stop(stop);
+                if usvg_base_gradient.spread_method == SpreadMethod::Reflect {
+                    stop.offset = 1.0 - stop.offset * 0.5;
+                }
+                gradient.add(stop);
+            }
+        }
+
+        match usvg_base_gradient.spread_method {
+            SpreadMethod::Pad => {}
+            SpreadMethod::Reflect | SpreadMethod::Repeat => gradient.wrap = GradientWrap::Repeat,
         }
 
         let transform = usvg_transform_to_transform_2d(&usvg_base_gradient.transform);
@@ -304,7 +319,6 @@ impl Display for BuildResultFlags {
             "non-color paint",
             "filter attribute",
             "mask attribute",
-            "gradient spread method",
         ];
     }
 }
