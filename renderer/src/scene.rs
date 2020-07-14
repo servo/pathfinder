@@ -17,7 +17,7 @@ use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
 use crate::options::{BuildOptions, PreparedBuildOptions};
 use crate::options::{PreparedRenderTransform, RenderCommandListener};
-use crate::paint::{MergedPaletteInfo, Paint, PaintId, PaintInfo, Palette};
+use crate::paint::{MergedPaletteInfo, Paint, PaintId, PaintInfo, PaintTextureManager, Palette};
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::Outline;
@@ -178,8 +178,11 @@ impl Scene {
     }
 
     #[inline]
-    pub(crate) fn build_paint_info(&mut self, render_transform: Transform2F) -> PaintInfo {
-        self.palette.build_paint_info(render_transform)
+    pub(crate) fn build_paint_info(&mut self,
+                                   texture_manager: &mut PaintTextureManager,
+                                   render_transform: Transform2F)
+                                   -> PaintInfo {
+        self.palette.build_paint_info(texture_manager, render_transform)
     }
 
     /// Defines a new paint, which specifies how paths are to be filled or stroked. Returns a paint
@@ -382,6 +385,7 @@ pub struct SceneSink<'a> {
     pub(crate) listener: RenderCommandListener<'a>,
     pub(crate) renderer_level: RendererLevel,
     pub(crate) last_scene: Option<LastSceneInfo>,
+    pub(crate) paint_texture_manager: PaintTextureManager,
 }
 
 pub(crate) struct LastSceneInfo {
@@ -423,7 +427,12 @@ impl<'a> SceneSink<'a> {
     #[inline]
     pub fn new(listener: RenderCommandListener<'a>, renderer_level: RendererLevel)
                -> SceneSink<'a> {
-        SceneSink { listener, renderer_level, last_scene: None }
+        SceneSink {
+            listener,
+            renderer_level,
+            last_scene: None,
+            paint_texture_manager: PaintTextureManager::new(),
+        }
     }
 }
 

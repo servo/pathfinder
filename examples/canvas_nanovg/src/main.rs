@@ -1541,6 +1541,9 @@ fn main() {
     let mut cpu_graph = PerfGraph::new(GraphStyle::MS, "CPU Time");
     let mut gpu_graph = PerfGraph::new(GraphStyle::MS, "GPU Time");
 
+    // Initialize scene proxy.
+    let mut scene = SceneProxy::new(renderer.mode().level, RayonExecutor);
+
     // Enter the main loop.
     let mut exit = false;
     while !exit {
@@ -1569,9 +1572,7 @@ fn main() {
 
         // Render the canvas to screen.
         let canvas = context.into_canvas();
-        let mut scene = SceneProxy::from_scene(canvas.into_scene(),
-                                               renderer.mode().level,
-                                               RayonExecutor);
+        scene.replace_scene(canvas.into_scene());
         scene.build_and_render(&mut renderer, BuildOptions::default());
 
         // Present the rendered canvas via `surfman`.
