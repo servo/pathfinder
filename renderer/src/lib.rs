@@ -8,7 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The CPU portion of Pathfinder's renderer.
+//! Pathfinder's renderer and associated objects.
+
+#![warn(missing_docs)]
 
 #[macro_use]
 extern crate bitflags;

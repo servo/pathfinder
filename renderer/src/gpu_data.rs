@@ -242,7 +242,7 @@ pub struct DrawTileBatchD3D11 {
 pub struct TileBatchTexture {
     pub page: TexturePageId,
     pub sampling_flags: TextureSamplingFlags,
-    pub composite_op: PaintCompositeOp,
+    pub(crate) composite_op: PaintCompositeOp,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

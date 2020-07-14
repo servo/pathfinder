@@ -32,6 +32,11 @@ pub struct RendererOptions<D> where D: Device {
     pub show_debug_ui: bool,
 }
 
+/// The GPU API level that Pathfinder will use.
+///
+/// Note that this is a *level*, not a *backend*. Levels describe rough GPU feature requirements
+/// instead of specific APIs. "D3D9" doesn't mean "Direct3D 9" specifically: rather, it's a more
+/// convenient way to write something like "Direct3D 9/OpenGL 3.0/Metal/WebGL 2.0".
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RendererLevel {
     /// Direct3D 9/OpenGL 3.0/WebGL 2.0 compatibility. Bin on CPU, fill and composite on GPU.
@@ -41,6 +46,7 @@ pub enum RendererLevel {
 }
 
 impl RendererMode {
+    /// Creates a new `RendererMode` with a suitable API level for the given GPU device.
     #[inline]
     pub fn default_for_device<D>(device: &D) -> RendererMode where D: Device {
         RendererMode { level: RendererLevel::default_for_device(device) }

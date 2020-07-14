@@ -47,10 +47,12 @@ pub struct Scene {
     epoch: SceneEpoch,
 }
 
+/// A globally-unique identifier for the scene.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SceneId(pub u32);
 
 impl Scene {
+    /// Creates a new empty scene.
     #[inline]
     pub fn new() -> Scene {
         let scene_id = SceneId(NEXT_SCENE_ID.fetch_add(1, Ordering::Relaxed) as u32);
@@ -66,10 +68,17 @@ impl Scene {
         }
     }
 
-    pub fn push_draw_path(&mut self, draw_path: DrawPath) {
+    /// Adds a path to the scene, to be drawn on top of all previously-added paths.
+    ///
+    /// If a render target is on the stack (see `push_render_target()`), the path goes to the
+    /// render target. Otherwise, it goes to the main output.
+    ///
+    /// Returns an ID which can later be used to retrieve the path via `get_draw_path()`.
+    pub fn push_draw_path(&mut self, draw_path: DrawPath) -> DrawPathId {
         let draw_path_index = DrawPathId(self.draw_paths.len() as u32);
         self.draw_paths.push(draw_path);
         self.push_draw_path_with_index(draw_path_index);
+        draw_path_index
     }
 
     fn push_draw_path_with_index(&mut self, draw_path_id: DrawPathId) {
@@ -85,6 +94,7 @@ impl Scene {
         self.epoch.next();
     }
 
+    /// Defines a clip path. Returns an ID that can be used to later clip draw paths.
     pub fn push_clip_path(&mut self, clip_path: ClipPath) -> ClipPathId {
         self.bounds = self.bounds.union_rect(clip_path.outline.bounds());
         let clip_path_id = ClipPathId(self.clip_paths.len() as u32);
@@ -93,6 +103,10 @@ impl Scene {
         clip_path_id
     }
 
+    /// Directs subsequent draw paths to draw to the given render target instead of the output.
+    ///
+    /// Render targets form a stack. All `push_draw_path()` commands go to the render target at the
+    /// top of the stack.
     pub fn push_render_target(&mut self, render_target: RenderTarget) -> RenderTargetId {
         let render_target_id = self.palette.push_render_target(render_target);
         self.display_list.push(DisplayItem::PushRenderTarget(render_target_id));
@@ -100,10 +114,17 @@ impl Scene {
         render_target_id
     }
 
+    /// Removes the most-recently-pushed render target from the top of the stack.
+    ///
+    /// After calling this method, drawing will go to the previous render target. If no render
+    /// targets remain on the stack, drawing goes to the main output.
     pub fn pop_render_target(&mut self) {
         self.display_list.push(DisplayItem::PopRenderTarget);
     }
 
+    /// Adds all elements in a scene to this one.
+    ///
+    /// This includes draw paths, clip paths, render targets, and paints.
     pub fn append_scene(&mut self, scene: Scene) {
         let MergedPaletteInfo {
             render_target_mapping,
@@ -161,6 +182,8 @@ impl Scene {
         self.palette.build_paint_info(render_transform)
     }
 
+    /// Defines a new paint, which specifies how paths are to be filled or stroked. Returns a paint
+    /// ID that can be later specified alongside draw paths.
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
         let paint_id = self.palette.push_paint(paint);
@@ -168,22 +191,30 @@ impl Scene {
         paint_id
     }
 
+    /// Returns a rectangle that should enclose all objects in the scene.
+    ///
+    /// FIXME(pcwalton): Is this really needed?
     #[inline]
     pub fn bounds(&self) -> RectF {
         self.bounds
     }
 
+    /// Sets a rectangle that should enclose all objects in the scene.
+    ///
+    /// FIXME(pcwalton): Is this really needed?
     #[inline]
     pub fn set_bounds(&mut self, new_bounds: RectF) {
         self.bounds = new_bounds;
         self.epoch.next();
     }
 
+    /// Returns the view box, which defines the visible portion of the scene.
     #[inline]
     pub fn view_box(&self) -> RectF {
         self.view_box
     }
 
+    /// Changes the view box, which defines the visible portion of the scene.
     #[inline]
     pub fn set_view_box(&mut self, new_view_box: RectF) {
         self.view_box = new_view_box;
@@ -246,6 +277,11 @@ impl Scene {
         }
     }
 
+    /// Builds render commands necessary to render the scene and sends them to the `SceneSink`.
+    ///
+    /// The given executor will be used to prepare these commands. Typically, this will be a
+    /// `SequentialExecutor` to prepare commands on a single thread or `RayonExecutor` to prepare
+    /// commands in parallel across multiple threads.
     #[inline]
     pub fn build<'a, 'b, E>(&mut self,
                             options: BuildOptions,
@@ -257,42 +293,52 @@ impl Scene {
     }
 
     #[inline]
-    pub fn display_list(&self) -> &[DisplayItem] {
+    pub(crate) fn display_list(&self) -> &[DisplayItem] {
         &self.display_list
     }
 
     #[inline]
-    pub fn draw_paths(&self) -> &[DrawPath] {
+    pub(crate) fn draw_paths(&self) -> &[DrawPath] {
         &self.draw_paths
     }
 
     #[inline]
-    pub fn clip_paths(&self) -> &[ClipPath] {
+    pub(crate) fn clip_paths(&self) -> &[ClipPath] {
         &self.clip_paths
     }
 
+    /// Returns the number of draw paths in this scene.
+    #[inline]
+    pub fn draw_path_count(&self) -> u32 {
+        self.draw_paths.len() as u32
+    }
+
+    /// Returns the draw path with the given ID.
     #[inline]
     pub fn get_draw_path(&self, draw_path_id: DrawPathId) -> &DrawPath {
         &self.draw_paths[draw_path_id.0 as usize]
     }
 
+    /// Returns the clip path with the given ID.
     #[inline]
     pub fn get_clip_path(&self, clip_path_id: ClipPathId) -> &ClipPath {
         &self.clip_paths[clip_path_id.0 as usize]
     }
 
+    /// Returns the paint with the given ID.
     #[inline]
     pub fn get_paint(&self, paint_id: PaintId) -> &Paint {
         self.palette.paints.get(paint_id.0 as usize).expect("No paint with that ID!")
     }
 
+    /// Returns the globally-unique ID of the scene.
     #[inline]
     pub fn id(&self) -> SceneId {
         self.id
     }
 
     #[inline]
-    pub fn epoch(&self) -> SceneEpoch {
+    pub(crate) fn epoch(&self) -> SceneEpoch {
         self.epoch
     }
 
@@ -328,6 +374,9 @@ impl Scene {
     }
 }
 
+/// Receives render commands and delivers them to a `RenderCommandListener`.
+///
+/// Scene sinks wrap render command listeners with cached information about the previous scene.
 pub struct SceneSink<'a> {
     pub(crate) listener: RenderCommandListener<'a>,
     pub(crate) renderer_level: RendererLevel,
@@ -342,9 +391,9 @@ pub(crate) struct LastSceneInfo {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub struct SceneEpoch {
-    pub hi: u64,
-    pub lo: u64,
+pub(crate) struct SceneEpoch {
+    pub(crate) hi: u64,
+    pub(crate) lo: u64,
 }
 
 impl SceneEpoch {
@@ -369,6 +418,7 @@ impl SceneEpoch {
 }
 
 impl<'a> SceneSink<'a> {
+    /// Creates a new scene sink from the given render command listener and level.
     #[inline]
     pub fn new(listener: RenderCommandListener<'a>, renderer_level: RendererLevel)
                -> SceneSink<'a> {
@@ -376,27 +426,47 @@ impl<'a> SceneSink<'a> {
     }
 }
 
+/// A path drawn to the output or to a render target.
 #[derive(Clone, Debug)]
 pub struct DrawPath {
+    /// The actual vector path outline.
     pub outline: Outline,
+    /// The ID of the paint that specifies how to fill the interior of this outline.
     pub paint: PaintId,
+    /// The ID of an optional clip path that will be used to clip this path.
     pub clip_path: Option<ClipPathId>,
+    /// How to fill this path (winding or even-odd).
     pub fill_rule: FillRule,
+    /// How to blend this path with everything below it.
     pub blend_mode: BlendMode,
+    /// The name of this path, for debugging.
+    ///
+    /// Pass the empty string (which does not allocate) if debugging is not needed.
     pub name: String,
 }
 
+/// Describes a path that can be used to clip other paths.
 #[derive(Clone, Debug)]
 pub struct ClipPath {
+    /// The actual vector path outline.
     pub outline: Outline,
+    /// The ID of another, previously-defined, clip path that clips this one.
+    ///
+    /// Nested clips can be achieved by clipping clip paths with other clip paths.
     pub clip_path: Option<ClipPathId>,
+    /// How to fill this path (winding or even-odd).
     pub fill_rule: FillRule,
+    /// The name of this clip path, for debugging.
+    ///
+    /// Pass the empty string (which does not allocate) if debugging is not needed.
     pub name: String,
 }
 
+/// The ID of a draw path, unique to a single scene.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct DrawPathId(pub u32);
 
+/// The ID of a clip path, unique to a single scene.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ClipPathId(pub u32);
 
@@ -404,13 +474,18 @@ pub struct ClipPathId(pub u32);
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PathId(pub u32);
 
+/// A raster image target that can be rendered to and later reused as a pattern.
+///
+/// This can be useful for creating "stamps" or "symbols" that are rendered once and reused. It can
+/// also be useful for image effects that require many paths to be processed at once; e.g. opacity
+/// applied to a group of paths.
 #[derive(Clone, Debug)]
 pub struct RenderTarget {
     size: Vector2I,
     name: String,
 }
 
-/// Drawing commands.
+/// High-level drawing commands.
 #[derive(Clone, Debug)]
 pub enum DisplayItem {
     /// Draws paths to the render target on top of the stack.
@@ -424,6 +499,10 @@ pub enum DisplayItem {
 }
 
 impl DrawPath {
+    /// Creates a new draw path with the given outline and paint.
+    ///
+    /// Initially, there is no clip path, the fill rule is set to winding, the blend mode is set to
+    /// source-over, and the path has no name.
     #[inline]
     pub fn new(outline: Outline, paint: PaintId) -> DrawPath {
         DrawPath {
@@ -436,6 +515,7 @@ impl DrawPath {
         }
     }
 
+    /// Returns the outline of this path, which defines its vector commands.
     #[inline]
     pub fn outline(&self) -> &Outline {
         &self.outline
@@ -446,6 +526,10 @@ impl DrawPath {
         self.clip_path
     }
 
+    /// Sets a previously-defined clip path that will be used to limit the filled region of this
+    /// path.
+    ///
+    /// Clip paths are defined in world space, not relative to the bounds of this path.
     #[inline]
     pub fn set_clip_path(&mut self, new_clip_path: Option<ClipPathId>) {
         self.clip_path = new_clip_path
@@ -461,6 +545,7 @@ impl DrawPath {
         self.fill_rule
     }
 
+    /// Sets the fill rule: even-odd or winding.
     #[inline]
     pub fn set_fill_rule(&mut self, new_fill_rule: FillRule) {
         self.fill_rule = new_fill_rule
@@ -471,11 +556,14 @@ impl DrawPath {
         self.blend_mode
     }
 
+    /// Sets the blend mode, which specifies how this path will be composited with content
+    /// underneath it.
     #[inline]
     pub fn set_blend_mode(&mut self, new_blend_mode: BlendMode) {
         self.blend_mode = new_blend_mode
     }
 
+    /// Assigns a name to this path, for debugging.
     #[inline]
     pub fn set_name(&mut self, new_name: String) {
         self.name = new_name
@@ -483,11 +571,16 @@ impl DrawPath {
 }
 
 impl ClipPath {
+    /// Creates a new clip path with the given outline.
+    ///
+    /// Initially, there is no nested clip path, the fill rule is set to winding, and the clip path
+    /// has no name.
     #[inline]
     pub fn new(outline: Outline) -> ClipPath {
         ClipPath { outline, clip_path: None, fill_rule: FillRule::Winding, name: String::new() }
     }
 
+    /// Returns the outline of this clip path, which defines its vector commands.
     #[inline]
     pub fn outline(&self) -> &Outline {
         &self.outline
@@ -498,6 +591,10 @@ impl ClipPath {
         self.clip_path
     }
 
+    /// Sets a nested clip path for this one by ID.
+    ///
+    /// Draw paths can effectively be clipped by multiple paths by clipping one of the clip paths
+    /// with the other, forming a chain of clips.
     #[inline]
     pub fn set_clip_path(&mut self, new_clip_path: Option<ClipPathId>) {
         self.clip_path = new_clip_path
@@ -508,11 +605,13 @@ impl ClipPath {
         self.fill_rule
     }
 
+    /// Sets the fill rule for this clip path: even-odd or winding.
     #[inline]
     pub fn set_fill_rule(&mut self, new_fill_rule: FillRule) {
         self.fill_rule = new_fill_rule
     }
 
+    /// Assigns a name to this clip path, for debugging.
     #[inline]
     pub fn set_name(&mut self, new_name: String) {
         self.name = new_name
@@ -520,11 +619,16 @@ impl ClipPath {
 }
 
 impl RenderTarget {
+    /// Declares a new render target of the given device pixel size and with the given name for
+    /// debugging.
+    ///
+    /// Pass the empty string (which does not allocate) if a name is not needed.
     #[inline]
     pub fn new(size: Vector2I, name: String) -> RenderTarget {
         RenderTarget { size, name }
     }
 
+    /// Returns the device pixel size of this render target.
     #[inline]
     pub fn size(&self) -> Vector2I {
         self.size

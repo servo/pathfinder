@@ -11,7 +11,7 @@
 use pathfinder_content::outline::ContourIterFlags;
 use pathfinder_content::segment::SegmentKind;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
-use pathfinder_renderer::scene::{DrawPath, Scene};
+use pathfinder_renderer::scene::{DrawPathId, Scene};
 use std::fmt;
 use std::io::{self, Write};
 
@@ -53,13 +53,15 @@ fn export_svg<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         view_box.size().x(),
         view_box.size().y()
     )?;
-    for &DrawPath { paint: paint_id, ref outline, ref name, .. } in scene.draw_paths() {
-        let paint = scene.get_paint(paint_id);
+    for draw_path_index in 0..scene.draw_path_count() {
+        let draw_path_id = DrawPathId(draw_path_index);
+        let draw_path = scene.get_draw_path(draw_path_id);
+        let paint = scene.get_paint(draw_path.paint);
         write!(writer, "    <path")?;
-        if !name.is_empty() {
-            write!(writer, " id=\"{}\"", name)?;
+        if !draw_path.name.is_empty() {
+            write!(writer, " id=\"{}\"", draw_path.name)?;
         }
-        writeln!(writer, " fill=\"{:?}\" d=\"{:?}\" />", paint, outline)?;
+        writeln!(writer, " fill=\"{:?}\" d=\"{:?}\" />", draw_path.paint, draw_path.outline)?;
     }
     writeln!(writer, "</svg>")?;
     Ok(())
@@ -76,14 +78,17 @@ fn export_pdf<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         vec2f(r.x(), height - r.y())
     };
 
-    for &DrawPath { paint: paint_id, ref outline, .. } in scene.draw_paths() {
+    for draw_path_index in 0..scene.draw_path_count() {
+        let draw_path_id = DrawPathId(draw_path_index);
+        let draw_path = scene.get_draw_path(draw_path_id);
+
         // TODO(pcwalton): Gradients and patterns.
-        let paint = scene.get_paint(paint_id);
+        let paint = scene.get_paint(draw_path.paint);
         if paint.is_color() {
             pdf.set_fill_color(paint.base_color());
         }
 
-        for contour in outline.contours() {
+        for contour in draw_path.outline.contours() {
             for (segment_index, segment) in contour.iter(ContourIterFlags::empty()).enumerate() {
                 if segment_index == 0 {
                     pdf.move_to(tr(segment.baseline.from()));
@@ -140,14 +145,16 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     writeln!(writer, "0 {} translate", view_box.size().y())?;
     writeln!(writer, "1 -1 scale")?;
 
-    for &DrawPath { paint: paint_id, ref outline, ref name, .. } in scene.draw_paths() {
-        if !name.is_empty() {
-            writeln!(writer, "newpath % {}", name)?;
+    for draw_path_index in 0..scene.draw_path_count() {
+        let draw_path_id = DrawPathId(draw_path_index);
+        let draw_path = scene.get_draw_path(draw_path_id);
+        if !draw_path.name.is_empty() {
+            writeln!(writer, "newpath % {}", draw_path.name)?;
         } else {
             writeln!(writer, "newpath")?;
         }
 
-        for contour in outline.contours() {
+        for contour in draw_path.outline.contours() {
             for (segment_index, segment) in contour.iter(ContourIterFlags::empty()).enumerate() {
                 if segment_index == 0 {
                     writeln!(writer, "{} moveto", P(segment.baseline.from()))?;
@@ -182,7 +189,7 @@ fn export_ps<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
         }
 
         // TODO(pcwalton): Gradients and patterns.
-        let paint = scene.get_paint(paint_id);
+        let paint = scene.get_paint(draw_path.paint);
         if paint.is_color() {
             let color = paint.base_color();
             writeln!(writer, "{} {} {} setrgbcolor", color.r, color.g, color.b)?;
