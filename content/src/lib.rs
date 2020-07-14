@@ -8,9 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Pathfinder's representation of a vector scene.
-//!
-//! This module also contains various path utilities.
+//! Components of a vector scene, and various path utilities.
 
 #[macro_use]
 extern crate bitflags;
