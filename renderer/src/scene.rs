@@ -221,6 +221,7 @@ impl Scene {
         self.epoch.next();
     }
 
+    #[allow(deprecated)]
     pub(crate) fn apply_render_options(&self,
                                        original_outline: &Outline,
                                        options: &PreparedBuildOptions)
