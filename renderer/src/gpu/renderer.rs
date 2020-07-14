@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! The GPU renderer that processes commands necessary to render a scene.
+
 use crate::gpu::blend::{ToBlendState, ToCompositeCtrl};
 use crate::gpu::d3d9::renderer::RendererD3D9;
 use crate::gpu::d3d11::renderer::RendererD3D11;
@@ -66,6 +68,7 @@ const COMBINER_CTRL_COLOR_FILTER_SHIFT: i32 =       4;
 const COMBINER_CTRL_COLOR_COMBINE_SHIFT: i32 =      6;
 const COMBINER_CTRL_COMPOSITE_SHIFT: i32 =          8;
 
+/// The GPU renderer that processes commands necessary to render a scene.
 pub struct Renderer<D> where D: Device {
     // Basic data
     pub(crate) core: RendererCore<D>,

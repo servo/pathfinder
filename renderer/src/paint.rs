@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Defines how a path is to be filled.
+
 use crate::allocator::{AllocationMode, TextureAllocator};
 use crate::gpu_data::{ColorCombineMode, RenderCommand, TextureLocation, TextureMetadataEntry};
 use crate::gpu_data::{TexturePageDescriptor, TexturePageId, TileBatchTexture};
@@ -48,34 +50,46 @@ struct RenderTargetData {
     metadata: RenderTargetMetadata,
 }
 
+/// Defines how a path is to be filled: with a solid color, gradient, or pattern.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Paint {
     base_color: ColorU,
     overlay: Option<PaintOverlay>,
 }
 
+/// What is to be overlaid on top of a base color.
+///
+/// An overlay is a gradient or a pattern, plus a composite operation which determines how the
+/// gradient or pattern is to be combined with the base color.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct PaintOverlay {
     composite_op: PaintCompositeOp,
     contents: PaintContents,
 }
 
+/// The contents of an overlay: either a gradient or a pattern.
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum PaintContents {
+pub(crate) enum PaintContents {
+    /// A gradient, either linear or radial.
     Gradient(Gradient),
+    /// A raster image pattern.
     Pattern(Pattern),
 }
 
+/// The ID of a paint, unique to a scene.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PaintId(pub u16);
 
+/// The ID of a gradient, unique to a scene.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct GradientId(pub u32);
 
-/// How a paint is to be composited over a base color, or vice versa.
+/// How an overlay is to be composited over a base color.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum PaintCompositeOp {
+    /// The source that overlaps the destination, replaces the destination.
     SrcIn,
+    /// Destination which overlaps the source, replaces the source.
     DestIn,
 }
 
@@ -102,11 +116,13 @@ impl Palette {
 }
 
 impl Paint {
+    /// Creates a simple paint from a single base color.
     #[inline]
     pub fn from_color(color: ColorU) -> Paint {
         Paint { base_color: color, overlay: None }
     }
 
+    /// Creates a paint from a gradient.
     #[inline]
     pub fn from_gradient(gradient: Gradient) -> Paint {
         Paint {
@@ -118,6 +134,7 @@ impl Paint {
         }
     }
 
+    /// Creates a paint from a raster pattern.
     #[inline]
     pub fn from_pattern(pattern: Pattern) -> Paint {
         Paint {
@@ -129,16 +146,21 @@ impl Paint {
         }
     }
 
+    /// A convenience function to create a solid black paint.
     #[inline]
     pub fn black() -> Paint {
         Paint::from_color(ColorU::black())
     }
 
+    /// A convenience function to create a transparent paint with all channels set to zero.
     #[inline]
     pub fn transparent_black() -> Paint {
         Paint::from_color(ColorU::transparent_black())
     }
 
+    /// Returns true if this paint is obviously opaque, via a quick check.
+    ///
+    /// Even if the paint is opaque, this function might return false.
     pub fn is_opaque(&self) -> bool {
         if !self.base_color.is_opaque() {
             return false;
@@ -155,6 +177,9 @@ impl Paint {
         }
     }
 
+    /// Returns true if this paint is fully transparent, via a quick check.
+    ///
+    /// Even if the paint is fully transparent, this function might return false.
     pub fn is_fully_transparent(&self) -> bool {
         if !self.base_color.is_fully_transparent() {
             return false;
@@ -171,11 +196,15 @@ impl Paint {
         }
     }
 
+    /// Returns true if this paint represents a solid color.
     #[inline]
     pub fn is_color(&self) -> bool {
         self.overlay.is_none()
     }
 
+    /// Applies an affine transform to this paint.
+    ///
+    /// This has no effect if this paint is a solid color.
     pub fn apply_transform(&mut self, transform: &Transform2F) {
         if transform.is_identity() {
             return;
@@ -189,26 +218,36 @@ impl Paint {
         }
     }
 
+    /// Returns the *base color* of this paint.
+    ///
+    /// The base color is the color that goes underneath the gradient or pattern, if there is one.
     #[inline]
     pub fn base_color(&self) -> ColorU {
         self.base_color
     }
 
+    /// Changes the *base color* of this paint.
+    ///
+    /// The base color is the color that goes underneath the gradient or pattern, if there is one.
     #[inline]
     pub fn set_base_color(&mut self, new_base_color: ColorU) {
         self.base_color = new_base_color;
     }
 
+    /// Returns the paint overlay, which is the portion of the paint on top of the base color.
     #[inline]
     pub fn overlay(&self) -> &Option<PaintOverlay> {
         &self.overlay
     }
 
+    /// Returns a mutable reference to the paint overlay, which is the portion of the paint on top
+    /// of the base color.
     #[inline]
     pub fn overlay_mut(&mut self) -> &mut Option<PaintOverlay> {
         &mut self.overlay
     }
 
+    /// Returns the pattern, if this paint represents one.
     #[inline]
     pub fn pattern(&self) -> Option<&Pattern> {
         match self.overlay {
@@ -222,6 +261,7 @@ impl Paint {
         }
     }
 
+    /// Returns a mutable reference to the pattern, if this paint represents one.
     #[inline]
     pub fn pattern_mut(&mut self) -> Option<&mut Pattern> {
         match self.overlay {
@@ -235,6 +275,7 @@ impl Paint {
         }
     }
 
+    /// Returns the gradient, if this paint represents one.
     #[inline]
     pub fn gradient(&self) -> Option<&Gradient> {
         match self.overlay {
@@ -251,18 +292,22 @@ impl Paint {
 
 impl PaintOverlay {
     #[inline]
-    pub fn contents(&self) -> &PaintContents {
+    pub(crate) fn contents(&self) -> &PaintContents {
         &self.contents
     }
 
+    /// Returns the composite operation, which defines how the overlay is to be composited on top
+    /// of the base color.
     #[inline]
     pub fn composite_op(&self) -> PaintCompositeOp {
         self.composite_op
     }
 
+    /// Changes the composite operation, which defines how the overlay is to be composited on top
+    /// of the base color.
     #[inline]
     pub fn set_composite_op(&mut self, new_composite_op: PaintCompositeOp) {
-        self.composite_op = new_composite_op
+        self.composite_op = new_composite_op;
     }
 }
 
