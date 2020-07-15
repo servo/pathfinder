@@ -18,7 +18,7 @@ const ATLAS_TEXTURE_LENGTH: u32 = 1024;
 
 #[derive(Clone, Debug)]
 pub struct TextureAllocator {
-    pages: Vec<TexturePage>,
+    pages: Vec<Option<TexturePage>>,
 }
 
 #[derive(Clone, Debug)]
@@ -71,22 +71,34 @@ impl TextureAllocator {
         }
 
         // Try to add to each atlas.
+        let mut first_free_page_index = self.pages.len();
         for (page_index, page) in self.pages.iter_mut().enumerate() {
-            match page.allocator {
-                TexturePageAllocator::Image { .. } => {}
-                TexturePageAllocator::Atlas(ref mut allocator) => {
-                    if let Some(rect) = allocator.allocate(requested_size) {
-                        return TextureLocation { page: TexturePageId(page_index as u32), rect };
+            match *page {
+                Some(ref mut page) => {
+                    match page.allocator {
+                        TexturePageAllocator::Image { .. } => {}
+                        TexturePageAllocator::Atlas(ref mut allocator) => {
+                            if let Some(rect) = allocator.allocate(requested_size) {
+                                return TextureLocation {
+                                    page: TexturePageId(page_index as u32),
+                                    rect
+                                };
+                            }
+                        }
                     }
                 }
+                None => first_free_page_index = first_free_page_index.min(page_index),
             }
         }
 
         // Add a new atlas.
-        let page = TexturePageId(self.pages.len() as u32);
+        let page = self.get_first_free_page_id();
         let mut allocator = TextureAtlasAllocator::new();
         let rect = allocator.allocate(requested_size).expect("Allocation failed!");
-        self.pages.push(TexturePage {
+        while (page.0 as usize) >= self.pages.len() {
+            self.pages.push(None);
+        }
+        self.pages[page.0 as usize] = Some(TexturePage {
             is_new: true,
             allocator: TexturePageAllocator::Atlas(allocator),
         });
@@ -94,17 +106,52 @@ impl TextureAllocator {
     }
 
     pub fn allocate_image(&mut self, requested_size: Vector2I) -> TextureLocation {
-        let page = TexturePageId(self.pages.len() as u32);
+        let page = self.get_first_free_page_id();
         let rect = RectI::new(Vector2I::default(), requested_size);
-        self.pages.push(TexturePage {
+        while (page.0 as usize) >= self.pages.len() {
+            self.pages.push(None);
+        }
+        self.pages[page.0 as usize] = Some(TexturePage {
             is_new: true,
             allocator: TexturePageAllocator::Image { size: rect.size() },
         });
         TextureLocation { page, rect }
     }
 
+    fn get_first_free_page_id(&self) -> TexturePageId {
+        for (page_index, page) in self.pages.iter().enumerate() {
+            if page.is_none() {
+                return TexturePageId(page_index as u32);
+            }
+        }
+        TexturePageId(self.pages.len() as u32)
+    }
+
+    pub fn free(&mut self, location: TextureLocation) {
+        //println!("free({:?})", location);
+        match self.pages[location.page.0 as usize]
+                  .as_mut()
+                  .expect("Texture page is not allocated!")
+                  .allocator {
+            TexturePageAllocator::Image { size } => {
+                debug_assert_eq!(location.rect, RectI::new(Vector2I::default(), size));
+            }
+            TexturePageAllocator::Atlas(ref mut atlas_allocator) => {
+                atlas_allocator.free(location.rect);
+                if !atlas_allocator.is_empty() {
+                    // Keep the page around.
+                    return;
+                }
+            }
+        }
+
+        // If we got here, free the page.
+        // TODO(pcwalton): Actually tell the renderer to free this page!
+        self.pages[location.page.0 as usize] = None;
+    }
+
     pub fn page_size(&self, page_id: TexturePageId) -> Vector2I {
-        match self.pages[page_id.0 as usize].allocator {
+        match self.pages[page_id.0 as usize].as_ref().expect("No such texture page!").allocator {
             TexturePageAllocator::Atlas(ref atlas) => Vector2I::splat(atlas.size as i32),
             TexturePageAllocator::Image { size, .. } => size,
         }
@@ -115,16 +162,23 @@ impl TextureAllocator {
     }
 
     pub fn page_is_new(&self, page_id: TexturePageId) -> bool {
-        self.pages[page_id.0 as usize].is_new
+        self.pages[page_id.0 as usize].as_ref().expect("No such texture page!").is_new
     }
 
-    pub fn mark_page_as_allocated(&mut self, page_id: TexturePageId) {
-        self.pages[page_id.0 as usize].is_new = false;
+    pub fn mark_all_pages_as_allocated(&mut self) {
+        for page in &mut self.pages {
+            if let Some(ref mut page) = *page {
+                page.is_new = false;
+            }
+        }
     }
 
-    #[inline]
-    pub fn page_count(&self) -> u32 {
-        self.pages.len() as u32
+    pub fn page_ids(&self) -> TexturePageIter {
+        let mut first_index = 0;
+        while first_index < self.pages.len() && self.pages[first_index].is_none() {
+            first_index += 1;
+        }
+        TexturePageIter { allocator: self, next_index: first_index }
     }
 }
 
@@ -147,7 +201,6 @@ impl TextureAtlasAllocator {
     }
 
     #[inline]
-    #[allow(dead_code)]
     fn free(&mut self, rect: RectI) {
         let requested_length = rect.width() as u32;
         self.root.free(Vector2I::default(), self.size, rect.origin(), requested_length)
@@ -282,6 +335,30 @@ impl TreeNode {
             }
             _ => {}
         }
+    }
+}
+
+pub struct TexturePageIter<'a> {
+    allocator: &'a TextureAllocator,
+    next_index: usize,
+}
+
+impl<'a> Iterator for TexturePageIter<'a> {
+    type Item = TexturePageId;
+    fn next(&mut self) -> Option<TexturePageId> {
+        let next_id = if self.next_index >= self.allocator.pages.len() {
+            None
+        } else {
+            Some(TexturePageId(self.next_index as u32))
+        };
+        loop {
+            self.next_index += 1;
+            if self.next_index >= self.allocator.pages.len() ||
+                    self.allocator.pages[self.next_index as usize].is_some() {
+                break;
+            }
+        }
+        next_id
     }
 }
 

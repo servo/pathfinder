@@ -53,6 +53,10 @@ pub struct Image {
     is_opaque: bool,
 }
 
+/// Unique identifier for an image.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ImageHash(pub u64);
+
 bitflags! {
     pub struct PatternFlags: u8 {
         const REPEAT_X      = 0x01;
@@ -184,6 +188,13 @@ impl Image {
     #[inline]
     pub fn is_opaque(&self) -> bool {
         self.is_opaque
+    }
+
+    #[inline]
+    pub fn get_hash(&self) -> ImageHash {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        ImageHash(hasher.finish())
     }
 }
 
