@@ -29,7 +29,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::u32;
 
-pub const TILE_CTRL_MASK_MASK:     i32 = 0x3;
 pub const TILE_CTRL_MASK_WINDING:  i32 = 0x1;
 pub const TILE_CTRL_MASK_EVEN_ODD: i32 = 0x2;
 
@@ -434,13 +433,6 @@ impl PathBatchIndex {
     #[inline]
     pub fn none() -> PathBatchIndex {
         PathBatchIndex(!0)
-    }
-}
-
-impl GlobalPathId {
-    #[inline]
-    pub fn none() -> GlobalPathId {
-        GlobalPathId { batch_id: TileBatchId(!0), path_index: PathBatchIndex(!0) }
     }
 }
 

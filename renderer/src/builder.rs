@@ -174,7 +174,6 @@ impl<'a, 'b, 'c, 'd> SceneBuilder<'a, 'b, 'c, 'd> {
         let PaintInfo {
             render_commands,
             paint_metadata,
-            render_target_metadata: _,
         } = self.scene.build_paint_info(&mut self.sink.paint_texture_manager, render_transform);
         for render_command in render_commands {
             self.sink.listener.send(render_command);

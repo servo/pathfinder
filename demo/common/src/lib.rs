@@ -45,7 +45,7 @@ use pathfinder_resources::ResourceLoader;
 use pathfinder_svg::SVGScene;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::File;
-use std::io::{BufWriter, Read};
+use std::io::BufWriter;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -578,7 +578,7 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::EffectsChanged => {
                 let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
                 let filter = build_filter(&self.ui_model);
-                let (mut scene, message) = self.content.render(viewport_size, filter);
+                let (mut scene, _) = self.content.render(viewport_size, filter);
                 self.scene_metadata =
                     SceneMetadata::new_clipping_view_box(&mut scene, viewport_size);
                 self.scene_proxy.replace_scene(scene);

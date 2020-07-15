@@ -132,6 +132,7 @@ impl<W> DemoApp<W> where W: Window {
         self.renderer.device().begin_commands();
     }
 
+    #[allow(deprecated)]
     pub fn composite_scene(&mut self, render_scene_index: u32) {
         let (eye_transforms, scene_transform, modelview_transform) = match self.camera {
             Camera::ThreeD {
@@ -255,6 +256,7 @@ impl<W> DemoApp<W> where W: Window {
         });
     }
 
+    #[allow(deprecated)]
     fn render_vector_scene(&mut self) {
         if self.ui_model.mode == Mode::TwoD {
             self.renderer.disable_depth();

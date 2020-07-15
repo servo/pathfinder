@@ -147,7 +147,6 @@ pub(crate) struct TileProgramCommon<D> where D: Device {
     pub(crate) z_buffer_texture_size_uniform: D::Uniform,
     pub(crate) color_texture_0: D::TextureParameter,
     pub(crate) color_texture_size_0_uniform: D::Uniform,
-    pub(crate) color_texture_1: D::TextureParameter,
     pub(crate) mask_texture_0: D::TextureParameter,
     pub(crate) mask_texture_size_0_uniform: D::Uniform,
     pub(crate) gamma_lut_texture: D::TextureParameter,
@@ -163,7 +162,6 @@ impl<D> TileProgramCommon<D> where D: Device {
         let z_buffer_texture_size_uniform = device.get_uniform(&program, "ZBufferSize");
         let color_texture_0 = device.get_texture_parameter(&program, "ColorTexture0");
         let color_texture_size_0_uniform = device.get_uniform(&program, "ColorTextureSize0");
-        let color_texture_1 = device.get_texture_parameter(&program, "ColorTexture1");
         let mask_texture_0 = device.get_texture_parameter(&program, "MaskTexture0");
         let mask_texture_size_0_uniform = device.get_uniform(&program, "MaskTextureSize0");
         let gamma_lut_texture = device.get_texture_parameter(&program, "GammaLUT");
@@ -178,7 +176,6 @@ impl<D> TileProgramCommon<D> where D: Device {
             z_buffer_texture_size_uniform,
             color_texture_0,
             color_texture_size_0_uniform,
-            color_texture_1,
             mask_texture_0,
             mask_texture_size_0_uniform,
             gamma_lut_texture,

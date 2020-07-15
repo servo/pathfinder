@@ -317,10 +317,6 @@ pub(crate) struct PaintInfo {
     ///
     /// The indices of this vector are paint IDs.
     pub(crate) paint_metadata: Vec<PaintMetadata>,
-    /// The metadata for each render target.
-    ///
-    /// The indices of this vector are render target IDs.
-    pub(crate) render_target_metadata: Vec<RenderTargetMetadata>,
 }
 
 #[derive(Debug)]
@@ -426,7 +422,7 @@ impl Palette {
 
         // Create render commands.
         self.create_render_commands(&mut render_commands,
-                                    &render_target_metadata,
+                                    render_target_metadata,
                                     gradient_tile_builder,
                                     image_texel_info);
 
@@ -434,7 +430,7 @@ impl Palette {
         self.free_transient_locations(texture_manager, transient_paint_locations);
         self.free_unused_images(texture_manager, used_image_hashes);
 
-        PaintInfo { render_commands, paint_metadata, render_target_metadata }
+        PaintInfo { render_commands, paint_metadata }
     }
 
     fn assign_render_target_locations(&self,
@@ -667,7 +663,7 @@ impl Palette {
 
     fn create_render_commands(&self,
                               render_commands: &mut Vec<RenderCommand>,
-                              render_target_metadata: &[RenderTargetMetadata],
+                              render_target_metadata: Vec<RenderTargetMetadata>,
                               gradient_tile_builder: GradientTileBuilder,
                               image_texel_info: Vec<ImageTexelInfo>) {
         for (index, metadata) in render_target_metadata.iter().enumerate() {
