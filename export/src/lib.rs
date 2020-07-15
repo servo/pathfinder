@@ -56,7 +56,6 @@ fn export_svg<W: Write>(scene: &Scene, writer: &mut W) -> io::Result<()> {
     for draw_path_index in 0..scene.draw_path_count() {
         let draw_path_id = DrawPathId(draw_path_index);
         let draw_path = scene.get_draw_path(draw_path_id);
-        let paint = scene.get_paint(draw_path.paint);
         write!(writer, "    <path")?;
         if !draw_path.name.is_empty() {
             write!(writer, " id=\"{}\"", draw_path.name)?;
