@@ -166,10 +166,8 @@ impl Gradient {
             return lower_stop.color;
         }
 
-        lower_stop.color
-                  .to_f32()
-                  .lerp(upper_stop.color.to_f32(), (t - lower_stop.offset) / denom)
-                  .to_u8()
+        let ratio = ((t - lower_stop.offset) / denom).min(1.0);
+        lower_stop.color.to_f32().lerp(upper_stop.color.to_f32(), ratio).to_u8()
     }
 
     #[inline]
