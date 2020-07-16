@@ -8,10 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Fill rules.
+//! The fill rule, which determines how self-intersecting paths are filled.
 
+/// The fill rule, which determines how self-intersecting paths are filled.
+///
+/// Paths that don't intersect themselves (and have no holes) are unaffected by the choice of fill
+/// rule.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum FillRule {
+    /// The nonzero rule: https://en.wikipedia.org/wiki/Nonzero-rule
     Winding,
+    /// The even-odd rule: https://en.wikipedia.org/wiki/Even%E2%80%93odd_rule
     EvenOdd,
 }

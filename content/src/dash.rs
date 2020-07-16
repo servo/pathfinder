@@ -8,13 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Line dashing support.
+//! Transforms a stroke into a dashed stroke.
 
 use crate::outline::{Contour, ContourIterFlags, Outline, PushSegmentFlags};
 use std::mem;
 
 const EPSILON: f32 = 0.0001;
 
+/// Transforms a stroke into a dashed stroke.
 pub struct OutlineDash<'a> {
     input: &'a Outline,
     output: Outline,
@@ -22,17 +23,34 @@ pub struct OutlineDash<'a> {
 }
 
 impl<'a> OutlineDash<'a> {
+    /// Creates a new outline dasher for the given stroke.
+    ///
+    /// Arguments:
+    ///
+    /// * `input`: The input stroke to be dashed. This must not yet been converted to a fill; i.e.
+    ///   it is assumed that the stroke-to-fill conversion happens *after* this dashing process.
+    ///
+    /// * `dashes`: The list of dashes, specified as alternating pixel lengths of lines and gaps
+    ///   that describe the pattern. See
+    ///   https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setLineDash.
+    ///
+    /// * `offset`: The line dash offset, or "phase". See
+    ///   https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/lineDashOffset.
     #[inline]
     pub fn new(input: &'a Outline, dashes: &'a [f32], offset: f32) -> OutlineDash<'a> {
         OutlineDash { input, output: Outline::new(), state: DashState::new(dashes, offset) }
     }
 
+    /// Performs the dashing operation.
+    ///
+    /// The results can be retrieved with the `into_outline()` method.
     pub fn dash(&mut self) {
         for contour in &self.input.contours {
             ContourDash::new(contour, &mut self.output, &mut self.state).dash()
         }
     }
 
+    /// Returns the resulting dashed outline.
     pub fn into_outline(mut self) -> Outline {
         if self.state.is_on() {
             self.output.push_contour(self.state.output);

@@ -16,6 +16,8 @@ use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::vector::{Vector2F, Vector4F};
+
+#[allow(deprecated)]
 use pathfinder_content::clip::PolygonClipper3D;
 
 /// A sink for the render commands that scenes build.
@@ -85,6 +87,7 @@ impl Default for RenderTransform {
 }
 
 impl RenderTransform {
+    #[allow(deprecated)]
     fn prepare(&self, bounds: RectF) -> PreparedRenderTransform {
         let perspective = match self {
             RenderTransform::Transform2D(ref transform) => {

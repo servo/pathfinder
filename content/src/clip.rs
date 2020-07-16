@@ -8,6 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Clips polygons.
+
+#![allow(deprecated)]
+
 use crate::outline::{Contour, ContourIterFlags, PointFlags, PushSegmentFlags};
 use crate::segment::{CubicSegment, Segment};
 use arrayvec::ArrayVec;
@@ -310,16 +314,25 @@ enum EdgeRelativeLocation {
 
 // 3D quad clipping
 
+/// Clips polygons in 3D homogeneous coordinates against the (-1, 1) normalized device coordinate
+/// cube.
+#[deprecated]
 pub struct PolygonClipper3D {
     subject: Vec<Vector4F>,
 }
 
 impl PolygonClipper3D {
+    /// Creates a new polygon clipper with the vertices of the given polygon-to-be-clipped, in 3D
+    /// homogeneous coordinates.
+    #[deprecated]
     #[inline]
     pub fn new(subject: Vec<Vector4F>) -> PolygonClipper3D {
         PolygonClipper3D { subject }
     }
 
+    /// Clips the subject polygon against the (-1, 1) normalized device coordinate cube and returns
+    /// the resulting vertices, in 3D homogeneous coordinates.
+    #[deprecated]
     pub fn clip(mut self) -> Vec<Vector4F> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 

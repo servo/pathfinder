@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Line or curve segments, optimized with SIMD.
+//! Single line or Bézier curve segments, optimized with SIMD.
 
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::transform2d::Transform2F;
@@ -17,15 +17,26 @@ use pathfinder_geometry::vector::{Vector2F, vec2f};
 use pathfinder_simd::default::F32x4;
 use std::f32::consts::SQRT_2;
 
+/// A single line or Bézier curve segment, with explicit start and end points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {
+    /// The start and end points of the curve.
     pub baseline: LineSegment2F,
+    /// The control point or points.
+    ///
+    /// If this is a line (which can be determined by examining the segment kind), this field is
+    /// ignored. If this is a quadratic Bézier curve, the start point of this line represents the
+    /// control point, and the endpoint of this line is ignored. Otherwise, if this is a cubic
+    /// Bézier curve, both the start and endpoints are used.
     pub ctrl: LineSegment2F,
+    /// The type of segment this is: invalid, line, quadratic, or cubic Bézier curve.
     pub kind: SegmentKind,
+    /// Various flags that describe information about this segment in a path.
     pub flags: SegmentFlags,
 }
 
 impl Segment {
+    /// Returns an invalid segment.
     #[inline]
     pub fn none() -> Segment {
         Segment {
@@ -36,6 +47,7 @@ impl Segment {
         }
     }
 
+    /// Returns a segment representing a straight line.
     #[inline]
     pub fn line(line: LineSegment2F) -> Segment {
         Segment {
@@ -226,12 +238,17 @@ impl Segment {
     }
 }
 
+/// The type of line segment this is.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum SegmentKind {
+    /// An invalid segment.
     None,
+    /// A line segment.
     Line,
+    /// A quadratic Bézier curve.
     Quadratic,
+    /// A cubic Bézier curve.
     Cubic,
 }
 

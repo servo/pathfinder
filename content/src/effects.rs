@@ -15,20 +15,28 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_simd::default::F32x2;
 
-/// This intentionally does not precisely match what Core Graphics does (a
-/// Lanczos function), because we don't want any ringing artefacts.
+/// A defringing kernel for LCD screens that approximates the macOS/iOS look.
+///
+/// This intentionally does not precisely match what Core Graphics does (a Lanczos function),
+/// because we don't want any ringing artefacts.
 pub static DEFRINGING_KERNEL_CORE_GRAPHICS: DefringingKernel =
     DefringingKernel([0.033165660, 0.102074051, 0.221434336, 0.286651906]);
+
+/// A defringing kernel for LCD screens that approximates the FreeType look.
 pub static DEFRINGING_KERNEL_FREETYPE: DefringingKernel =
     DefringingKernel([0.0, 0.031372549, 0.301960784, 0.337254902]);
 
+/// Stem darkening factors that approximate the macOS look.
+///
 /// Should match macOS 10.13 High Sierra.
 pub static STEM_DARKENING_FACTORS: [f32; 2] = [0.0121, 0.0121 * 1.25];
 
+/// The maximum number of pixels we are willing to expand outlines by to match the macOS look.
+///
 /// Should match macOS 10.13 High Sierra.
 pub const MAX_STEM_DARKENING_AMOUNT: [f32; 2] = [0.3, 0.3];
 
-/// This value is a subjective cutoff. Above this ppem value, no stem darkening is performed.
+/// A subjective cutoff. Above this ppem value, no stem darkening is performed.
 pub const MAX_STEM_DARKENING_PIXELS_PER_EM: f32 = 72.0;
 
 /// The shader that should be used when compositing this layer onto its destination.
