@@ -6,7 +6,7 @@
 
 using namespace metal;
 
-constant float3 _1056 = {};
+constant float3 _1055 = {};
 
 struct main0_out
 {
@@ -85,7 +85,7 @@ float4 filterRadialGradient(thread const float2& colorTexCoord, thread const tex
             _569 = ts.y;
         }
         float t = _569;
-        color = colorTexture.sample(colorTextureSmplr, (uvOrigin + float2(fast::clamp(t, 0.0, 1.0), 0.0)));
+        color = colorTexture.sample(colorTextureSmplr, (uvOrigin + float2(t, 0.0)));
     }
     return color;
 }
@@ -98,19 +98,19 @@ float4 filterBlur(thread const float2& colorTexCoord, thread const texture2d<flo
     float3 gaussCoeff = filterParams1.xyz;
     float gaussSum = gaussCoeff.x;
     float4 color = colorTexture.sample(colorTextureSmplr, colorTexCoord) * gaussCoeff.x;
-    float2 _614 = gaussCoeff.xy * gaussCoeff.yz;
-    gaussCoeff = float3(_614.x, _614.y, gaussCoeff.z);
+    float2 _613 = gaussCoeff.xy * gaussCoeff.yz;
+    gaussCoeff = float3(_613.x, _613.y, gaussCoeff.z);
     for (int i = 1; i <= support; i += 2)
     {
         float gaussPartialSum = gaussCoeff.x;
-        float2 _634 = gaussCoeff.xy * gaussCoeff.yz;
-        gaussCoeff = float3(_634.x, _634.y, gaussCoeff.z);
+        float2 _633 = gaussCoeff.xy * gaussCoeff.yz;
+        gaussCoeff = float3(_633.x, _633.y, gaussCoeff.z);
         gaussPartialSum += gaussCoeff.x;
         float2 srcOffset = srcOffsetScale * (float(i) + (gaussCoeff.x / gaussPartialSum));
         color += ((colorTexture.sample(colorTextureSmplr, (colorTexCoord - srcOffset)) + colorTexture.sample(colorTextureSmplr, (colorTexCoord + srcOffset))) * gaussPartialSum);
         gaussSum += (2.0 * gaussPartialSum);
-        float2 _674 = gaussCoeff.xy * gaussCoeff.yz;
-        gaussCoeff = float3(_674.x, _674.y, gaussCoeff.z);
+        float2 _673 = gaussCoeff.xy * gaussCoeff.yz;
+        gaussCoeff = float3(_673.x, _673.y, gaussCoeff.z);
     }
     return color / float4(gaussSum);
 }
@@ -313,34 +313,34 @@ float3 compositeScreen(thread const float3& destColor, thread const float3& srcC
 static inline __attribute__((always_inline))
 float3 compositeSelect(thread const bool3& cond, thread const float3& ifTrue, thread const float3& ifFalse)
 {
-    float _740;
+    float _739;
     if (cond.x)
     {
-        _740 = ifTrue.x;
+        _739 = ifTrue.x;
     }
     else
     {
-        _740 = ifFalse.x;
+        _739 = ifFalse.x;
     }
-    float _751;
+    float _750;
     if (cond.y)
     {
-        _751 = ifTrue.y;
+        _750 = ifTrue.y;
     }
     else
     {
-        _751 = ifFalse.y;
+        _750 = ifFalse.y;
     }
-    float _762;
+    float _761;
     if (cond.z)
     {
-        _762 = ifTrue.z;
+        _761 = ifTrue.z;
     }
     else
     {
-        _762 = ifFalse.z;
+        _761 = ifFalse.z;
     }
-    return float3(_740, _751, _762);
+    return float3(_739, _750, _761);
 }
 
 static inline __attribute__((always_inline))
@@ -385,16 +385,16 @@ float3 compositeSoftLight(thread const float3& destColor, thread const float3& s
 static inline __attribute__((always_inline))
 float compositeDivide(thread const float& num, thread const float& denom)
 {
-    float _776;
+    float _775;
     if (denom != 0.0)
     {
-        _776 = num / denom;
+        _775 = num / denom;
     }
     else
     {
-        _776 = 0.0;
+        _775 = 0.0;
     }
-    return _776;
+    return _775;
 }
 
 static inline __attribute__((always_inline))
@@ -404,25 +404,25 @@ float3 compositeRGBToHSL(thread const float3& rgb)
     float xMin = fast::min(fast::min(rgb.x, rgb.y), rgb.z);
     float c = v - xMin;
     float l = mix(xMin, v, 0.5);
-    float3 _882;
+    float3 _881;
     if (rgb.x == v)
     {
-        _882 = float3(0.0, rgb.yz);
+        _881 = float3(0.0, rgb.yz);
     }
     else
     {
-        float3 _895;
+        float3 _894;
         if (rgb.y == v)
         {
-            _895 = float3(2.0, rgb.zx);
+            _894 = float3(2.0, rgb.zx);
         }
         else
         {
-            _895 = float3(4.0, rgb.xy);
+            _894 = float3(4.0, rgb.xy);
         }
-        _882 = _895;
+        _881 = _894;
     }
-    float3 terms = _882;
+    float3 terms = _881;
     float param = ((terms.x * c) + terms.y) - terms.z;
     float param_1 = c;
     float h = 1.0471975803375244140625 * compositeDivide(param, param_1);
@@ -594,8 +594,8 @@ float4 calculateColor(thread const float2& fragCoord, thread const texture2d<flo
     float2 param_17 = fragCoord;
     int param_18 = compositeOp;
     color = composite(param_15, destTexture, destTextureSmplr, param_16, param_17, param_18);
-    float3 _1340 = color.xyz * color.w;
-    color = float4(_1340.x, _1340.y, _1340.z, color.w);
+    float3 _1339 = color.xyz * color.w;
+    color = float4(_1339.x, _1339.y, _1339.z, color.w);
     return color;
 }
 
