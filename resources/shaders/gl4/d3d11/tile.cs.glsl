@@ -321,7 +321,7 @@ vec4 filterRadialGradient(vec2 colorTexCoord,
         if(ts . x > ts . y)
             ts = ts . yx;
         float t = ts . x >= 0.0 ? ts . x : ts . y;
-        color = texture(colorTexture, uvOrigin + vec2(clamp(t, 0.0, 1.0), 0.0));
+        color = texture(colorTexture, uvOrigin + vec2(t, 0.0));
     }
 
     return color;
