@@ -20,7 +20,7 @@ use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
-use sdl2::event::Event;
+use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use std::iter;
@@ -64,28 +64,29 @@ fn main() {
     let font = Handle::from_memory(font_data, 0);
     let font_context = CanvasFontContext::from_fonts(iter::once(font));
 
-    // Make a canvas.
-    let mut canvas = Canvas::new(window_size.to_f32()).get_context_2d(font_context);
-
-    // Draw the text.
-    canvas.set_font("Overpass-Regular");
-    canvas.set_font_size(32.0);
-    canvas.fill_text("Hello Pathfinder!", vec2f(32.0, 48.0));
-    canvas.set_text_align(TextAlign::Right);
-    canvas.stroke_text("Goodbye Pathfinder!", vec2f(608.0, 464.0));
-
-    // Render the canvas to screen.
-    let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
-                                           renderer.mode().level,
-                                           RayonExecutor);
-    scene.build_and_render(&mut renderer, BuildOptions::default());
-    window.gl_swap_window();
-
     // Wait for a keypress.
     let mut event_pump = sdl_context.event_pump().unwrap();
     loop {
         match event_pump.wait_event() {
             Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return,
+            Event::Window { win_event: WindowEvent::Exposed, .. } => {
+                // Make a canvas.
+                let mut canvas = Canvas::new(window_size.to_f32()).get_context_2d(font_context.clone());
+
+                // Draw the text.
+                canvas.set_font("Overpass-Regular");
+                canvas.set_font_size(32.0);
+                canvas.fill_text("Hello Pathfinder!", vec2f(32.0, 48.0));
+                canvas.set_text_align(TextAlign::Right);
+                canvas.stroke_text("Goodbye Pathfinder!", vec2f(608.0, 464.0));
+
+                // Render the canvas to screen.
+                let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
+                                                       renderer.mode().level,
+                                                       RayonExecutor);
+                scene.build_and_render(&mut renderer, BuildOptions::default());
+                window.gl_swap_window();
+            },
             _ => {}
         }
     }
