@@ -14,7 +14,7 @@ use font_kit::handle::Handle;
 use font_kit::sources::mem::MemSource;
 use image;
 use pathfinder_canvas::{Canvas, CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
-use pathfinder_canvas::{TextAlign, TextBaseline};
+use pathfinder_canvas::{TextAlign, TextBaseline, TextMetrics};
 use pathfinder_color::{ColorF, ColorU, rgbau, rgbf, rgbu};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::gradient::Gradient;
@@ -288,10 +288,10 @@ fn draw_paragraph(context: &mut CanvasRenderingContext2D,
         let gutter_text_metrics = context.measure_text(&gutter_text);
 
         let gutter_text_bounds =
-            RectF::from_points(vec2f(gutter_text_metrics.actual_bounding_box_left,
-                                     -gutter_text_metrics.font_bounding_box_ascent),
-                               vec2f(gutter_text_metrics.actual_bounding_box_right,
-                                     -gutter_text_metrics.font_bounding_box_descent));
+            RectF::from_points(vec2f(gutter_text_metrics.actual_bounding_box_left(),
+                                     -gutter_text_metrics.font_bounding_box_ascent()),
+                               vec2f(gutter_text_metrics.actual_bounding_box_right(),
+                                     -gutter_text_metrics.font_bounding_box_descent()));
         let gutter_path_bounds = gutter_text_bounds.dilate(vec2f(4.0, 2.0));
         let gutter_path_radius = gutter_path_bounds.width() * 0.5 - 1.0;
         let path = create_rounded_rect_path(gutter_path_bounds + gutter_origin,
@@ -345,7 +345,8 @@ struct Line {
 }
 
 struct Word {
-    text: String,
+    metrics: TextMetrics,
+    string: String,
     origin_x: f32,
 }
 
@@ -370,8 +371,8 @@ impl MultilineTextBox {
         const LINE_SPACING: f32 = 3.0;
 
         let a_b_measure = context.measure_text("A B");
-        let space_width = a_b_measure.width - context.measure_text("AB").width;
-        let line_height = a_b_measure.em_height_ascent - a_b_measure.em_height_descent +
+        let space_width = a_b_measure.width() - context.measure_text("AB").width();
+        let line_height = a_b_measure.em_height_ascent() - a_b_measure.em_height_descent() +
             LINE_SPACING;
 
         let mut text: VecDeque<VecDeque<_>> = text.split('\n').map(|paragraph| {
@@ -440,16 +441,16 @@ impl Line {
             }
 
             let word_metrics = context.measure_text(&word);
-            let new_line_width = word_origin_x + word_metrics.width;
+            let new_line_width = word_origin_x + word_metrics.width();
             if self.width != 0.0 && new_line_width > self.max_width {
                 text.push_front(word);
                 return;
             }
 
-            self.words.push(Word { text: word, origin_x: word_origin_x });
+            self.ascent = self.ascent.max(word_metrics.em_height_ascent());
+            self.descent = self.descent.min(word_metrics.em_height_descent());
+            self.words.push(Word { metrics: word_metrics, string: word, origin_x: word_origin_x });
             self.width = new_line_width;
-            self.ascent = self.ascent.max(word_metrics.em_height_ascent);
-            self.descent = self.descent.min(word_metrics.em_height_descent);
         }
     }
 
@@ -464,7 +465,7 @@ impl Line {
 
         context.set_fill_style(fg_color);
         for word in &self.words {
-            context.fill_text(&word.text, self.origin + vec2f(word.origin_x, 0.0));
+            context.fill_text(&word.metrics, self.origin + vec2f(word.origin_x, 0.0));
         }
     }
 
@@ -504,23 +505,24 @@ impl Line {
 impl Word {
     fn hit_test(&self, context: &CanvasRenderingContext2D, position_x: f32) -> u32 {
         let (mut char_start_x, mut prev_char_index) = (self.origin_x, 0);
-        for char_index in self.text
+        for char_index in self.string
                               .char_indices()
                               .map(|(index, _)| index)
                               .skip(1)
-                              .chain(iter::once(self.text.len())) {
-            let char_end_x = self.origin_x + context.measure_text(&self.text[0..char_index]).width;
+                              .chain(iter::once(self.string.len())) {
+            let char_end_x = self.origin_x +
+                context.measure_text(&self.string[0..char_index]).width();
             if position_x <= (char_start_x + char_end_x) * 0.5 {
                 return prev_char_index;
             }
             char_start_x = char_end_x;
             prev_char_index = char_index as u32;
         }
-        return self.text.len() as u32;
+        return self.string.len() as u32;
     }
 
     fn char_position(&self, context: &CanvasRenderingContext2D, char_index: u32) -> f32 {
-        context.measure_text(&self.text[0..(char_index as usize)]).width
+        context.measure_text(&self.string[0..(char_index as usize)]).width()
     }
 }
 
@@ -996,7 +998,7 @@ fn draw_numeric_edit_box(context: &mut CanvasRenderingContext2D,
 
     context.set_font(FONT_NAME_REGULAR);
     context.set_font_size(15.0);
-    let unit_width = context.measure_text(unit).width;
+    let unit_width = context.measure_text(unit).width();
 
     context.set_fill_style(rgbau(255, 255, 255, 64));
     context.set_text_align(TextAlign::Right);
@@ -1071,7 +1073,7 @@ fn draw_button(context: &mut CanvasRenderingContext2D,
 
     context.set_font(FONT_NAME_BOLD);
     context.set_font_size(17.0);
-    let text_width = context.measure_text(text).width;
+    let text_width = context.measure_text(text).width();
 
     let icon_width;
     match pre_icon {
@@ -1079,7 +1081,7 @@ fn draw_button(context: &mut CanvasRenderingContext2D,
         Some(icon) => {
             context.set_font_size(rect.height() * 0.7);
             context.set_font(FONT_NAME_EMOJI);
-            icon_width = context.measure_text(icon).width + rect.height() * 0.15;
+            icon_width = context.measure_text(icon).width() + rect.height() * 0.15;
             context.set_fill_style(rgbau(255, 255, 255, 96));
             context.set_text_align(TextAlign::Left);
             context.set_text_baseline(TextBaseline::Middle);
