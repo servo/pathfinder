@@ -53,7 +53,7 @@ pub(crate) const MASK_TILES_DOWN: u32 = 256;
 const SQRT_2_PI_INV: f32 = 0.3989422804014327;
 
 const TEXTURE_METADATA_ENTRIES_PER_ROW: i32 = 128;
-const TEXTURE_METADATA_TEXTURE_WIDTH:   i32 = TEXTURE_METADATA_ENTRIES_PER_ROW * 8;
+const TEXTURE_METADATA_TEXTURE_WIDTH:   i32 = TEXTURE_METADATA_ENTRIES_PER_ROW * 10;
 const TEXTURE_METADATA_TEXTURE_HEIGHT:  i32 = 65536 / TEXTURE_METADATA_ENTRIES_PER_ROW;
 
 // FIXME(pcwalton): Shrink this again!
@@ -63,10 +63,11 @@ pub(crate) const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 / 4 * MASK_TI
 const COMBINER_CTRL_FILTER_RADIAL_GRADIENT: i32 =   0x1;
 const COMBINER_CTRL_FILTER_TEXT: i32 =              0x2;
 const COMBINER_CTRL_FILTER_BLUR: i32 =              0x3;
+const COMBINER_CTRL_FILTER_COLOR_MATRIX: i32 =      0x4;
 
 const COMBINER_CTRL_COLOR_FILTER_SHIFT: i32 =       4;
-const COMBINER_CTRL_COLOR_COMBINE_SHIFT: i32 =      6;
-const COMBINER_CTRL_COMPOSITE_SHIFT: i32 =          8;
+const COMBINER_CTRL_COLOR_COMBINE_SHIFT: i32 =      8;
+const COMBINER_CTRL_COMPOSITE_SHIFT: i32 =         10;
 
 /// The GPU renderer that processes commands necessary to render a scene.
 pub struct Renderer<D> where D: Device {
@@ -693,11 +694,21 @@ impl<D> Renderer<D> where D: Device {
                 f16::from_f32(filter_params.p2.z()),
                 f16::from_f32(filter_params.p2.w()),
                 // 6
+                f16::from_f32(filter_params.p3.x()),
+                f16::from_f32(filter_params.p3.y()),
+                f16::from_f32(filter_params.p3.z()),
+                f16::from_f32(filter_params.p3.w()),
+                // 7
+                f16::from_f32(filter_params.p4.x()),
+                f16::from_f32(filter_params.p4.y()),
+                f16::from_f32(filter_params.p4.z()),
+                f16::from_f32(filter_params.p4.w()),
+                // 8
                 f16::from_f32(filter_params.ctrl as f32),
                 f16::default(),
                 f16::default(),
                 f16::default(),
-                // 7
+                // 9
                 f16::default(),
                 f16::default(),
                 f16::default(),
@@ -921,6 +932,8 @@ impl<D> Renderer<D> where D: Device {
                     p0: line.from().0.concat_xy_xy(line.vector().0),
                     p1: radii.concat_xy_xy(uv_origin.0),
                     p2: F32x4::default(),
+                    p3: F32x4::default(),
+                    p4: F32x4::default(),
                     ctrl: ctrl | (COMBINER_CTRL_FILTER_RADIAL_GRADIENT <<
                                   COMBINER_CTRL_COLOR_FILTER_SHIFT)
                 }
@@ -942,6 +955,8 @@ impl<D> Renderer<D> where D: Device {
                     p0: src_offset.0.concat_xy_xy(F32x2::new(support, 0.0)),
                     p1: F32x4::new(gauss_coeff_x, gauss_coeff_y, gauss_coeff_z, 0.0),
                     p2: F32x4::default(),
+                    p3: F32x4::default(),
+                    p4: F32x4::default(),
                     ctrl: ctrl | (COMBINER_CTRL_FILTER_BLUR << COMBINER_CTRL_COLOR_FILTER_SHIFT),
                 }
             }
@@ -961,7 +976,16 @@ impl<D> Renderer<D> where D: Device {
                     },
                     p1: bg_color.0,
                     p2,
+                    p3: F32x4::default(),
+                    p4: F32x4::default(),
                     ctrl: ctrl | (COMBINER_CTRL_FILTER_TEXT << COMBINER_CTRL_COLOR_FILTER_SHIFT),
+                }
+            }
+            Filter::PatternFilter(PatternFilter::ColorMatrix(matrix)) => {
+                let [p0, p1, p2, p3, p4] = matrix.0;
+                FilterParams {
+                    p0, p1, p2, p3, p4,
+                    ctrl: ctrl | (COMBINER_CTRL_FILTER_COLOR_MATRIX << COMBINER_CTRL_COLOR_FILTER_SHIFT),
                 }
             }
             Filter::None => {
@@ -969,6 +993,8 @@ impl<D> Renderer<D> where D: Device {
                     p0: F32x4::default(),
                     p1: F32x4::default(),
                     p2: F32x4::default(),
+                    p3: F32x4::default(),
+                    p4: F32x4::default(),
                     ctrl,
                 }
             }
@@ -1317,6 +1343,8 @@ struct FilterParams {
     p0: F32x4,
     p1: F32x4,
     p2: F32x4,
+    p3: F32x4,
+    p4: F32x4,
     ctrl: i32,
 }
 

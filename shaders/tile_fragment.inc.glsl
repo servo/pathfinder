@@ -44,10 +44,11 @@
 #define COMBINER_CTRL_COLOR_COMBINE_SRC_IN      0x1
 #define COMBINER_CTRL_COLOR_COMBINE_DEST_IN     0x2
 
-#define COMBINER_CTRL_FILTER_MASK               0x3
+#define COMBINER_CTRL_FILTER_MASK               0xf
 #define COMBINER_CTRL_FILTER_RADIAL_GRADIENT    0x1
 #define COMBINER_CTRL_FILTER_TEXT               0x2
 #define COMBINER_CTRL_FILTER_BLUR               0x3
+#define COMBINER_CTRL_FILTER_COLOR_MATRIX       0x4
 
 #define COMBINER_CTRL_COMPOSITE_MASK            0xf
 #define COMBINER_CTRL_COMPOSITE_NORMAL          0x0
@@ -68,8 +69,8 @@
 #define COMBINER_CTRL_COMPOSITE_LUMINOSITY      0xf
 
 #define COMBINER_CTRL_COLOR_FILTER_SHIFT        4
-#define COMBINER_CTRL_COLOR_COMBINE_SHIFT       6
-#define COMBINER_CTRL_COMPOSITE_SHIFT           8
+#define COMBINER_CTRL_COLOR_COMBINE_SHIFT       8
+#define COMBINER_CTRL_COMPOSITE_SHIFT          10
 
 // Color sampling
 
@@ -346,6 +347,24 @@ vec4 filterBlur(vec2 colorTexCoord,
     // Finish.
     return color / gaussSum;
 }
+vec4 filterColorMatrix(vec2 colorTexCoord,
+                sampler2D colorTexture,
+                vec4 filterParams0,
+                vec4 filterParams1,
+                vec4 filterParams2,
+                vec4 filterParams3,
+                vec4 filterParams4) {
+    
+    vec4 color_in = texture(colorTexture, colorTexCoord);
+    mat4 color_matrix = mat4(
+        filterParams0,
+        filterParams1,
+        filterParams2,
+        filterParams3
+    );
+    vec4 color_out = color_matrix * color_in + filterParams4;
+    return color_out;
+}
 
 vec4 filterNone(vec2 colorTexCoord, sampler2D colorTexture) {
     return sampleColor(colorTexture, colorTexCoord);
@@ -360,6 +379,8 @@ vec4 filterColor(vec2 colorTexCoord,
                  vec4 filterParams0,
                  vec4 filterParams1,
                  vec4 filterParams2,
+                 vec4 filterParams3,
+                 vec4 filterParams4,
                  int colorFilter) {
     switch (colorFilter) {
     case COMBINER_CTRL_FILTER_RADIAL_GRADIENT:
@@ -384,6 +405,14 @@ vec4 filterColor(vec2 colorTexCoord,
                           filterParams0,
                           filterParams1,
                           filterParams2);
+    case COMBINER_CTRL_FILTER_COLOR_MATRIX:
+        return filterColorMatrix(colorTexCoord,
+                          colorTexture,
+                          filterParams0,
+                          filterParams1,
+                          filterParams2,
+                          filterParams3,
+                          filterParams4);
     }
     return filterNone(colorTexCoord, colorTexture);
 }
@@ -546,6 +575,8 @@ vec4 calculateColor(vec2 fragCoord,
                     vec4 filterParams0,
                     vec4 filterParams1,
                     vec4 filterParams2,
+                    vec4 filterParams3,
+                    vec4 filterParams4,
                     vec2 framebufferSize,
                     int ctrl,
                     vec3 maskTexCoord0,
@@ -572,6 +603,8 @@ vec4 calculateColor(vec2 fragCoord,
                                   filterParams0,
                                   filterParams1,
                                   filterParams2,
+                                  filterParams3,
+                                  filterParams4,
                                   color0Filter);
         color = combineColor0(color, color0, color0Combine);
     }

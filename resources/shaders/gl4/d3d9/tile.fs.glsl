@@ -96,6 +96,7 @@ precision highp float;
 
 
 
+
 vec4 sampleColor(sampler2D colorTexture, vec2 colorTexCoord){
     return texture(colorTexture, colorTexCoord);
 }
@@ -369,6 +370,24 @@ vec4 filterBlur(vec2 colorTexCoord,
 
     return color / gaussSum;
 }
+vec4 filterColorMatrix(vec2 colorTexCoord,
+                sampler2D colorTexture,
+                vec4 filterParams0,
+                vec4 filterParams1,
+                vec4 filterParams2,
+                vec4 filterParams3,
+                vec4 filterParams4){
+
+    vec4 color_in = texture(colorTexture, colorTexCoord);
+    mat4 color_matrix = mat4(
+        filterParams0,
+        filterParams1,
+        filterParams2,
+        filterParams3
+    );
+    vec4 color_out = color_matrix * color_in + filterParams4;
+    return color_out;
+}
 
 vec4 filterNone(vec2 colorTexCoord, sampler2D colorTexture){
     return sampleColor(colorTexture, colorTexCoord);
@@ -383,6 +402,8 @@ vec4 filterColor(vec2 colorTexCoord,
                  vec4 filterParams0,
                  vec4 filterParams1,
                  vec4 filterParams2,
+                 vec4 filterParams3,
+                 vec4 filterParams4,
                  int colorFilter){
     switch(colorFilter){
     case 0x1 :
@@ -407,6 +428,14 @@ vec4 filterColor(vec2 colorTexCoord,
                           filterParams0,
                           filterParams1,
                           filterParams2);
+    case 0x4 :
+        return filterColorMatrix(colorTexCoord,
+                          colorTexture,
+                          filterParams0,
+                          filterParams1,
+                          filterParams2,
+                          filterParams3,
+                          filterParams4);
     }
     return filterNone(colorTexCoord, colorTexture);
 }
@@ -569,6 +598,8 @@ vec4 calculateColor(vec2 fragCoord,
                     vec4 filterParams0,
                     vec4 filterParams1,
                     vec4 filterParams2,
+                    vec4 filterParams3,
+                    vec4 filterParams4,
                     vec2 framebufferSize,
                     int ctrl,
                     vec3 maskTexCoord0,
@@ -582,10 +613,10 @@ vec4 calculateColor(vec2 fragCoord,
 
 
     vec4 color = baseColor;
-    int color0Combine =(ctrl >> 6)&
+    int color0Combine =(ctrl >> 8)&
                                        0x3;
     if(color0Combine != 0){
-        int color0Filter =(ctrl >> 4)& 0x3;
+        int color0Filter =(ctrl >> 4)& 0xf;
         vec4 color0 = filterColor(colorTexCoord0,
                                   colorTexture0,
                                   gammaLUT,
@@ -595,6 +626,8 @@ vec4 calculateColor(vec2 fragCoord,
                                   filterParams0,
                                   filterParams1,
                                   filterParams2,
+                                  filterParams3,
+                                  filterParams4,
                                   color0Filter);
         color = combineColor0(color, color0, color0Combine);
     }
@@ -603,7 +636,7 @@ vec4 calculateColor(vec2 fragCoord,
     color . a *= maskAlpha;
 
 
-    int compositeOp =(ctrl >> 8)& 0xf;
+    int compositeOp =(ctrl >> 10)& 0xf;
     color = composite(color, destTexture, framebufferSize, fragCoord, compositeOp);
 
 
@@ -627,6 +660,8 @@ in float vTileCtrl;
 in vec4 vFilterParams0;
 in vec4 vFilterParams1;
 in vec4 vFilterParams2;
+in vec4 vFilterParams3;
+in vec4 vFilterParams4;
 in float vCtrl;
 
 out vec4 oFragColor;
@@ -646,6 +681,8 @@ void main(){
                                 vFilterParams0,
                                 vFilterParams1,
                                 vFilterParams2,
+                                vFilterParams3,
+                                vFilterParams4,
                                 uFramebufferSize,
                                 int(vCtrl),
                                 vMaskTexCoord0,

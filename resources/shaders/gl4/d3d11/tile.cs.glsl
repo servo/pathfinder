@@ -98,6 +98,7 @@ layout(local_size_x = 16, local_size_y = 4)in;
 
 
 
+
 vec4 sampleColor(sampler2D colorTexture, vec2 colorTexCoord){
     return texture(colorTexture, colorTexCoord);
 }
@@ -371,6 +372,24 @@ vec4 filterBlur(vec2 colorTexCoord,
 
     return color / gaussSum;
 }
+vec4 filterColorMatrix(vec2 colorTexCoord,
+                sampler2D colorTexture,
+                vec4 filterParams0,
+                vec4 filterParams1,
+                vec4 filterParams2,
+                vec4 filterParams3,
+                vec4 filterParams4){
+
+    vec4 color_in = texture(colorTexture, colorTexCoord);
+    mat4 color_matrix = mat4(
+        filterParams0,
+        filterParams1,
+        filterParams2,
+        filterParams3
+    );
+    vec4 color_out = color_matrix * color_in + filterParams4;
+    return color_out;
+}
 
 vec4 filterNone(vec2 colorTexCoord, sampler2D colorTexture){
     return sampleColor(colorTexture, colorTexCoord);
@@ -385,6 +404,8 @@ vec4 filterColor(vec2 colorTexCoord,
                  vec4 filterParams0,
                  vec4 filterParams1,
                  vec4 filterParams2,
+                 vec4 filterParams3,
+                 vec4 filterParams4,
                  int colorFilter){
     switch(colorFilter){
     case 0x1 :
@@ -409,6 +430,14 @@ vec4 filterColor(vec2 colorTexCoord,
                           filterParams0,
                           filterParams1,
                           filterParams2);
+    case 0x4 :
+        return filterColorMatrix(colorTexCoord,
+                          colorTexture,
+                          filterParams0,
+                          filterParams1,
+                          filterParams2,
+                          filterParams3,
+                          filterParams4);
     }
     return filterNone(colorTexCoord, colorTexture);
 }
@@ -571,6 +600,8 @@ vec4 calculateColor(vec2 fragCoord,
                     vec4 filterParams0,
                     vec4 filterParams1,
                     vec4 filterParams2,
+                    vec4 filterParams3,
+                    vec4 filterParams4,
                     vec2 framebufferSize,
                     int ctrl,
                     vec3 maskTexCoord0,
@@ -584,10 +615,10 @@ vec4 calculateColor(vec2 fragCoord,
 
 
     vec4 color = baseColor;
-    int color0Combine =(ctrl >> 6)&
+    int color0Combine =(ctrl >> 8)&
                                        0x3;
     if(color0Combine != 0){
-        int color0Filter =(ctrl >> 4)& 0x3;
+        int color0Filter =(ctrl >> 4)& 0xf;
         vec4 color0 = filterColor(colorTexCoord0,
                                   colorTexture0,
                                   gammaLUT,
@@ -597,6 +628,8 @@ vec4 calculateColor(vec2 fragCoord,
                                   filterParams0,
                                   filterParams1,
                                   filterParams2,
+                                  filterParams3,
+                                  filterParams4,
                                   color0Filter);
         color = combineColor0(color, color0, color0Combine);
     }
@@ -605,7 +638,7 @@ vec4 calculateColor(vec2 fragCoord,
     color . a *= maskAlpha;
 
 
-    int compositeOp =(ctrl >> 8)& 0xf;
+    int compositeOp =(ctrl >> 10)& 0xf;
     color = composite(color, destTexture, framebufferSize, fragCoord, compositeOp);
 
 
@@ -637,21 +670,27 @@ void computeTileVaryings(vec2 position,
                          out vec4 outFilterParams0,
                          out vec4 outFilterParams1,
                          out vec4 outFilterParams2,
+                         out vec4 outFilterParams3,
+                         out vec4 outFilterParams4,
                          out int outCtrl){
     vec2 metadataScale = vec2(1.0)/ vec2(textureMetadataSize);
-    vec2 metadataEntryCoord = vec2(colorEntry % 128 * 8, colorEntry / 128);
+    vec2 metadataEntryCoord = vec2(colorEntry % 128 * 10, colorEntry / 128);
     vec4 colorTexMatrix0 = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 0);
     vec4 colorTexOffsets = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 1);
     vec4 baseColor = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 2);
     vec4 filterParams0 = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 3);
     vec4 filterParams1 = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 4);
     vec4 filterParams2 = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 5);
-    vec4 extra = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 6);
+    vec4 filterParams3 = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 6);
+    vec4 filterParams4 = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 7);
+    vec4 extra = fetchUnscaled(textureMetadata, metadataScale, metadataEntryCoord, 8);
     outColorTexCoord0 = mat2(colorTexMatrix0)* position + colorTexOffsets . xy;
     outBaseColor = baseColor;
     outFilterParams0 = filterParams0;
     outFilterParams1 = filterParams1;
     outFilterParams2 = filterParams2;
+    outFilterParams3 = filterParams3;
+    outFilterParams4 = filterParams4;
     outCtrl = int(extra . x);
 }
 
@@ -748,7 +787,7 @@ void main(){
             vec3 maskTexCoord0 = vec3(vec2(ivec2(maskTileCoord)+ tileSubCoord), backdrop);
 
             vec2 colorTexCoord0;
-            vec4 baseColor, filterParams0, filterParams1, filterParams2;
+            vec4 baseColor, filterParams0, filterParams1, filterParams2, filterParams3, filterParams4;
             int ctrl;
             computeTileVaryings(fragCoord,
                                 int(colorEntry),
@@ -759,6 +798,8 @@ void main(){
                                 filterParams0,
                                 filterParams1,
                                 filterParams2,
+                                filterParams3,
+                                filterParams4,
                                 ctrl);
 
 
@@ -774,6 +815,8 @@ void main(){
                                            filterParams0,
                                            filterParams1,
                                            filterParams2,
+                                           filterParams3,
+                                           filterParams4,
                                            uFramebufferSize,
                                            ctrl,
                                            maskTexCoord0,

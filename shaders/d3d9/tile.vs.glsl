@@ -41,6 +41,8 @@ out float vTileCtrl;
 out vec4 vFilterParams0;
 out vec4 vFilterParams1;
 out vec4 vFilterParams2;
+out vec4 vFilterParams3;
+out vec4 vFilterParams4;
 out float vCtrl;
 
 void main() {
@@ -70,6 +72,8 @@ void main() {
                         vFilterParams0,
                         vFilterParams1,
                         vFilterParams2,
+                        vFilterParams3,
+                        vFilterParams4,
                         ctrl);
 
     vTileCtrl = float(aCtrlBackdrop.x);
