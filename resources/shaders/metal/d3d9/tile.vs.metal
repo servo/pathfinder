@@ -15,7 +15,9 @@ struct main0_out
     float4 vFilterParams0 [[user(locn4)]];
     float4 vFilterParams1 [[user(locn5)]];
     float4 vFilterParams2 [[user(locn6)]];
-    float vCtrl [[user(locn7)]];
+    float4 vFilterParams3 [[user(locn7)]];
+    float4 vFilterParams4 [[user(locn8)]];
+    float vCtrl [[user(locn9)]];
     float4 gl_Position [[position]];
 };
 
@@ -36,10 +38,10 @@ float4 fetchUnscaled(thread const texture2d<float> srcTexture, thread const samp
 }
 
 static inline __attribute__((always_inline))
-void computeTileVaryings(thread const float2& position, thread const int& colorEntry, thread const texture2d<float> textureMetadata, thread const sampler textureMetadataSmplr, thread const int2& textureMetadataSize, thread float2& outColorTexCoord0, thread float4& outBaseColor, thread float4& outFilterParams0, thread float4& outFilterParams1, thread float4& outFilterParams2, thread int& outCtrl)
+void computeTileVaryings(thread const float2& position, thread const int& colorEntry, thread const texture2d<float> textureMetadata, thread const sampler textureMetadataSmplr, thread const int2& textureMetadataSize, thread float2& outColorTexCoord0, thread float4& outBaseColor, thread float4& outFilterParams0, thread float4& outFilterParams1, thread float4& outFilterParams2, thread float4& outFilterParams3, thread float4& outFilterParams4, thread int& outCtrl)
 {
     float2 metadataScale = float2(1.0) / float2(textureMetadataSize);
-    float2 metadataEntryCoord = float2(float((colorEntry % 128) * 8), float(colorEntry / 128));
+    float2 metadataEntryCoord = float2(float((colorEntry % 128) * 10), float(colorEntry / 128));
     float2 param = metadataScale;
     float2 param_1 = metadataEntryCoord;
     int param_2 = 0;
@@ -67,12 +69,22 @@ void computeTileVaryings(thread const float2& position, thread const int& colorE
     float2 param_18 = metadataScale;
     float2 param_19 = metadataEntryCoord;
     int param_20 = 6;
-    float4 extra = fetchUnscaled(textureMetadata, textureMetadataSmplr, param_18, param_19, param_20);
+    float4 filterParams3 = fetchUnscaled(textureMetadata, textureMetadataSmplr, param_18, param_19, param_20);
+    float2 param_21 = metadataScale;
+    float2 param_22 = metadataEntryCoord;
+    int param_23 = 7;
+    float4 filterParams4 = fetchUnscaled(textureMetadata, textureMetadataSmplr, param_21, param_22, param_23);
+    float2 param_24 = metadataScale;
+    float2 param_25 = metadataEntryCoord;
+    int param_26 = 8;
+    float4 extra = fetchUnscaled(textureMetadata, textureMetadataSmplr, param_24, param_25, param_26);
     outColorTexCoord0 = (float2x2(float2(colorTexMatrix0.xy), float2(colorTexMatrix0.zw)) * position) + colorTexOffsets.xy;
     outBaseColor = baseColor;
     outFilterParams0 = filterParams0;
     outFilterParams1 = filterParams1;
     outFilterParams2 = filterParams2;
+    outFilterParams3 = filterParams3;
+    outFilterParams4 = filterParams4;
     outCtrl = int(extra.x);
 }
 
@@ -90,17 +102,17 @@ vertex main0_out main0(main0_in in [[stage_in]], constant int2& uZBufferSize [[b
     }
     uint2 maskTileCoord = uint2(in.aMaskTexCoord0.x, in.aMaskTexCoord0.y + (256u * in.aMaskTexCoord0.z));
     float2 maskTexCoord0 = (float2(maskTileCoord) + tileOffset) * uTileSize;
-    bool _244 = in.aCtrlBackdrop.y == 0;
-    bool _250;
-    if (_244)
+    bool _264 = in.aCtrlBackdrop.y == 0;
+    bool _270;
+    if (_264)
     {
-        _250 = in.aMaskTexCoord0.w != 0u;
+        _270 = in.aMaskTexCoord0.w != 0u;
     }
     else
     {
-        _250 = _244;
+        _270 = _264;
     }
-    if (_250)
+    if (_270)
     {
         out.gl_Position = float4(0.0);
         return out;
@@ -113,14 +125,18 @@ vertex main0_out main0(main0_in in [[stage_in]], constant int2& uZBufferSize [[b
     float4 param_5;
     float4 param_6;
     float4 param_7;
-    int param_8;
-    computeTileVaryings(param, param_1, uTextureMetadata, uTextureMetadataSmplr, param_2, param_3, param_4, param_5, param_6, param_7, param_8);
+    float4 param_8;
+    float4 param_9;
+    int param_10;
+    computeTileVaryings(param, param_1, uTextureMetadata, uTextureMetadataSmplr, param_2, param_3, param_4, param_5, param_6, param_7, param_8, param_9, param_10);
     out.vColorTexCoord0 = param_3;
     out.vBaseColor = param_4;
     out.vFilterParams0 = param_5;
     out.vFilterParams1 = param_6;
     out.vFilterParams2 = param_7;
-    int ctrl = param_8;
+    out.vFilterParams3 = param_8;
+    out.vFilterParams4 = param_9;
+    int ctrl = param_10;
     out.vTileCtrl = float(in.aCtrlBackdrop.x);
     out.vCtrl = float(ctrl);
     out.vMaskTexCoord0 = float3(maskTexCoord0, float(in.aCtrlBackdrop.y));

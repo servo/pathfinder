@@ -115,7 +115,7 @@ void main() {
             vec3 maskTexCoord0 = vec3(vec2(ivec2(maskTileCoord) + tileSubCoord), backdrop);
 
             vec2 colorTexCoord0;
-            vec4 baseColor, filterParams0, filterParams1, filterParams2;
+            vec4 baseColor, filterParams0, filterParams1, filterParams2, filterParams3, filterParams4;
             int ctrl;
             computeTileVaryings(fragCoord,
                                 int(colorEntry),
@@ -126,6 +126,8 @@ void main() {
                                 filterParams0,
                                 filterParams1,
                                 filterParams2,
+                                filterParams3,
+                                filterParams4,
                                 ctrl);
 
             // FIXME(pcwalton): The `uColorTexture0` below is a placeholder and needs to be
@@ -141,6 +143,8 @@ void main() {
                                            filterParams0,
                                            filterParams1,
                                            filterParams2,
+                                           filterParams3,
+                                           filterParams4,
                                            uFramebufferSize,
                                            ctrl,
                                            maskTexCoord0,
