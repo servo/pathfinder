@@ -82,49 +82,54 @@ fn main() {
     let mut renderer = Renderer::new(pathfinder_device, &resource_loader, mode, options);
 
     let font_context = CanvasFontContext::from_system_source();
+    let mut is_first_render = true;
     // Wait for a keypress.
     event_loop.run_forever(|event| {
+        let mut should_render = is_first_render;
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
-            Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => {
-                ControlFlow::Break
-            }
+            Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => return ControlFlow::Break,
             Event::WindowEvent { event: WindowEvent::Refresh, .. } => {
-                // Make a canvas. We're going to draw a house.
-                let mut canvas = Canvas::new(framebuffer_size.to_f32()).get_context_2d(font_context.clone());
-
-                // Set line width.
-                canvas.set_line_width(10.0);
-
-                // Draw walls.
-                canvas.stroke_rect(RectF::new(vec2f(75.0, 140.0), vec2f(150.0, 110.0)));
-
-                // Draw door.
-                canvas.fill_rect(RectF::new(vec2f(130.0, 190.0), vec2f(40.0, 60.0)));
-
-                // Draw roof.
-                let mut path = Path2D::new();
-                path.move_to(vec2f(50.0, 140.0));
-                path.line_to(vec2f(150.0, 60.0));
-                path.line_to(vec2f(250.0, 140.0));
-                path.close_path();
-                canvas.stroke_path(path);
-
-                // Render the canvas to screen.
-                let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
-                                                       renderer.mode().level,
-                                                       RayonExecutor);
-                scene.build_and_render(&mut renderer, BuildOptions::default());
-
-                // Present the surface.
-                let mut surface = device.unbind_surface_from_context(&mut context).unwrap().unwrap();
-                device.present_surface(&mut context, &mut surface).unwrap();
-                device.bind_surface_to_context(&mut context, surface).unwrap();
-
-                ControlFlow::Continue
+                should_render = true;
             }
-            _ => ControlFlow::Continue,
+            _ => {},
         }
+
+        if should_render {
+            // Make a canvas. We're going to draw a house.
+            let mut canvas = Canvas::new(framebuffer_size.to_f32()).get_context_2d(font_context.clone());
+
+            // Set line width.
+            canvas.set_line_width(10.0);
+
+            // Draw walls.
+            canvas.stroke_rect(RectF::new(vec2f(75.0, 140.0), vec2f(150.0, 110.0)));
+
+            // Draw door.
+            canvas.fill_rect(RectF::new(vec2f(130.0, 190.0), vec2f(40.0, 60.0)));
+
+            // Draw roof.
+            let mut path = Path2D::new();
+            path.move_to(vec2f(50.0, 140.0));
+            path.line_to(vec2f(150.0, 60.0));
+            path.line_to(vec2f(250.0, 140.0));
+            path.close_path();
+            canvas.stroke_path(path);
+
+            // Render the canvas to screen.
+            let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
+                                                   renderer.mode().level,
+                                                   RayonExecutor);
+            scene.build_and_render(&mut renderer, BuildOptions::default());
+
+            // Present the surface.
+            let mut surface = device.unbind_surface_from_context(&mut context).unwrap().unwrap();
+            device.present_surface(&mut context, &mut surface).unwrap();
+            device.bind_surface_to_context(&mut context, surface).unwrap();
+        }
+
+        is_first_render = false;
+        ControlFlow::Continue
     });
 
     // Clean up.
