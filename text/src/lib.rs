@@ -12,6 +12,7 @@ use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
 use font_kit::loaders::default::Font as DefaultLoader;
+use font_kit::metrics::Metrics;
 use font_kit::outline::OutlineSink;
 use pathfinder_content::effects::BlendMode;
 use pathfinder_content::outline::{Contour, Outline};
@@ -24,6 +25,7 @@ use pathfinder_renderer::scene::{ClipPathId, DrawPath, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
 use std::collections::HashMap;
 use std::mem;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct FontContext<F> where F: Loader {
@@ -33,6 +35,7 @@ pub struct FontContext<F> where F: Loader {
 #[derive(Clone)]
 struct FontInfo<F> where F: Loader {
     font: F,
+    metrics: Metrics,
     outline_cache: HashMap<GlyphId, Outline>,
 }
 
@@ -60,6 +63,11 @@ impl Default for FontRenderOptions {
     }
 }
 
+enum FontInfoRefMut<'a, F> where F: Loader {
+    Ref(&'a mut FontInfo<F>),
+    Owned(FontInfo<F>),
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Eq, Hash)]
 pub struct GlyphId(pub u32);
 
@@ -69,59 +77,66 @@ impl<F> FontContext<F> where F: Loader {
         FontContext { font_info: HashMap::new() }
     }
 
-    pub fn push_glyph(&mut self,
-                      scene: &mut Scene,
-                      font: &F,
-                      glyph_id: GlyphId,
-                      render_options: &FontRenderOptions)
-                      -> Result<(), GlyphLoadingError> {
-        let font_key = font.postscript_name();
-        let metrics = font.metrics();
-
+    fn push_glyph(&mut self,
+                  scene: &mut Scene,
+                  font: &F,
+                  font_key: Option<&str>,
+                  glyph_id: GlyphId,
+                  glyph_offset: Vector2F,
+                  font_size: f32,
+                  render_options: &FontRenderOptions)
+                  -> Result<(), GlyphLoadingError> {
         // Insert the font into the cache if needed.
-        if let Some(ref font_key) = font_key {
-            if !self.font_info.contains_key(&*font_key) {
-                self.font_info.insert((*font_key).clone(), FontInfo::new((*font).clone()));
+        let mut font_info = match font_key {
+            Some(font_key) => {
+                if !self.font_info.contains_key(&*font_key) {
+                    self.font_info.insert(font_key.to_owned(), FontInfo::new((*font).clone()));
+                }
+                FontInfoRefMut::Ref(self.font_info.get_mut(&*font_key).unwrap())
             }
-        }
+            None => {
+                // FIXME(pcwalton): This slow path can be removed once we have a unique font ID in
+                // `font-kit`.
+                FontInfoRefMut::Owned(FontInfo::new((*font).clone()))
+            }
+        };
+        let font_info = font_info.get_mut();
 
         // See if we have a cached outline.
         //
         // TODO(pcwalton): Cache hinted outlines too.
         let mut cached_outline = None;
-        let can_cache_outline = font_key.is_some() &&
-            render_options.hinting_options == HintingOptions::None;
+        let can_cache_outline = render_options.hinting_options == HintingOptions::None;
         if can_cache_outline {
-            if let Some(ref font_info) = self.font_info.get(&*font_key.as_ref().unwrap()) {
-                if let Some(ref outline) = font_info.outline_cache.get(&glyph_id) {
-                    cached_outline = Some((*outline).clone());
-                }
+            if let Some(ref outline) = font_info.outline_cache.get(&glyph_id) {
+                cached_outline = Some((*outline).clone());
             }
         }
+
+        let metrics = &font_info.metrics;
+        let font_scale = font_size / metrics.units_per_em as f32;
+        let render_transform = render_options.transform *
+            Transform2F::from_scale(vec2f(font_scale, -font_scale)).translate(glyph_offset);
 
         let mut outline = match cached_outline {
             Some(mut cached_outline) => {
                 let scale = 1.0 / metrics.units_per_em as f32;
-                cached_outline.transform(&(render_options.transform *
-                                           Transform2F::from_scale(scale)));
+                cached_outline.transform(&(render_transform * Transform2F::from_scale(scale)));
                 cached_outline
             }
             None => {
                 let transform = if can_cache_outline {
                     Transform2F::from_scale(metrics.units_per_em as f32)
                 } else {
-                    render_options.transform
+                    render_transform
                 };
                 let mut outline_builder = OutlinePathBuilder::new(&transform);
                 font.outline(glyph_id.0, render_options.hinting_options, &mut outline_builder)?;
                 let mut outline = outline_builder.build();
                 if can_cache_outline {
-                    let font_key = font_key.as_ref().unwrap();
-                    let font_info = self.font_info.get_mut(&*font_key).unwrap();
                     font_info.outline_cache.insert(glyph_id, outline.clone());
                     let scale = 1.0 / metrics.units_per_em as f32;
-                    outline.transform(&(render_options.transform *
-                                        Transform2F::from_scale(scale)));
+                    outline.transform(&(render_transform * Transform2F::from_scale(scale)));
                 }
                 outline
             }
@@ -155,18 +170,26 @@ impl FontContext<DefaultLoader> {
                        style: &TextStyle,
                        render_options: &FontRenderOptions)
                        -> Result<(), GlyphLoadingError> {
+        let mut cached_font_key: Option<CachedFontKey<DefaultLoader>> = None;
         for glyph in &layout.glyphs {
-            let offset = glyph.offset;
-            let font = &*glyph.font.font;
-            // FIXME(pcwalton): Cache this!
-            let scale = style.size / (font.metrics().units_per_em as f32);
-            let scale = vec2f(scale, -scale);
-            let render_options = FontRenderOptions {
-                transform: render_options.transform *
-                    Transform2F::from_scale(scale).translate(offset),
-                ..*render_options
-            };
-            self.push_glyph(scene, font, GlyphId(glyph.glyph_id), &render_options)?;
+            match cached_font_key {
+                Some(ref cached_font_key) if Arc::ptr_eq(&cached_font_key.font,
+                                                         &glyph.font.font) => {}
+                _ => {
+                    cached_font_key = Some(CachedFontKey {
+                        font: glyph.font.font.clone(),
+                        key: glyph.font.font.postscript_name(),
+                    });
+                }
+            }
+            let cached_font_key = cached_font_key.as_ref().unwrap();
+            self.push_glyph(scene,
+                            &*cached_font_key.font,
+                            cached_font_key.key.as_ref().map(|key| &**key),
+                            GlyphId(glyph.glyph_id),
+                            glyph.offset,
+                            style.size,
+                            &render_options)?;
         }
         Ok(())
     }
@@ -184,9 +207,24 @@ impl FontContext<DefaultLoader> {
     }
 }
 
+struct CachedFontKey<F> where F: Loader {
+    font: Arc<F>,
+    key: Option<String>,
+}
+
 impl<F> FontInfo<F> where F: Loader {
     fn new(font: F) -> FontInfo<F> {
-        FontInfo { font, outline_cache: HashMap::new() }
+        let metrics = font.metrics();
+        FontInfo { font, metrics, outline_cache: HashMap::new() }
+    }
+}
+
+impl<'a, F> FontInfoRefMut<'a, F> where F: Loader {
+    fn get_mut(&mut self) -> &mut FontInfo<F> {
+        match *self {
+            FontInfoRefMut::Ref(ref mut reference) => &mut **reference,
+            FontInfoRefMut::Owned(ref mut info) => info,
+        }
     }
 }
 

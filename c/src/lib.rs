@@ -826,7 +826,7 @@ trait TextMetricsExt {
 
 impl TextMetricsExt for TextMetrics {
     fn to_c(&self) -> PFTextMetrics {
-        PFTextMetrics { width: self.width }
+        PFTextMetrics { width: self.width() }
     }
 }
 
