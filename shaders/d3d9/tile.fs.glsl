@@ -35,6 +35,8 @@ in float vTileCtrl;
 in vec4 vFilterParams0;
 in vec4 vFilterParams1;
 in vec4 vFilterParams2;
+in vec4 vFilterParams3;
+in vec4 vFilterParams4;
 in float vCtrl;
 
 out vec4 oFragColor;
@@ -54,6 +56,8 @@ void main() {
                                 vFilterParams0,
                                 vFilterParams1,
                                 vFilterParams2,
+                                vFilterParams3,
+                                vFilterParams4,
                                 uFramebufferSize,
                                 int(vCtrl),
                                 vMaskTexCoord0,

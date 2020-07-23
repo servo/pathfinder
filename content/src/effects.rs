@@ -10,7 +10,7 @@
 
 //! Special effects that can be applied to layers.
 
-use pathfinder_color::ColorF;
+use pathfinder_color::{ColorF, matrix::ColorMatrix};
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::vector::Vector2F;
 use pathfinder_simd::default::F32x2;
@@ -83,6 +83,12 @@ pub enum PatternFilter {
         direction: BlurDirection,
         sigma: f32,
     },
+
+    /// A color matrix multiplication.
+    /// 
+    /// The matrix is stored in 5 columns of `F32x4`. See the `feColorMatrix` element in the SVG
+    /// specification.
+    ColorMatrix(ColorMatrix),
 }
 
 /// Blend modes that can be applied to individual paths.
