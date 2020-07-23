@@ -29,8 +29,6 @@
 //          +                 +
 //     Color UV 0        Color UV 1
 
-#define EPSILON     0.00001
-
 #define FRAC_6_PI   1.9098593171027443
 #define FRAC_PI_3   1.0471975511965976
 
@@ -292,7 +290,7 @@ vec4 filterRadialGradient(vec2 colorTexCoord,
     float discrim = b * b - a * c;
 
     vec4 color = vec4(0.0);
-    if (abs(discrim) >= EPSILON) {
+    if (discrim != 0.0) {
         vec2 ts = vec2(sqrt(discrim) * vec2(1.0, -1.0) + vec2(b)) / vec2(a);
         if (ts.x > ts.y)
             ts = ts.yx;

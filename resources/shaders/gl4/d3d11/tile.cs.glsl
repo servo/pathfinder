@@ -97,8 +97,6 @@ layout(local_size_x = 16, local_size_y = 4)in;
 
 
 
-
-
 vec4 sampleColor(sampler2D colorTexture, vec2 colorTexCoord){
     return texture(colorTexture, colorTexCoord);
 }
@@ -317,7 +315,7 @@ vec4 filterRadialGradient(vec2 colorTexCoord,
     float discrim = b * b - a * c;
 
     vec4 color = vec4(0.0);
-    if(abs(discrim)>= 0.00001){
+    if(discrim != 0.0){
         vec2 ts = vec2(sqrt(discrim)* vec2(1.0, - 1.0)+ vec2(b))/ vec2(a);
         if(ts . x > ts . y)
             ts = ts . yx;
