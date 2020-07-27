@@ -344,6 +344,10 @@ pub(crate) struct PaintColorTextureMetadata {
     pub(crate) filter: PaintFilter,
     /// How the color texture is to be composited over the base color.
     pub(crate) composite_op: PaintCompositeOp,
+    /// How much of a border there needs to be around the image.
+    ///
+    /// The border ensures clamp-to-edge yields the right result.
+    pub(crate) border: Vector2I,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -488,9 +492,13 @@ impl Palette {
                                 },
                                 transform: Transform2F::default(),
                                 composite_op: overlay.composite_op(),
+                                border: Vector2I::zero(),
                             })
                         }
                         PaintContents::Pattern(ref pattern) => {
+                            let border = vec2i(if pattern.repeat_x() { 0 } else { 1 },
+                                               if pattern.repeat_y() { 0 } else { 1 });
+
                             let location;
                             match *pattern.source() {
                                 PatternSource::RenderTarget { id: render_target_id, .. } => {
@@ -501,24 +509,26 @@ impl Palette {
                                     // TODO(pcwalton): We should be able to use tile cleverness to
                                     // repeat inside the atlas in some cases.
                                     let image_hash = image.get_hash();
-                                    //println!("image hash: {:?}", image_hash);
                                     match texture_manager.cached_images.get(&image_hash) {
                                         Some(cached_location) => {
-                                            //println!("... cache hit: {:?}", cached_location);
                                             location = *cached_location;
                                             used_image_hashes.insert(image_hash);
                                         }
                                         None => {
-                                            //println!("... cache MISS");
+                                            // Leave a pixel of border on the side.
                                             let allocation_mode = AllocationMode::OwnPage;
-                                            location = allocator.allocate(image.size(),
-                                                                          allocation_mode);
+                                            location = allocator.allocate(
+                                                image.size() + border * 2,
+                                                allocation_mode);
                                             texture_manager.cached_images.insert(image_hash,
                                                                                  location);
                                         }
                                     }
                                     image_texel_info.push(ImageTexelInfo {
-                                        location,
+                                        location: TextureLocation {
+                                            page: location.page,
+                                            rect: location.rect.contract(border),
+                                        },
                                         texels: (*image.pixels()).clone(),
                                     });
                                 }
@@ -546,8 +556,9 @@ impl Palette {
                                 page_scale: allocator.page_scale(location.page),
                                 sampling_flags,
                                 filter,
-                                transform: Transform2F::default(),
+                                transform: Transform2F::from_translation(border.to_f32()),
                                 composite_op: overlay.composite_op(),
+                                border,
                             })
                         }
                     }
