@@ -1062,7 +1062,7 @@ impl<D> RendererCore<D> where D: Device {
             viewport: RectI::new(Vector2I::default(), new_size),
             options: RenderOptions {
                 clear_ops: ClearOps {
-                    color: Some(ColorF::new(0.0, 0.0, 0.0, 1.0)),
+                    color: Some(ColorF::new(0.0, 0.0, 0.0, 0.0)),
                     ..ClearOps::default()
                 },
                 ..RenderOptions::default()
