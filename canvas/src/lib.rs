@@ -358,8 +358,11 @@ impl CanvasRenderingContext2D {
 
         let mut clip_path = ClipPath::new(outline);
         clip_path.set_fill_rule(fill_rule);
-        let clip_path_id = self.canvas.scene.push_clip_path(clip_path);
+        if let Some(existing_clip_path) = self.current_state.clip_path.take() {
+            clip_path.set_clip_path(Some(existing_clip_path));
+        }
 
+        let clip_path_id = self.canvas.scene.push_clip_path(clip_path);
         self.current_state.clip_path = Some(clip_path_id);
     }
 
