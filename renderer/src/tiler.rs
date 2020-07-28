@@ -224,12 +224,8 @@ fn process_line_segment(line_segment: LineSegment2F,
 
     let (mut current_position, mut tile_coords) = (line_segment.from(), from_tile_coords);
     let mut last_step_direction = None;
-    let mut iteration = 0;
 
     loop {
-        // Quick check to catch missing the end tile.
-        debug_assert!(iteration < MAX_ITERATIONS);
-
         let next_step_direction = if t_max.x() < t_max.y() {
             StepDirection::X
         } else if t_max.x() > t_max.y() {
@@ -302,11 +298,7 @@ fn process_line_segment(line_segment: LineSegment2F,
 
         current_position = next_position;
         last_step_direction = next_step_direction;
-
-        iteration += 1;
     }
-
-    const MAX_ITERATIONS: u32 = 1024;
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
