@@ -18,7 +18,7 @@ use arrayvec::ArrayVec;
 use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::util::lerp;
-use pathfinder_geometry::vector::{Vector2F, Vector4F};
+use pathfinder_geometry::vector::{Vector2F, Vector4F, vec2f};
 use smallvec::SmallVec;
 use std::fmt::Debug;
 use std::mem;
@@ -488,6 +488,80 @@ pub(crate) fn rect_is_inside_polygon(rect: RectF, polygon_points: &[Vector2F]) -
     }
 
     true
+}
+
+/// Clips a line segment to an axis-aligned rectangle using Cohen-Sutherland clipping.
+pub fn clip_line_segment_to_rect(mut line_segment: LineSegment2F, rect: RectF)
+                                 -> Option<LineSegment2F> {
+    let mut outcode_from = compute_outcode(line_segment.from(), rect);
+    let mut outcode_to = compute_outcode(line_segment.to(), rect);
+
+    loop {
+        if outcode_from.is_empty() && outcode_to.is_empty() {
+            return Some(line_segment);
+        }
+        if !(outcode_from & outcode_to).is_empty() {
+            return None;
+        }
+
+        let clip_from = outcode_from.bits() > outcode_to.bits();
+        let (mut point, outcode) = if clip_from {
+            (line_segment.from(), outcode_from)
+        } else {
+            (line_segment.to(), outcode_to)
+        };
+
+        if outcode.contains(Outcode::LEFT) {
+            point = vec2f(rect.min_x(),
+                          lerp(line_segment.from_y(),
+                               line_segment.to_y(),
+                               (line_segment.min_x() - line_segment.from_x()) /
+                                (line_segment.max_x() - line_segment.min_x())));
+        } else if outcode.contains(Outcode::RIGHT) {
+            point = vec2f(rect.max_x(),
+                          lerp(line_segment.from_y(),
+                               line_segment.to_y(),
+                               (line_segment.max_x() - line_segment.from_x()) /
+                                (line_segment.max_x() - line_segment.min_x())));
+        } else if outcode.contains(Outcode::TOP) {
+            point = vec2f(lerp(line_segment.from_x(),
+                               line_segment.to_x(),
+                               (line_segment.min_y() - line_segment.from_y()) /
+                                (line_segment.max_y() - line_segment.min_y())),
+                          rect.min_y());
+        } else if outcode.contains(Outcode::LEFT) {
+            point = vec2f(lerp(line_segment.from_x(),
+                               line_segment.to_x(),
+                               (line_segment.max_y() - line_segment.from_y()) /
+                                (line_segment.max_y() - line_segment.min_y())),
+                          rect.min_y());
+        }
+
+        if clip_from {
+            line_segment.set_from(point);
+            outcode_from = compute_outcode(point, rect);
+        } else {
+            line_segment.set_to(point);
+            outcode_to = compute_outcode(point, rect);
+        }
+    }
+
+    fn compute_outcode(point: Vector2F, rect: RectF) -> Outcode {
+        let mut outcode = Outcode::empty();
+        if point.x() < rect.min_x() {
+            outcode.insert(Outcode::LEFT);
+        }
+        if point.y() < rect.min_y() {
+            outcode.insert(Outcode::TOP);
+        }
+        if point.x() > rect.max_x() {
+            outcode.insert(Outcode::RIGHT);
+        }
+        if point.y() > rect.max_y() {
+            outcode.insert(Outcode::BOTTOM);
+        }
+        outcode
+    }
 }
 
 bitflags! {

@@ -17,6 +17,7 @@ use crate::gpu_data::AlphaTileId;
 use crate::options::PrepareMode;
 use crate::scene::{ClipPathId, PathId};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH, TilingPathInfo};
+use pathfinder_content::clip;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{ContourIterFlags, Outline};
 use pathfinder_content::segment::Segment;
@@ -24,6 +25,7 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_simd::default::{F32x2, U32x2};
+use std::f32::NEG_INFINITY;
 
 const FLATTENING_TOLERANCE: f32 = 0.25;
 
@@ -189,6 +191,14 @@ fn process_segment(segment: &Segment,
 fn process_line_segment(line_segment: LineSegment2F,
                         scene_builder: &SceneBuilder,
                         object_builder: &mut ObjectBuilder) {
+    let view_box = scene_builder.scene.view_box();
+    let clip_box = RectF::from_points(vec2f(view_box.min_x(), NEG_INFINITY),
+                                      view_box.lower_right());
+    let line_segment = match clip::clip_line_segment_to_rect(line_segment, clip_box) {
+        None => return,
+        Some(line_segment) => line_segment,
+    };
+
     let tile_size = vec2f(TILE_WIDTH as f32, TILE_HEIGHT as f32);
     let tile_size_recip = Vector2F::splat(1.0) / tile_size;
 
