@@ -23,7 +23,7 @@ use pathfinder_content::dash::OutlineDash;
 use pathfinder_content::effects::{BlendMode, BlurDirection, PatternFilter};
 use pathfinder_content::gradient::Gradient;
 use pathfinder_content::outline::{Contour, Outline};
-use pathfinder_content::pattern::Pattern;
+use pathfinder_content::pattern::{Image, Pattern};
 use pathfinder_content::render_target::RenderTargetId;
 use pathfinder_content::stroke::{LineJoin as StrokeLineJoin};
 use pathfinder_content::stroke::{OutlineStrokeToFill, StrokeStyle};
@@ -562,6 +562,18 @@ impl CanvasRenderingContext2D {
         self.current_state.fill_paint = old_fill_paint;
     }
 
+    // Pixel manipulation
+
+    pub fn put_image_data<L>(&mut self, image_data: ImageData, dest_location: L)
+                             where L: CanvasImageDestLocation {
+        let origin = dest_location.origin();
+        let size = dest_location.size().unwrap_or(image_data.size.to_f32());
+        let pattern = Pattern::from_image(image_data.into_image());
+        let paint_id = self.canvas.scene.push_paint(&Paint::from_pattern(pattern));
+        let draw_path = DrawPath::new(Outline::from_rect(RectF::new(origin, size)), paint_id);
+        self.canvas.scene.push_draw_path(draw_path);
+    }
+
     // Image smoothing
 
     #[inline]
@@ -982,6 +994,23 @@ impl CanvasImageDestLocation for Vector2F {
     #[inline]
     fn size(&self) -> Option<Vector2F> {
         None
+    }
+}
+
+pub struct ImageData {
+    pub data: Vec<ColorU>,
+    pub size: Vector2I,
+}
+
+impl ImageData {
+    #[inline]
+    pub fn new(size: Vector2I) -> ImageData {
+        ImageData { data: vec![ColorU::transparent_black(); size.area() as usize], size }
+    }
+
+    #[inline]
+    pub fn into_image(self) -> Image {
+        Image::new(self.size, Arc::new(self.data))
     }
 }
 
