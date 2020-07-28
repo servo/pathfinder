@@ -50,7 +50,7 @@ const CURVE_IS_CUBIC:     u32 = 0x40000000;
 const MAX_CLIP_BATCHES: u32 = 32;
 
 pub(crate) struct SceneBuilder<'a, 'b, 'c, 'd> {
-    scene: &'a mut Scene,
+    pub(crate) scene: &'a mut Scene,
     built_options: &'b PreparedBuildOptions,
     next_alpha_tile_indices: [AtomicUsize; ALPHA_TILE_LEVEL_COUNT],
     pub(crate) sink: &'c mut SceneSink<'d>,

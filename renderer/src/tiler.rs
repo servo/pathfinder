@@ -17,6 +17,7 @@ use crate::gpu_data::AlphaTileId;
 use crate::options::PrepareMode;
 use crate::scene::{ClipPathId, PathId};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH, TilingPathInfo};
+use pathfinder_content::clip;
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::{ContourIterFlags, Outline};
 use pathfinder_content::segment::Segment;
@@ -24,6 +25,7 @@ use pathfinder_geometry::line_segment::LineSegment2F;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, Vector2I, vec2f, vec2i};
 use pathfinder_simd::default::{F32x2, U32x2};
+use std::f32::NEG_INFINITY;
 
 const FLATTENING_TOLERANCE: f32 = 0.25;
 
@@ -189,6 +191,14 @@ fn process_segment(segment: &Segment,
 fn process_line_segment(line_segment: LineSegment2F,
                         scene_builder: &SceneBuilder,
                         object_builder: &mut ObjectBuilder) {
+    let view_box = scene_builder.scene.view_box();
+    let clip_box = RectF::from_points(vec2f(view_box.min_x(), NEG_INFINITY),
+                                      view_box.lower_right());
+    let line_segment = match clip::clip_line_segment_to_rect(line_segment, clip_box) {
+        None => return,
+        Some(line_segment) => line_segment,
+    };
+
     let tile_size = vec2f(TILE_WIDTH as f32, TILE_HEIGHT as f32);
     let tile_size_recip = Vector2F::splat(1.0) / tile_size;
 
@@ -214,12 +224,8 @@ fn process_line_segment(line_segment: LineSegment2F,
 
     let (mut current_position, mut tile_coords) = (line_segment.from(), from_tile_coords);
     let mut last_step_direction = None;
-    let mut iteration = 0;
 
     loop {
-        // Quick check to catch missing the end tile.
-        debug_assert!(iteration < MAX_ITERATIONS);
-
         let next_step_direction = if t_max.x() < t_max.y() {
             StepDirection::X
         } else if t_max.x() > t_max.y() {
@@ -292,11 +298,7 @@ fn process_line_segment(line_segment: LineSegment2F,
 
         current_position = next_position;
         last_step_direction = next_step_direction;
-
-        iteration += 1;
     }
-
-    const MAX_ITERATIONS: u32 = 1024;
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
