@@ -13,7 +13,7 @@
 use font_kit::handle::Handle;
 use gl;
 use pathfinder_canvas::{Canvas, CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
-use pathfinder_canvas::{Path2D, TextAlign, TextMetrics};
+use pathfinder_canvas::{Path2D, TextAlign, TextBaseline, TextMetrics};
 use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::ArcDirection;
@@ -67,6 +67,13 @@ pub const PF_TEXT_ALIGN_LEFT:   u8 = 0;
 pub const PF_TEXT_ALIGN_CENTER: u8 = 1;
 pub const PF_TEXT_ALIGN_RIGHT:  u8 = 2;
 
+pub const PF_TEXT_BASELINE_ALPHABETIC:  u8 = 0;
+pub const PF_TEXT_BASELINE_TOP:         u8 = 1;
+pub const PF_TEXT_BASELINE_HANGING:     u8 = 2;
+pub const PF_TEXT_BASELINE_MIDDLE:      u8 = 3;
+pub const PF_TEXT_BASELINE_IDEOGRAPHIC: u8 = 4;
+pub const PF_TEXT_BASELINE_BOTTOM:      u8 = 5;
+
 // `content`
 
 pub const PF_ARC_DIRECTION_CW:  u8 = 0;
@@ -100,6 +107,7 @@ pub type PFLineCap = u8;
 pub type PFLineJoin = u8;
 pub type PFArcDirection = u8;
 pub type PFTextAlign = u8;
+pub type PFTextBaseline = u8;
 #[repr(C)]
 pub struct PFTextMetrics {
     pub width: f32,
@@ -384,6 +392,19 @@ pub unsafe extern "C" fn PFCanvasSetTextAlign(canvas: PFCanvasRef, new_text_alig
         PF_TEXT_ALIGN_CENTER => TextAlign::Center,
         PF_TEXT_ALIGN_RIGHT  => TextAlign::Right,
         _                    => TextAlign::Left,
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetTextBaseline(canvas: PFCanvasRef,
+                                                 new_text_baseline: PFTextBaseline) {
+    (*canvas).set_text_baseline(match new_text_baseline {
+        PF_TEXT_BASELINE_ALPHABETIC => TextBaseline::Alphabetic,
+        PF_TEXT_BASELINE_TOP => TextBaseline::Top,
+        PF_TEXT_BASELINE_HANGING => TextBaseline::Hanging,
+        PF_TEXT_BASELINE_MIDDLE => TextBaseline::Middle,
+        PF_TEXT_BASELINE_IDEOGRAPHIC => TextBaseline::Ideographic,
+        _ => TextBaseline::Bottom,
     });
 }
 
