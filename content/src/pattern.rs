@@ -36,9 +36,15 @@ pub struct Pattern {
 /// Where a raster image pattern comes from.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum PatternSource {
+    /// A image whose pixels are stored in CPU memory.
     Image(Image),
+    /// Previously-rendered vector content.
+    ///
+    /// This value allows you to render content and then later use that content as a pattern.
     RenderTarget {
+        /// The ID of the render target, including the ID of the scene it came from.
         id: RenderTargetId,
+        /// The device pixel size of the render target.
         size: Vector2I,
     }
 }

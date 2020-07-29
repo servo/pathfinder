@@ -8,10 +8,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Render targets.
+//! Raster images that vector graphics can be rendered to and later used as a pattern.
 
+/// Identifies a drawing surface for vector graphics that can be later used as a pattern.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct RenderTargetId {
+    /// The ID of the scene that this render target ID belongs to.
     pub scene: u32,
+    /// The ID of the render target within this scene.
     pub render_target: u32,
 }

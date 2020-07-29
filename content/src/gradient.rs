@@ -22,27 +22,45 @@ use std::convert;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
+/// A gradient, either linear or radial.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Gradient {
+    /// Information specific to the type of gradient (linear or radial).
     pub geometry: GradientGeometry,
     stops: Vec<ColorStop>,
+    /// What should be rendered upon reaching the end of the color stops.
     pub wrap: GradientWrap,
 }
 
+/// A color in a gradient. Points in a gradient between two stops interpolate linearly between the
+/// stops.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ColorStop {
+    /// The offset of the color stop, between 0.0 and 1.0 inclusive. The value 0.0 represents the
+    /// start of the gradient, and 1.0 represents the end.
     pub offset: f32,
+    /// The color of the gradient stop.
     pub color: ColorU,
 }
 
+/// The type of gradient: linear or radial.
 #[derive(Clone, PartialEq, Debug)]
 pub enum GradientGeometry {
+    /// A linear gradient that follows a line.
+    ///
+    /// The line is in scene coordinates, not relative to the bounding box of the path.
     Linear(LineSegment2F),
+    /// A radial gradient that radiates outward from a line connecting two circles (or from one
+    /// circle).
     Radial {
-        /// The line that connects the two circles. It may have zero length for simple radial
-        /// gradients.
+        /// The line that connects the centers of the two circles. For single-circle radial
+        /// gradients (the common case), this line has zero length, with start point and endpoint
+        /// both at the circle's center point.
+        ///
+        /// This is in scene coordinates, not relative to the bounding box of the path.
         line: LineSegment2F,
-        /// The radii of the two circles. The first value may be zero.
+        /// The radii of the two circles. The first value may be zero to start the gradient at the
+        /// center of the circle.
         radii: F32x2,
         /// Transform from radial gradient space into screen space.
         ///
@@ -52,9 +70,13 @@ pub enum GradientGeometry {
     }
 }
 
+/// What should be rendered outside the color stops.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum GradientWrap {
+    /// The area before the gradient is filled with the color of the first stop, and the area after
+    /// the gradient is filled with the color of the last stop.
     Clamp,
+    /// The gradient repeats indefinitely.
     Repeat,
 }
 
@@ -97,6 +119,9 @@ impl Hash for ColorStop {
 }
 
 impl Gradient {
+    /// Creates a new linear gradient with the given line.
+    ///
+    /// The line is in scene coordinates, not relative to the bounding box of the current path.
     #[inline]
     pub fn linear(line: LineSegment2F) -> Gradient {
         Gradient {
@@ -106,11 +131,19 @@ impl Gradient {
         }
     }
 
+    /// A convenience method equivalent to `Gradient::linear(LineSegment2F::new(from, to))`.
     #[inline]
     pub fn linear_from_points(from: Vector2F, to: Vector2F) -> Gradient {
         Gradient::linear(LineSegment2F::new(from, to))
     }
 
+    /// Creates a new radial gradient from a line connecting the centers of two circles with the
+    /// given radii, or a point at the center of one circle.
+    ///
+    /// To create a radial gradient with a single circle (the common case), pass a `Vector2F`
+    /// representing the center of the circle for `line`; otherwise, to create a radial gradient
+    /// with two circles, pass a `LineSegment2F`. To start the gradient at the center of the
+    /// circle, pass zero for the first radius.
     #[inline]
     pub fn radial<L>(line: L, radii: F32x2) -> Gradient where L: RadialGradientLine {
         let transform = Transform2F::default();
@@ -121,6 +154,7 @@ impl Gradient {
         }
     }
 
+    /// Adds a new color stop to the radial gradient.
     #[inline]
     pub fn add(&mut self, stop: ColorStop) {
         let index = self.stops.binary_search_by(|other| {
@@ -129,22 +163,28 @@ impl Gradient {
         self.stops.insert(index, stop);
     }
 
-    /// A convenience method to add a color stop.
+    /// A convenience method equivalent to
+    /// `gradient.add_color_stop(ColorStop::new(color, offset))`.
     #[inline]
     pub fn add_color_stop(&mut self, color: ColorU, offset: f32) {
         self.add(ColorStop::new(color, offset))
     }
 
+    /// Returns the list of color stops in this gradient.
     #[inline]
     pub fn stops(&self) -> &[ColorStop] {
         &self.stops
     }
 
+    /// Returns a mutable version of the list of color stops in this gradient.
     #[inline]
     pub fn stops_mut(&mut self) -> &mut [ColorStop] {
         &mut self.stops
     }
 
+    /// Returns the value of the gradient at offset `t`, which will be clamped between 0.0 and 1.0.
+    ///
+    /// FIXME(pcwalton): This should probably take `wrap` into account…
     pub fn sample(&self, mut t: f32) -> ColorU {
         if self.stops.is_empty() {
             return ColorU::transparent_black();
@@ -170,16 +210,23 @@ impl Gradient {
         lower_stop.color.to_f32().lerp(upper_stop.color.to_f32(), ratio).to_u8()
     }
 
+    /// Returns true if all colors of all stops in this gradient are opaque (alpha is 1.0).
     #[inline]
     pub fn is_opaque(&self) -> bool {
         self.stops.iter().all(|stop| stop.color.is_opaque())
     }
 
+    /// Returns true if all colors of all stops in this gradient are fully transparent (alpha is
+    /// 0.0).
     #[inline]
     pub fn is_fully_transparent(&self) -> bool {
         self.stops.iter().all(|stop| stop.color.is_fully_transparent())
     }
 
+    /// Applies the given affine transform to this gradient.
+    ///
+    /// FIXME(pcwalton): This isn't correct for radial gradients, as transforms can transform the
+    /// circles into ellipses…
     pub fn apply_transform(&mut self, new_transform: Transform2F) {
         if new_transform.is_identity() {
             return;
@@ -195,13 +242,16 @@ impl Gradient {
 }
 
 impl ColorStop {
+    /// Creates a new color stop from a color and offset between 0.0 and 1.0 inclusive.
     #[inline]
     pub fn new(color: ColorU, offset: f32) -> ColorStop {
         ColorStop { color, offset }
     }
 }
 
+/// Allows `Gradient::radial` to be called with either a `LineSegment2F` or a `Vector2F`.
 pub trait RadialGradientLine {
+    /// Represents this value as a line.
     fn to_line(self) -> LineSegment2F;
 }
 

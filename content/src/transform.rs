@@ -10,6 +10,8 @@
 
 //! Utilities for transforming paths.
 
+#![allow(deprecated)]
+
 use crate::segment::Segment;
 use pathfinder_geometry::transform2d::Transform2F;
 use pathfinder_geometry::transform3d::Perspective;
@@ -51,6 +53,7 @@ impl<I> Transform2FPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
+    /// Creates a new `Transform2FPathIter` ready to transform the given path.
     #[inline]
     pub fn new(iter: I, transform: &Transform2F) -> Transform2FPathIter<I> {
         Transform2FPathIter {
@@ -61,6 +64,7 @@ where
 }
 
 /// Transforms a path with a perspective projection.
+#[deprecated]
 pub struct PerspectivePathIter<I>
 where
     I: Iterator<Item = Segment>,
@@ -96,7 +100,9 @@ impl<I> PerspectivePathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
+    /// Creates a new `PerspectivePathIter` ready to apply perspective to the given path.
     #[inline]
+    #[deprecated]
     pub fn new(iter: I, perspective: &Perspective) -> PerspectivePathIter<I> {
         PerspectivePathIter {
             iter,
