@@ -10,6 +10,8 @@
 
 //! Components of a vector scene, and various path utilities.
 
+#![warn(missing_docs)]
+
 #[macro_use]
 extern crate bitflags;
 #[macro_use]

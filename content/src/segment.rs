@@ -1,6 +1,6 @@
 // pathfinder/content/src/segment.rs
 //
-// Copyright © 2019 The Pathfinder Project Developers.
+// Copyright © 2020 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -58,6 +58,7 @@ impl Segment {
         }
     }
 
+    /// Returns a segment representing a quadratic Bézier curve.
     #[inline]
     pub fn quadratic(baseline: LineSegment2F, ctrl: Vector2F) -> Segment {
         Segment {
@@ -68,6 +69,7 @@ impl Segment {
         }
     }
 
+    /// Returns a segment representing a cubic Bézier curve.
     #[inline]
     pub fn cubic(baseline: LineSegment2F, ctrl: LineSegment2F) -> Segment {
         Segment {
@@ -108,6 +110,8 @@ impl Segment {
         return Segment::cubic(LineSegment2F(p3p0), LineSegment2F(p2p1));
     }
 
+    /// Returns a cubic Bézier segment that approximates a quarter of an arc, centered on the +x
+    /// axis.
     #[inline]
     pub fn quarter_circle_arc() -> Segment {
         let p0 = Vector2F::splat(SQRT_2 * 0.5);
@@ -117,40 +121,52 @@ impl Segment {
         Segment::cubic(LineSegment2F::new(p3, p0), LineSegment2F::new(p2, p1))
     }
 
+    /// If this segment is a line, returns it. In debug builds, panics otherwise.
     #[inline]
     pub fn as_line_segment(&self) -> LineSegment2F {
         debug_assert!(self.is_line());
         self.baseline
     }
 
+    /// Returns true if this segment is invalid.
     #[inline]
     pub fn is_none(&self) -> bool {
         self.kind == SegmentKind::None
     }
 
+    /// Returns true if this segment represents a straight line.
     #[inline]
     pub fn is_line(&self) -> bool {
         self.kind == SegmentKind::Line
     }
 
+    /// Returns true if this segment represents a quadratic Bézier curve.
     #[inline]
     pub fn is_quadratic(&self) -> bool {
         self.kind == SegmentKind::Quadratic
     }
 
+    /// Returns true if this segment represents a cubic Bézier curve.
     #[inline]
     pub fn is_cubic(&self) -> bool {
         self.kind == SegmentKind::Cubic
     }
 
+    /// If this segment is a cubic Bézier curve, returns it. In debug builds, panics otherwise.
     #[inline]
     pub fn as_cubic_segment(&self) -> CubicSegment {
         debug_assert!(self.is_cubic());
         CubicSegment(self)
     }
 
+    /// If this segment is a quadratic Bézier curve, elevates it to a cubic Bézier curve and
+    /// returns it. If this segment is a cubic Bézier curve, this method simply returns it.
+    ///
+    /// If this segment is neither a quadratic Bézier curve nor a cubic Bézier curve, this method
+    /// returns an unspecified result.
+    ///
+    /// FIXME(pcwalton): Handle lines!
     // FIXME(pcwalton): We should basically never use this function.
-    // FIXME(pcwalton): Handle lines!
     #[inline]
     pub fn to_cubic(&self) -> Segment {
         if self.is_cubic() {
@@ -165,6 +181,7 @@ impl Segment {
         new_segment
     }
 
+    /// Returns this segment with endpoints and control points reversed.
     #[inline]
     pub fn reversed(&self) -> Segment {
         Segment {
@@ -179,23 +196,17 @@ impl Segment {
         }
     }
 
-    // Reverses if necessary so that the from point is above the to point. Calling this method
-    // again will undo the transformation.
-    #[inline]
-    pub fn orient(&self, y_winding: i32) -> Segment {
-        if y_winding >= 0 {
-            *self
-        } else {
-            self.reversed()
-        }
-    }
-
+    /// Returns true if this segment is smaller than an implementation-defined epsilon value.
     #[inline]
     pub fn is_tiny(&self) -> bool {
         const EPSILON: f32 = 0.0001;
         self.baseline.square_length() < EPSILON
     }
 
+    /// Divides this segment into two at the given parametric t value, which must range from 0.0 to
+    /// 1.0.
+    ///
+    /// This uses de Casteljau subdivision.
     #[inline]
     pub fn split(&self, t: f32) -> (Segment, Segment) {
         // FIXME(pcwalton): Don't degree elevate!
@@ -207,6 +218,10 @@ impl Segment {
         }
     }
 
+    /// Returns the position of the point on this line or curve with the given parametric t value,
+    /// which must range from 0.0 to 1.0.
+    ///
+    /// If called on an invalid segment (`None` type), the result is unspecified.
     #[inline]
     pub fn sample(self, t: f32) -> Vector2F {
         // FIXME(pcwalton): Don't degree elevate!
@@ -217,6 +232,7 @@ impl Segment {
         }
     }
 
+    /// Applies the given affine transform to this segment and returns it.
     #[inline]
     pub fn transform(self, transform: &Transform2F) -> Segment {
         Segment {
@@ -227,18 +243,18 @@ impl Segment {
         }
     }
 
-    pub fn arc_length(&self) -> f32 {
+    pub(crate) fn arc_length(&self) -> f32 {
         // FIXME(pcwalton)
         self.baseline.vector().length()
     }
 
-    pub fn time_for_distance(&self, distance: f32) -> f32 {
+    pub(crate) fn time_for_distance(&self, distance: f32) -> f32 {
         // FIXME(pcwalton)
         distance / self.arc_length()
     }
 }
 
-/// The type of line segment this is.
+/// The type of segment this is.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum SegmentKind {
@@ -253,17 +269,25 @@ pub enum SegmentKind {
 }
 
 bitflags! {
+    /// Various flags that specify the relation of this segment to other segments in a contour.
     pub struct SegmentFlags: u8 {
+        /// This segment is the first one in the contour.
         const FIRST_IN_SUBPATH = 0x01;
+        /// This segment is the closing segment of the contour (i.e. it returns back to the
+        /// starting point).
         const CLOSES_SUBPATH = 0x02;
     }
 }
 
+/// A wrapper for a `Segment` that contains method specific to cubic Bézier curves.
 #[derive(Clone, Copy, Debug)]
 pub struct CubicSegment<'s>(pub &'s Segment);
 
 impl<'s> CubicSegment<'s> {
-    // See Kaspar Fischer, "Piecewise Linear Approximation of Bézier Curves", 2000.
+    /// Returns true if the maximum deviation of this curve from the straight line connecting its
+    /// endpoints is less than `tolerance`.
+    ///
+    /// See Kaspar Fischer, "Piecewise Linear Approximation of Bézier Curves", 2000.
     #[inline]
     pub fn is_flat(self, tolerance: f32) -> bool {
         let mut uv = F32x4::splat(3.0) * self.0.ctrl.0
@@ -275,6 +299,10 @@ impl<'s> CubicSegment<'s> {
         uv[0] + uv[1] <= 16.0 * tolerance * tolerance
     }
 
+    /// Splits this cubic Bézier curve into two at the given parametric t value, which will be
+    /// clamped to the range 0.0 to 1.0.
+    ///
+    /// This uses de Casteljau subdivision.
     #[inline]
     pub fn split(self, t: f32) -> (Segment, Segment) {
         let (baseline0, ctrl0, baseline1, ctrl1);
@@ -330,34 +358,43 @@ impl<'s> CubicSegment<'s> {
         )
     }
 
+    /// A convenience method equivalent to `segment.split(t).0`.
     #[inline]
     pub fn split_before(self, t: f32) -> Segment {
         self.split(t).0
     }
 
+    /// A convenience method equivalent to `segment.split(t).1`.
     #[inline]
     pub fn split_after(self, t: f32) -> Segment {
         self.split(t).1
     }
 
-    // FIXME(pcwalton): Use Horner's method!
+    /// Returns the position of the point on this curve at parametric time `t`, which will be
+    /// clamped between 0.0 and 1.0.
+    ///
+    /// FIXME(pcwalton): Use Horner's method!
     #[inline]
     pub fn sample(self, t: f32) -> Vector2F {
         self.split(t).0.baseline.to()
     }
 
+    /// Returns the left extent of this curve's axis-aligned bounding box.
     #[inline]
     pub fn min_x(&self) -> f32 {
         f32::min(self.0.baseline.min_x(), self.0.ctrl.min_x())
     }
+    /// Returns the top extent of this curve's axis-aligned bounding box.
     #[inline]
     pub fn min_y(&self) -> f32 {
         f32::min(self.0.baseline.min_y(), self.0.ctrl.min_y())
     }
+    /// Returns the right extent of this curve's axis-aligned bounding box.
     #[inline]
     pub fn max_x(&self) -> f32 {
         f32::max(self.0.baseline.max_x(), self.0.ctrl.max_x())
     }
+    /// Returns the bottom extent of this curve's axis-aligned bounding box.
     #[inline]
     pub fn max_y(&self) -> f32 {
         f32::max(self.0.baseline.max_y(), self.0.ctrl.max_y())

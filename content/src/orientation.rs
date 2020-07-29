@@ -8,15 +8,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Determining whether an outline is wound clockwise or counterclockwise.
+
 use crate::outline::Outline;
 
+/// Winding order: counterclockwise or clockwise, with Y down.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Orientation {
+    /// Counterclockwise, with Y down.
     Ccw = -1,
+    /// Clockwise, with Y down.
     Cw = 1,
 }
 
 impl Orientation {
+    /// Determines whether the outermost winding of an outline is counterclockwise or clockwise.
+    ///
     /// This follows the FreeType algorithm.
     pub fn from_outline(outline: &Outline) -> Orientation {
         let mut area = 0.0;

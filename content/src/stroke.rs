@@ -21,39 +21,69 @@ use std::f32;
 
 const TOLERANCE: f32 = 0.01;
 
+/// Strokes an outline with a stroke style to produce a new outline.
+/// 
+/// An example of use:
+/// 
+/// ```norun
+/// let mut stroke_to_fill = OutlineStrokeToFill::new(&input_outline, StrokeStyle::default());
+/// stroke_to_fill.offset();
+/// let output_outline = stroke_to_fill.into_outline();
+/// ```
 pub struct OutlineStrokeToFill<'a> {
     input: &'a Outline,
     output: Outline,
     style: StrokeStyle,
 }
 
+/// How an outline should be stroked.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StrokeStyle {
+    /// The width of the stroke in scene units.
     pub line_width: f32,
+    /// The shape of the ends of the stroke.
     pub line_cap: LineCap,
+    /// The shape used to join two line segments where they meet.
     pub line_join: LineJoin,
 }
 
+/// The shape of the ends of the stroke.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineCap {
+    /// The ends of lines are squared off at the endpoints.
     Butt,
+    /// The ends of lines are squared off by adding a box with an equal width and half the height
+    /// of the line's thickness.
     Square,
+    /// The ends of lines are rounded.
     Round,
 }
 
+/// The shape used to join two line segments where they meet.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineJoin {
+    /// Connected segments are joined by extending their outside edges to connect at a single
+    /// point, with the effect of filling an additional lozenge-shaped area. The `f32` value
+    /// specifies the miter limit ratio.
     Miter(f32),
+    /// Fills an additional triangular area between the common endpoint of connected segments and
+    /// the separate outside rectangular corners of each segment.
     Bevel,
+    /// Rounds off the corners of a shape by filling an additional sector of disc centered at the
+    /// common endpoint of connected segments. The radius for these rounded corners is equal to the
+    /// line width.
     Round,
 }
 
 impl<'a> OutlineStrokeToFill<'a> {
+    /// Creates a new `OutlineStrokeToFill` object that will stroke the given outline with the
+    /// given stroke style.
     #[inline]
     pub fn new(input: &Outline, style: StrokeStyle) -> OutlineStrokeToFill {
         OutlineStrokeToFill { input, output: Outline::new(), style }
     }
 
+    /// Performs the stroke operation.
     pub fn offset(&mut self) {
         let mut new_contours = vec![];
         for input in &self.input.contours {
@@ -89,6 +119,7 @@ impl<'a> OutlineStrokeToFill<'a> {
         self.output.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
+    /// Returns the resulting stroked outline. This should be called after `offset()`.
     #[inline]
     pub fn into_outline(self) -> Outline {
         self.output

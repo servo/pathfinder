@@ -55,6 +55,7 @@ pub enum Filter {
         uv_origin: Vector2F,
     },
 
+    /// One of the `PatternFilter` filters.
     PatternFilter(PatternFilter),
 }
 
@@ -80,7 +81,9 @@ pub enum PatternFilter {
     /// To produce a full Gaussian blur, perform two successive blur operations, one in each
     /// direction.
     Blur {
+        /// The axis of the blur: horizontal or vertical.
         direction: BlurDirection,
+        /// Half the blur radius.
         sigma: f32,
     },
 
@@ -95,43 +98,86 @@ pub enum PatternFilter {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlendMode {
     // Porter-Duff, supported by GPU blender
+    /// No regions are enabled.
     Clear,
+    /// Only the source will be present.
     Copy,
+    /// The source that overlaps the destination, replaces the destination.
     SrcIn,
+    /// Source is placed, where it falls outside of the destination.
     SrcOut,
+    /// Source is placed over the destination.
     SrcOver,
+    /// Source which overlaps the destination, replaces the destination. Destination is placed
+    /// elsewhere.
     SrcAtop,
+    /// Destination which overlaps the source, replaces the source.
     DestIn,
+    /// Destination is placed, where it falls outside of the source.
     DestOut,
+    /// Destination is placed over the source.
     DestOver,
+    /// Destination which overlaps the source replaces the source. Source is placed elsewhere.
     DestAtop,
+    /// The non-overlapping regions of source and destination are combined.
     Xor,
+    /// Display the sum of the source image and destination image. It is defined in the Porter-Duff
+    /// paper as the plus operator.
     Lighter,
 
     // Others, unsupported by GPU blender
+    /// Selects the darker of the backdrop and source colors.
     Darken,
+    /// Selects the lighter of the backdrop and source colors.
     Lighten,
+    /// The source color is multiplied by the destination color and replaces the destination.
     Multiply,
+    /// Multiplies the complements of the backdrop and source color values, then complements the
+    /// result.
     Screen,
+    /// Multiplies or screens the colors, depending on the source color value. The effect is
+    /// similar to shining a harsh spotlight on the backdrop.
     HardLight,
+    /// Multiplies or screens the colors, depending on the backdrop color value.
     Overlay,
+    /// Brightens the backdrop color to reflect the source color.
     ColorDodge,
+    /// Darkens the backdrop color to reflect the source color.
     ColorBurn,
+    /// Darkens or lightens the colors, depending on the source color value. The effect is similar
+    /// to shining a diffused spotlight on the backdrop.
     SoftLight,
+    /// Subtracts the darker of the two constituent colors from the lighter color.
     Difference,
+    /// Produces an effect similar to that of the Difference mode but lower in contrast.
     Exclusion,
+    /// Creates a color with the hue of the source color and the saturation and luminosity of the
+    /// backdrop color.
     Hue,
+    /// Creates a color with the saturation of the source color and the hue and luminosity of the
+    /// backdrop color.
     Saturation,
+    /// Creates a color with the hue and saturation of the source color and the luminosity of the
+    /// backdrop color.
     Color,
+    /// Creates a color with the luminosity of the source color and the hue and saturation of the
+    /// backdrop color. This produces an inverse effect to that of the Color mode.
     Luminosity,
 }
 
+/// The convolution kernel that will be applied horizontally to reduce color fringes when
+/// performing subpixel antialiasing. This kernel is automatically mirrored horizontally. The
+/// fourth element of this kernel is applied to the center of the pixel, the third element is
+/// applied one pixel to the left, and so on.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DefringingKernel(pub [f32; 4]);
 
+/// The axis a Gaussian blur is applied to.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum BlurDirection {
+    /// The horizontal axis.
     X,
+    /// The vertical axis.
     Y,
 }
 
