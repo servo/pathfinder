@@ -5,6 +5,10 @@ header = """\
 #ifndef PF_PATHFINDER_H
 #define PF_PATHFINDER_H
 
+#if defined(__APPLE__)
+#define PATHFINDER_MACOS
+#endif
+
 #if defined(__APPLE__) && defined(__OBJC__)
 #include <QuartzCore/QuartzCore.h>
 #else
@@ -58,3 +62,8 @@ include = [
 "Scene" = "PFScenePrivate"
 "SceneProxy" = "PFSceneProxyPrivate"
 "SVGScene" = "PFSVGScenePrivate"
+
+[defines]
+"target_os = macos" = "PATHFINDER_MACOS"
+"feature = pf-text" = "PATHFINDER_TEXT"
+"feature = pf-gl" = "PATHFINDER_GL"
