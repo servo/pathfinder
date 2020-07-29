@@ -58,3 +58,8 @@ include = [
 "Scene" = "PFScenePrivate"
 "SceneProxy" = "PFSceneProxyPrivate"
 "SVGScene" = "PFSVGScenePrivate"
+
+[defines]
+"target_os = macos" = "__APPLE__"
+"feature = pf-text" = "PATHFINDER_TEXT"
+"feature = pf-gl" = "PATHFINDER_GL"
