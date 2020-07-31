@@ -6,6 +6,7 @@ edition = "2018"
 
 [lib]
 crate-type = ["staticlib"]
+name = "pathfinder"
 
 [dependencies]
 font-kit = "0.6"
@@ -52,6 +53,3 @@ metal = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
 path = "../metal"
-
-[build-dependencies]
-cbindgen = "0.13"

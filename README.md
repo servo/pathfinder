@@ -93,14 +93,13 @@ fixes.
 The C bindings use [cargo-c](https://github.com/lu-zero/cargo-c). Install `cargo-c` with
 `cargo install cargo-c`, and then use a command like:
 
-    $ cd c
-    $ cargo cbuild --prefix=/usr/local
-    $ cargo cinstall --prefix=/usr/local
+    $ cargo cinstall --destdir=/tmp/pathfinder-destdir --manifest-path c/Cargo.toml
+    $ sudo cp -a /tmp/pathfinder-destdir/* /
 
-The resulting library is usable via `pkg-config` as `pathfinder_c`. For examples of use, see the
+The resulting library is usable via `pkg-config` as `pathfinder`. For examples of use, see the
 examples in the `examples/` directory beginning with `c_`.
 
-`cargo-c` has a variety of other options such as `--destdir`, which may be useful for packagers.
+`cargo-c` has a variety of other options such as `--prefix`, which may be useful for packagers.
 
 ## Community
 
