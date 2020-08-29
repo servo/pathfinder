@@ -18,6 +18,7 @@ use std::io::{self, Write};
 mod pdf;
 use pdf::Pdf;
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum FileFormat {
     /// Scalable Vector Graphics
     SVG,
