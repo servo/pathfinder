@@ -18,6 +18,7 @@ use pathfinder_color::{ColorF, ColorU};
 use pathfinder_content::fill::FillRule;
 use pathfinder_content::outline::ArcDirection;
 use pathfinder_content::stroke::LineCap;
+use pathfinder_content::gradient::{Gradient, ColorStop};
 use pathfinder_geometry::rect::{RectF, RectI};
 use pathfinder_geometry::transform2d::{Matrix2x2F, Transform2F};
 use pathfinder_geometry::transform3d::{Perspective, Transform4F};
@@ -102,6 +103,7 @@ pub type FKHandleRef = *mut Handle;
 pub type PFCanvasRef = *mut CanvasRenderingContext2D;
 pub type PFPathRef = *mut Path2D;
 pub type PFCanvasFontContextRef = *mut CanvasFontContext;
+pub type PFGradientRef = *mut Gradient;
 pub type PFFillStyleRef = *mut FillStyle;
 pub type PFLineCap = u8;
 pub type PFLineJoin = u8;
@@ -127,6 +129,11 @@ pub struct PFColorU {
     pub g: u8,
     pub b: u8,
     pub a: u8,
+}
+#[repr(C)]
+pub struct PFColorStop {
+    pub offset: f32,
+    pub color: PFColorU,
 }
 
 // `geometry`
@@ -525,6 +532,21 @@ pub unsafe extern "C" fn PFFillStyleCreateColor(color: *const PFColorU) -> PFFil
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn PFGradientLinear(from: *const PFVector2F, to: *const PFVector2F) -> PFGradientRef {
+    Box::into_raw(Box::new(Gradient::linear_from_points((*from).to_rust(), (*to).to_rust())))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFGradientAdd(gradient: PFGradientRef, stop: PFColorStop) {
+    (*gradient).add(stop.to_rust());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFFillStyleCreateGradient(gradient: PFGradientRef) -> PFFillStyleRef {
+    Box::into_raw(Box::new(FillStyle::Gradient((*gradient).clone())))
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
     drop(Box::from_raw(fill_style))
 }
@@ -864,6 +886,13 @@ impl PFColorU {
     #[inline]
     pub fn to_rust(&self) -> ColorU {
         ColorU { r: self.r, g: self.g, b: self.b, a: self.a }
+    }
+}
+
+impl PFColorStop {
+    #[inline]
+    pub fn to_rust(&self) -> ColorStop {
+        ColorStop { offset: self.offset, color: self.color.to_rust() }
     }
 }
 
