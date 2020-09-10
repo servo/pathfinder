@@ -529,12 +529,12 @@ pub fn clip_line_segment_to_rect(mut line_segment: LineSegment2F, rect: RectF)
                                (line_segment.min_y() - line_segment.from_y()) /
                                 (line_segment.max_y() - line_segment.min_y())),
                           rect.min_y());
-        } else if outcode.contains(Outcode::LEFT) {
+        } else if outcode.contains(Outcode::BOTTOM) {
             point = vec2f(lerp(line_segment.from_x(),
                                line_segment.to_x(),
                                (line_segment.max_y() - line_segment.from_y()) /
                                 (line_segment.max_y() - line_segment.min_y())),
-                          rect.min_y());
+                          rect.max_y());
         }
 
         if clip_from {
