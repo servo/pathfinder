@@ -24,3 +24,8 @@ shell. You'll need to set these environment variables for `make` to succeed:
 export GLSLANG=glslangValidator.exe
 export SPIRVCROSS=spirv-cross.exe
 ```
+
+Note: the Windows versions of `glslangValidator` and `spirv-cross` may change
+the line endings of the generated output. Please take care to ensure that
+unintended line ending changes aren't accidentally commited, for instance by
+[configuring Git to automatically handle line endings](https://docs.github.com/en/github/using-git/configuring-git-to-handle-line-endings#global-settings-for-line-endings).
