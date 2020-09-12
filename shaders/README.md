@@ -1,5 +1,9 @@
 # Building the shaders
 
+This document describes how to regenerate the shaders used by Pathfinder. Unless
+you have modified files in this directory, regenerating the shaders is not
+necessary to do most development on or use Pathfinder.
+
 You will need `glslangValidator` and `spirv-cross` installed to execute the
 Makefile from this directory. You can speed up the build by parallelizing the
 build: `make -j`.
