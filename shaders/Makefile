@@ -58,6 +58,8 @@ OUT=\
 
 GLSL_3_VERSION=330
 GLSL_4_VERSION=430
+
+GLSLANG?=glslangValidator
 GLSLANGFLAGS=--auto-map-locations -I.
 GLSLANGFLAGS_METAL=$(GLSLANGFLAGS) -DPF_ORIGIN_UPPER_LEFT=1
 
@@ -81,13 +83,13 @@ clean:
 	rm -f $(OUT)
 
 build/metal/%.spv:	%.glsl $(INCLUDES)
-	mkdir -p $(dir $@) && glslangValidator $(GLSLANGFLAGS_METAL) -G$(GLSL_VERSION) -S $(GLSL_SHADER_TYPE$(suffix $(basename $(notdir $<)))) -o $@ $<
+	mkdir -p $(dir $@) && $(GLSLANG) $(GLSLANGFLAGS_METAL) -G$(GLSL_VERSION) -S $(GLSL_SHADER_TYPE$(suffix $(basename $(notdir $<)))) -o $@ $<
 
 $(TARGET_DIR)/gl3/%.glsl:	%.glsl $(INCLUDES)
-	mkdir -p $(dir $@) && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( glslangValidator $(GLSLANGFLAGS) -S $(GLSL_SHADER_TYPE$(suffix $(basename $(notdir $<)))) -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
+	mkdir -p $(dir $@) && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( $(GLSLANG) $(GLSLANGFLAGS) -S $(GLSL_SHADER_TYPE$(suffix $(basename $(notdir $<)))) -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
 
 $(TARGET_DIR)/gl4/%.glsl:	%.glsl $(INCLUDES)
-	mkdir -p $(dir $@) && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( glslangValidator $(GLSLANGFLAGS) -S $(GLSL_SHADER_TYPE$(suffix $(basename $(notdir $<)))) -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
+	mkdir -p $(dir $@) && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( $(GLSLANG) $(GLSLANGFLAGS) -S $(GLSL_SHADER_TYPE$(suffix $(basename $(notdir $<)))) -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
 
 $(TARGET_DIR)/metal/%.metal:   build/metal/%.spv
 	mkdir -p $(dir $@) && echo $(HEADER) > $@ && ( $(SPIRVCROSS) $(SPIRVCROSSFLAGS) $< >> $@ ) || ( rm $@ && exit 1 )
