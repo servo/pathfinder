@@ -1514,6 +1514,14 @@ pub struct GLBufferDataReceiver {
     target: BufferTarget,
 }
 
+impl Drop for GLBufferDataReceiver {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteSync(self.gl_sync);
+        }
+    }
+}
+
 pub struct GLTextureDataReceiver {
     gl_pixel_buffer: GLuint,
     gl_sync: GLsync,
