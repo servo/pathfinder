@@ -18,6 +18,36 @@ use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Not, Shr, Sub};
 mod swizzle_f32x4;
 mod swizzle_i32x4;
 
+macro_rules! simd_shuffle2 {
+    ($x:expr, $y:expr, <$(const $imm:ident : $ty:ty),+> $idx:expr $(,)?) => {{
+        struct ConstParam<$(const $imm: $ty),+>;
+        impl<$(const $imm: $ty),+> ConstParam<$($imm),+> {
+            const IDX: [u32; 2] = $idx;
+        }
+
+        simd_shuffle2($x, $y, ConstParam::<$($imm),+>::IDX)
+    }};
+    ($x:expr, $y:expr, $idx:expr $(,)?) => {{
+        const IDX: [u32; 2] = $idx;
+        simd_shuffle2($x, $y, IDX)
+    }};
+}
+
+macro_rules! simd_shuffle4 {
+    ($x:expr, $y:expr, <$(const $imm:ident : $ty:ty),+> $idx:expr $(,)?) => {{
+        struct ConstParam<$(const $imm: $ty),+>;
+        impl<$(const $imm: $ty),+> ConstParam<$($imm),+> {
+            const IDX: [u32; 4] = $idx;
+        }
+
+        simd_shuffle4($x, $y, ConstParam::<$($imm),+>::IDX)
+    }};
+    ($x:expr, $y:expr, $idx:expr $(,)?) => {{
+        const IDX: [u32; 4] = $idx;
+        simd_shuffle4($x, $y, IDX)
+    }};
+}
+
 // Two 32-bit floats
 
 #[derive(Clone, Copy)]
@@ -122,14 +152,14 @@ impl F32x2 {
 
     #[inline]
     pub fn yx(self) -> F32x2 {
-        unsafe { F32x2(simd_shuffle2(self.0, self.0, [1, 0])) }
+        unsafe { F32x2(simd_shuffle2!(self.0, self.0, [1, 0])) }
     }
 
     // Concatenations
 
     #[inline]
     pub fn concat_xy_xy(self, other: F32x2) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 2, 3])) }
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 2, 3])) }
     }
 }
 
@@ -287,44 +317,44 @@ impl F32x4 {
 
     #[inline]
     pub fn xy(self) -> F32x2 {
-        unsafe { F32x2(simd_shuffle2(self.0, self.0, [0, 1])) }
+        unsafe { F32x2(simd_shuffle2!(self.0, self.0, [0, 1])) }
     }
 
     #[inline]
     pub fn yx(self) -> F32x2 {
-        unsafe { F32x2(simd_shuffle2(self.0, self.0, [1, 0])) }
+        unsafe { F32x2(simd_shuffle2!(self.0, self.0, [1, 0])) }
     }
 
     #[inline]
     pub fn xw(self) -> F32x2 {
-        unsafe { F32x2(simd_shuffle2(self.0, self.0, [0, 3])) }
+        unsafe { F32x2(simd_shuffle2!(self.0, self.0, [0, 3])) }
     }
 
     #[inline]
     pub fn zy(self) -> F32x2 {
-        unsafe { F32x2(simd_shuffle2(self.0, self.0, [2, 1])) }
+        unsafe { F32x2(simd_shuffle2!(self.0, self.0, [2, 1])) }
     }
 
     #[inline]
     pub fn zw(self) -> F32x2 {
-        unsafe { F32x2(simd_shuffle2(self.0, self.0, [2, 3])) }
+        unsafe { F32x2(simd_shuffle2!(self.0, self.0, [2, 3])) }
     }
 
     // Concatenations
 
     #[inline]
     pub fn concat_xy_xy(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 2, 3])) }
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 2, 3])) }
     }
 
     #[inline]
     pub fn concat_xy_zw(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [0, 1, 6, 7])) }
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 6, 7])) }
     }
 
     #[inline]
     pub fn concat_zw_zw(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4(self.0, other.0, [2, 3, 6, 7])) }
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [2, 3, 6, 7])) }
     }
 
     // Conversions
@@ -461,7 +491,7 @@ impl I32x2 {
 
     #[inline]
     pub fn concat_xy_xy(self, other: I32x2) -> I32x4 {
-        unsafe { I32x4(simd_shuffle4(self.0, other.0, [0, 1, 2, 3])) }
+        unsafe { I32x4(simd_shuffle4!(self.0, other.0, [0, 1, 2, 3])) }
     }
 
     // Conversions
@@ -588,39 +618,39 @@ impl I32x4 {
 
     #[inline]
     pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(simd_shuffle4(self.0, other.0, [0, 1, 4, 5])) }
+        unsafe { I32x4(simd_shuffle4!(self.0, other.0, [0, 1, 4, 5])) }
     }
 
     #[inline]
     pub fn concat_zw_zw(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(simd_shuffle4(self.0, other.0, [2, 3, 6, 7])) }
+        unsafe { I32x4(simd_shuffle4!(self.0, other.0, [2, 3, 6, 7])) }
     }
 
     // Swizzle conversions
 
     #[inline]
     pub fn xy(self) -> I32x2 {
-        unsafe { I32x2(simd_shuffle2(self.0, self.0, [0, 1])) }
+        unsafe { I32x2(simd_shuffle2!(self.0, self.0, [0, 1])) }
     }
 
     #[inline]
     pub fn yx(self) -> I32x2 {
-        unsafe { I32x2(simd_shuffle2(self.0, self.0, [1, 0])) }
+        unsafe { I32x2(simd_shuffle2!(self.0, self.0, [1, 0])) }
     }
 
     #[inline]
     pub fn xw(self) -> I32x2 {
-        unsafe { I32x2(simd_shuffle2(self.0, self.0, [0, 3])) }
+        unsafe { I32x2(simd_shuffle2!(self.0, self.0, [0, 3])) }
     }
 
     #[inline]
     pub fn zy(self) -> I32x2 {
-        unsafe { I32x2(simd_shuffle2(self.0, self.0, [2, 1])) }
+        unsafe { I32x2(simd_shuffle2!(self.0, self.0, [2, 1])) }
     }
 
     #[inline]
     pub fn zw(self) -> I32x2 {
-        unsafe { I32x2(simd_shuffle2(self.0, self.0, [2, 3])) }
+        unsafe { I32x2(simd_shuffle2!(self.0, self.0, [2, 3])) }
     }
 
     // Conversions
