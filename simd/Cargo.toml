@@ -15,4 +15,4 @@ pf-no-simd = []
 [dependencies]
 
 [build-dependencies]
-rustc_version = "0.2"
+rustc_version = "0.3"
