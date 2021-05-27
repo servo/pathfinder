@@ -106,11 +106,10 @@ impl SVGScene {
                 if group.mask.is_some() {
                     self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
                 }
-                let mut transformed_outline = None;
                 if let Some(ref clip_path_name) = group.clip_path {
                     if let Some(clip_outline) = self.clip_paths.get(clip_path_name) {
-                        transformed_outline = Some((*clip_outline).clone().transformed(&state.transform));
-                        let mut clip_path = ClipPath::new(transformed_outline.clone().unwrap());
+                        let transformed_outline = (*clip_outline).clone().transformed(&state.transform);
+                        let mut clip_path = ClipPath::new(transformed_outline);
                         clip_path.set_clip_path(state.clip_path);
                         clip_path.set_name(format!("ClipPath({})", clip_path_name));
                         let clip_path_id = self.scene.push_clip_path(clip_path);
@@ -119,7 +118,7 @@ impl SVGScene {
                 }
 
                 for kid in node.children() {
-                    self.process_node(&kid, &state, &mut transformed_outline)
+                    self.process_node(&kid, &state, clip_outline)
                 }
             }
             NodeKind::Path(ref path) if state.path_destination == PathDestination::Clip => {
