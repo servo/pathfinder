@@ -108,7 +108,7 @@ impl SVGScene {
                 }
                 if let Some(ref clip_path_name) = group.clip_path {
                     if let Some(clip_outline) = self.clip_paths.get(clip_path_name) {
-                        let transformed_outline = (*clip_outline).clone().transformed(&state.transform);
+                        let transformed_outline = clip_outline.clone().transformed(&state.transform);
                         let mut clip_path = ClipPath::new(transformed_outline);
                         clip_path.set_clip_path(state.clip_path);
                         clip_path.set_name(format!("ClipPath({})", clip_path_name));
