@@ -97,8 +97,7 @@ impl SVGScene {
                     clip_outline: &mut Option<Outline>) {
         let mut state = (*state).clone();
         let node_transform = usvg_transform_to_transform_2d(&node.transform());
-        state.transform = node_transform * state.transform;
-
+        state.transform = state.transform * node_transform;
         match *node.borrow() {
             NodeKind::Group(ref group) => {
                 if group.filter.is_some() {
@@ -107,10 +106,10 @@ impl SVGScene {
                 if group.mask.is_some() {
                     self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
                 }
-
                 if let Some(ref clip_path_name) = group.clip_path {
                     if let Some(clip_outline) = self.clip_paths.get(clip_path_name) {
-                        let mut clip_path = ClipPath::new((*clip_outline).clone());
+                        let transformed_outline = clip_outline.clone().transformed(&state.transform);
+                        let mut clip_path = ClipPath::new(transformed_outline);
                         clip_path.set_clip_path(state.clip_path);
                         clip_path.set_name(format!("ClipPath({})", clip_path_name));
                         let clip_path_id = self.scene.push_clip_path(clip_path);
