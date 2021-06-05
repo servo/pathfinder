@@ -43,8 +43,10 @@ use std::sync::Arc;
 use std::time::Instant;
 use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
 use surfman::{SurfaceAccess, SurfaceType};
+
 use winit::dpi::LogicalSize;
-use winit::{Event, EventsLoop, KeyboardInput, VirtualKeyCode, WindowBuilder, WindowEvent};
+use winit::platform::run_return::EventLoopExtRunReturn;
+use winit::{event::{Event, WindowEvent, KeyboardInput, VirtualKeyCode}, window::WindowBuilder, event_loop::{EventLoop, ControlFlow}};
 
 #[cfg(not(windows))]
 use jemallocator;
@@ -1465,14 +1467,14 @@ impl DemoData {
 
 fn main() {
     // Open a window.
-    let mut event_loop = EventsLoop::new();
+    let mut event_loop = EventLoop::new();
     let window_size = Size2D::new(WINDOW_WIDTH, WINDOW_HEIGHT);
     let logical_size = LogicalSize::new(window_size.width as f64, window_size.height as f64);
     let window = WindowBuilder::new().with_title("NanoVG example port")
-                                     .with_dimensions(logical_size)
+                                     .with_inner_size(logical_size)
                                      .build(&event_loop)
                                      .unwrap();
-    window.show();
+    // window.show();
 
     // Create a `surfman` device. On a multi-GPU system, we'll request the low-power integrated
     // GPU.
@@ -1490,7 +1492,7 @@ fn main() {
 
     // Make the OpenGL context via `surfman`, and load OpenGL functions.
     let surface_type = SurfaceType::Widget { native_widget };
-    let mut gl_context = device.create_context(&context_descriptor).unwrap();
+    let mut gl_context = device.create_context(&context_descriptor, None).unwrap();
     let surface = device.create_surface(&gl_context, SurfaceAccess::GPUOnly, surface_type)
                         .unwrap();
     device.bind_surface_to_context(&mut gl_context, surface).unwrap();
@@ -1498,9 +1500,9 @@ fn main() {
     gl::load_with(|symbol_name| device.get_proc_address(&gl_context, symbol_name));
 
     // Get the real size of the window, taking HiDPI into account.
-    let hidpi_factor = window.get_current_monitor().get_hidpi_factor();
-    let physical_size = logical_size.to_physical(hidpi_factor);
-    let framebuffer_size = vec2i(physical_size.width as i32, physical_size.height as i32);
+    let hidpi_factor = window.current_monitor().unwrap().scale_factor();
+    let physical_size = logical_size.to_physical::<i32>(hidpi_factor);
+    let framebuffer_size = vec2i(physical_size.width, physical_size.height);
 
     // Load demo data.
     let resources = FilesystemResourceLoader::locate();
@@ -1591,7 +1593,7 @@ fn main() {
             gpu_graph.push(gpu_time);
         }
 
-        event_loop.poll_events(|event| {
+        event_loop.run_return(|event,_, control| {
             match event {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
                 Event::WindowEvent {
@@ -1604,7 +1606,9 @@ fn main() {
                 Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                     mouse_position = vec2f(position.x as f32, position.y as f32);
                 }
-                _ => {}
+                _ => {
+                	*control = ControlFlow::Exit;
+                }
             }
         });
     }
