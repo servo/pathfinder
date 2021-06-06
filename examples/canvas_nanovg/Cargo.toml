@@ -51,12 +51,11 @@ path = "../../resources"
 path = "../../simd"
 
 [dependencies.surfman]
-git = "https://github.com/servo/surfman"
-rev = "f3df871ac8c3926fe9106d86a3e51e20aa50d3cc"
+version = "^0.4"
 features = ["sm-winit", "sm-x11"]
 
 [dependencies.winit]
-version = "<0.19.4" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
+version = "^0.24" # 0.19.4 causes build errors https://github.com/rust-windowing/winit/pull/1105
 
 [target.'cfg(not(windows))'.dependencies]
 jemallocator = "0.3"
