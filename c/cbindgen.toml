@@ -7,8 +7,12 @@ header = """\
 
 #if defined(__APPLE__) && defined(__OBJC__)
 #include <QuartzCore/QuartzCore.h>
+typedef NSObject<CAMetalDrawable> NSObjectCAMetalDrawable;
+typedef NSObject<MTLDevice> NSObjectMTLDevice;
 #else
-typedef struct CAMetalLayerPrivate CAMetalLayer;
+typedef void* NSObjectCAMetalDrawable;
+typedef void* NSObjectMTLDevice;
+typedef void* IOSurfaceRef;
 #endif
 
 #ifdef __cplusplus
@@ -42,14 +46,14 @@ include = [
 "BuildOptions" = "PFBuildOptionsPrivate"
 "CanvasFontContext" = "PFCanvasFontContextPrivate"
 "CanvasRenderingContext2D" = "PFCanvasRenderingContext2DPrivate"
-"CoreAnimationDrawableRef" = "NSObject<CAMetalDrawable>"
+"CoreAnimationDrawableRef" = "NSObjectCAMetalDrawable"
 "DestFramebuffer_GLDevice" = "PFDestFramebufferGLDevicePrivate"
 "DestFramebuffer_MetalDevice" = "PFDestFramebufferMetalDevicePrivate"
 "FillStyle" = "PFFillStylePrivate"
 "GLDevice" = "PFGLDevicePrivate"
 "Handle" = "FKHandlePrivate"
 "MetalDevice" = "PFMetalDevicePrivate"
-"NativeMetalDeviceRef" = "NSObject<MTLDevice>"
+"NativeMetalDeviceRef" = "NSObjectMTLDevice"
 "Path2D" = "PFPath2DPrivate"
 "RenderTransform" = "PFRenderTransformPrivate"
 "Renderer_GLDevice" = "PFRendererGLDevicePrivate"

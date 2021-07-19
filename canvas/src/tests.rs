@@ -3,7 +3,7 @@
 // For this file only, any copyright is dedicated to the Public Domain.
 // https://creativecommons.org/publicdomain/zero/1.0/
 
-use pathfinder_geometry::vector::{Vector2F, vec2f};
+use pathfinder_geometry::vector::vec2f;
 use super::Path2D;
 
 #[test]
