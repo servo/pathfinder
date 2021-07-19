@@ -1083,7 +1083,6 @@ impl<D> RendererCore<D> where D: Device {
         let draw_viewport = self.draw_viewport();
 
         let gamma_lut_texture = self.allocator.get_texture(self.gamma_lut_texture_id);
-            self.allocator.get_texture(self.texture_metadata_texture_id);
         textures.push((&tile_program.gamma_lut_texture, gamma_lut_texture));
 
         let texture_metadata_texture =
