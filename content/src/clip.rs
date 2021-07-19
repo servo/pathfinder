@@ -515,25 +515,25 @@ pub fn clip_line_segment_to_rect(mut line_segment: LineSegment2F, rect: RectF)
             point = vec2f(rect.min_x(),
                           lerp(line_segment.from_y(),
                                line_segment.to_y(),
-                               (line_segment.min_x() - line_segment.from_x()) /
-                                (line_segment.max_x() - line_segment.min_x())));
+                               (rect.min_x() - line_segment.from_x()) /
+                                   (line_segment.to_x() - line_segment.from_x())));
         } else if outcode.contains(Outcode::RIGHT) {
             point = vec2f(rect.max_x(),
                           lerp(line_segment.from_y(),
                                line_segment.to_y(),
-                               (line_segment.max_x() - line_segment.from_x()) /
-                                (line_segment.max_x() - line_segment.min_x())));
+                               (rect.max_x() - line_segment.from_x()) /
+                                   (line_segment.to_x() - line_segment.from_x())));
         } else if outcode.contains(Outcode::TOP) {
             point = vec2f(lerp(line_segment.from_x(),
                                line_segment.to_x(),
-                               (line_segment.min_y() - line_segment.from_y()) /
-                                (line_segment.max_y() - line_segment.min_y())),
+                               (rect.min_y() - line_segment.from_y()) /
+                                   (line_segment.to_y() - line_segment.from_y())),
                           rect.min_y());
         } else if outcode.contains(Outcode::BOTTOM) {
             point = vec2f(lerp(line_segment.from_x(),
                                line_segment.to_x(),
-                               (line_segment.max_y() - line_segment.from_y()) /
-                                (line_segment.max_y() - line_segment.min_y())),
+                               (rect.max_y() - line_segment.from_y()) /
+                                   (line_segment.to_y() - line_segment.from_y())),
                           rect.max_y());
         }
 
