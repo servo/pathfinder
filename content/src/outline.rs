@@ -486,6 +486,12 @@ impl Contour {
         self.closed
     }
 
+    /// Returns the points (on curve and control points) of the Contour
+    #[inline]
+    pub fn points(&self) -> &[Vector2F] {
+        &self.points
+    }
+
     /// Returns the position of the point (which can be an on-curve point or a control point) with
     /// the given index.
     ///
