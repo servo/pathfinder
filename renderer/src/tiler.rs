@@ -287,10 +287,16 @@ fn process_line_segment(line_segment: LineSegment2F,
         match next_step_direction {
             None => break,
             Some(StepDirection::X) => {
+                if tile_coords.x() == to_tile_coords.x() {
+                    break;
+                }
                 t_max += vec2f(t_delta.x(), 0.0);
                 tile_coords += vec2i(step.x(), 0);
             }
             Some(StepDirection::Y) => {
+                if tile_coords.y() == to_tile_coords.y() {
+                    break;
+                }
                 t_max += vec2f(0.0, t_delta.y());
                 tile_coords += vec2i(0, step.y());
             }
