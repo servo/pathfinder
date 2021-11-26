@@ -552,7 +552,7 @@ impl CanvasRenderingContext2D {
                                where I: CanvasImageSource, L: CanvasImageDestLocation {
         let dest_size = dest_location.size().unwrap_or(src_location.size());
         let scale = dest_size / src_location.size();
-        let offset = dest_location.origin() - src_location.origin();
+        let offset = dest_location.origin() - src_location.origin() * scale;
         let transform = Transform2F::from_scale(scale).translate(offset);
 
         let pattern = image.to_pattern(self, transform);
