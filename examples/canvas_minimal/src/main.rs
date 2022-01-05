@@ -20,7 +20,9 @@ use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererO
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use pathfinder_resources::embedded::EmbeddedResourceLoader;
-use surfman::{Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion};
+use surfman::{
+    Connection, ContextAttributeFlags, ContextAttributes, GLVersion as SurfmanGLVersion,
+};
 use surfman::{SurfaceAccess, SurfaceType};
 use winit::dpi::LogicalSize;
 use winit::{ControlFlow, Event, EventsLoop, WindowBuilder, WindowEvent};
@@ -30,16 +32,19 @@ fn main() {
     let mut event_loop = EventsLoop::new();
     let window_size = Size2D::new(640, 480);
     let logical_size = LogicalSize::new(window_size.width as f64, window_size.height as f64);
-    let window = WindowBuilder::new().with_title("Minimal example")
-                                     .with_dimensions(logical_size)
-                                     .build(&event_loop)
-                                     .unwrap();
+    let window = WindowBuilder::new()
+        .with_title("Minimal example")
+        .with_dimensions(logical_size)
+        .build(&event_loop)
+        .unwrap();
     window.show();
 
     // Create a `surfman` device. On a multi-GPU system, we'll request the low-power integrated
     // GPU.
     let connection = Connection::from_winit_window(&window).unwrap();
-    let native_widget = connection.create_native_widget_from_winit_window(&window).unwrap();
+    let native_widget = connection
+        .create_native_widget_from_winit_window(&window)
+        .unwrap();
     let adapter = connection.create_low_power_adapter().unwrap();
     let mut device = connection.create_device(&adapter).unwrap();
 
@@ -48,14 +53,19 @@ fn main() {
         version: SurfmanGLVersion::new(3, 0),
         flags: ContextAttributeFlags::ALPHA,
     };
-    let context_descriptor = device.create_context_descriptor(&context_attributes).unwrap();
+    let context_descriptor = device
+        .create_context_descriptor(&context_attributes)
+        .unwrap();
 
     // Make the OpenGL context via `surfman`, and load OpenGL functions.
     let surface_type = SurfaceType::Widget { native_widget };
     let mut context = device.create_context(&context_descriptor).unwrap();
-    let surface = device.create_surface(&context, SurfaceAccess::GPUOnly, surface_type)
-                        .unwrap();
-    device.bind_surface_to_context(&mut context, surface).unwrap();
+    let surface = device
+        .create_surface(&context, SurfaceAccess::GPUOnly, surface_type)
+        .unwrap();
+    device
+        .bind_surface_to_context(&mut context, surface)
+        .unwrap();
     device.make_context_current(&context).unwrap();
     gl::load_with(|symbol_name| device.get_proc_address(&context, symbol_name));
 
@@ -65,10 +75,11 @@ fn main() {
     let framebuffer_size = vec2i(physical_size.width as i32, physical_size.height as i32);
 
     // Create a Pathfinder GL device.
-    let default_framebuffer = device.context_surface_info(&context)
-                                    .unwrap()
-                                    .unwrap()
-                                    .framebuffer_object;
+    let default_framebuffer = device
+        .context_surface_info(&context)
+        .unwrap()
+        .unwrap()
+        .framebuffer_object;
     let pathfinder_device = GLDevice::new(GLVersion::GL3, default_framebuffer);
 
     // Create a Pathfinder renderer.
@@ -87,17 +98,27 @@ fn main() {
     event_loop.run_forever(|event| {
         let mut should_render = is_first_render;
         match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } |
-            Event::WindowEvent { event: WindowEvent::KeyboardInput { .. }, .. } => return ControlFlow::Break,
-            Event::WindowEvent { event: WindowEvent::Refresh, .. } => {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            }
+            | Event::WindowEvent {
+                event: WindowEvent::KeyboardInput { .. },
+                ..
+            } => return ControlFlow::Break,
+            Event::WindowEvent {
+                event: WindowEvent::Refresh,
+                ..
+            } => {
                 should_render = true;
             }
-            _ => {},
+            _ => {}
         }
 
         if should_render {
             // Make a canvas. We're going to draw a house.
-            let mut canvas = Canvas::new(framebuffer_size.to_f32()).get_context_2d(font_context.clone());
+            let mut canvas =
+                Canvas::new(framebuffer_size.to_f32()).get_context_2d(font_context.clone());
 
             // Set line width.
             canvas.set_line_width(10.0);
@@ -117,15 +138,22 @@ fn main() {
             canvas.stroke_path(path);
 
             // Render the canvas to screen.
-            let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
-                                                   renderer.mode().level,
-                                                   RayonExecutor);
+            let mut scene = SceneProxy::from_scene(
+                canvas.into_canvas().into_scene(),
+                renderer.mode().level,
+                RayonExecutor,
+            );
             scene.build_and_render(&mut renderer, BuildOptions::default());
 
             // Present the surface.
-            let mut surface = device.unbind_surface_from_context(&mut context).unwrap().unwrap();
+            let mut surface = device
+                .unbind_surface_from_context(&mut context)
+                .unwrap()
+                .unwrap();
             device.present_surface(&mut context, &mut surface).unwrap();
-            device.bind_surface_to_context(&mut context, surface).unwrap();
+            device
+                .bind_surface_to_context(&mut context, surface)
+                .unwrap();
         }
 
         is_first_render = false;
