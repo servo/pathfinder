@@ -26,13 +26,18 @@ use pathfinder_resources::fs::FilesystemResourceLoader;
 use pathfinder_resources::ResourceLoader;
 use std::cell::Cell;
 use std::collections::VecDeque;
-use std::mem;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use surfman::{declare_surfman, SurfaceAccess, SurfaceType};
-use winit::dpi::LogicalSize;
-use winit::{ControlFlow, ElementState, Event as WinitEvent, EventsLoop, EventsLoopProxy};
-use winit::{MouseButton, VirtualKeyCode, Window as WinitWindow, WindowBuilder, WindowEvent};
+use winit::dpi::{LogicalSize, PhysicalSize};
+use winit::platform::run_return::EventLoopExtRunReturn;
+use winit::{
+    event::{ElementState, Event as WinitEvent, MouseButton, VirtualKeyCode, WindowEvent},
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    window::{Window as WinitWindow, WindowBuilder},
+};
+//use winit::{ControlFlow, ElementState, Event as WinitEvent, EventLoop, EventLoopProxy};
+//use winit::{MouseButton, VirtualKeyCode, Window as WinitWindow, WindowBuilder, WindowEvent};
 
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use gl;
@@ -122,7 +127,7 @@ struct WindowImpl {
     #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     surface: SystemSurface,
 
-    event_loop: EventsLoop,
+    event_loop: EventLoop<()>,
     pending_events: VecDeque<Event>,
     mouse_position: Vector2I,
     mouse_down: bool,
@@ -133,7 +138,7 @@ struct WindowImpl {
 }
 
 struct EventQueue {
-    event_loop_proxy: EventsLoopProxy,
+    event_loop_proxy: EventLoopProxy<()>,
     pending_custom_events: VecDeque<CustomEvent>,
 }
 
@@ -233,7 +238,7 @@ impl Window for WindowImpl {
             event_queue
                 .pending_custom_events
                 .push_back(CustomEvent::OpenData(PathBuf::from(path)));
-            drop(event_queue.event_loop_proxy.wakeup());
+            drop(event_queue.event_loop_proxy.send_event(()));
         }
     }
 
@@ -259,22 +264,34 @@ impl Window for WindowImpl {
                 message_type,
                 message_data,
             });
-        drop(event_queue.event_loop_proxy.wakeup());
+        drop(event_queue.event_loop_proxy.send_event(()));
+    }
+}
+
+fn window_size(window: &WinitWindow, size: PhysicalSize<u32>) -> WindowSize {
+    let backing_scale_factor = window
+        .current_monitor()
+        .map(|monitor| monitor.scale_factor() as f32)
+        .unwrap_or(1.0);
+    let logical_size = vec2i(size.width as i32, size.height as i32);
+    WindowSize {
+        logical_size,
+        backing_scale_factor,
     }
 }
 
 impl WindowImpl {
     #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn new(options: &Options) -> WindowImpl {
-        let event_loop = EventsLoop::new();
+        let event_loop = EventLoop::new();
         let window_size = Size2D::new(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
         let logical_size = LogicalSize::new(window_size.width as f64, window_size.height as f64);
         let window = WindowBuilder::new()
             .with_title("Pathfinder Demo")
-            .with_dimensions(logical_size)
+            .with_min_inner_size(logical_size)
             .build(&event_loop)
             .unwrap();
-        window.show();
+        window.set_visible(true);
 
         let connection = Connection::from_winit_window(&window).unwrap();
         let native_widget = connection
@@ -298,7 +315,7 @@ impl WindowImpl {
             .unwrap();
 
         let surface_type = SurfaceType::Widget { native_widget };
-        let mut context = device.create_context(&context_descriptor).unwrap();
+        let mut context = device.create_context(&context_descriptor, None).unwrap();
         let surface = device
             .create_surface(&context, SurfaceAccess::GPUOnly, surface_type)
             .unwrap();
@@ -332,7 +349,7 @@ impl WindowImpl {
 
     #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn new(options: &Options) -> WindowImpl {
-        let event_loop = EventsLoop::new();
+        let event_loop = EventLoop::new();
         let window_size = Size2D::new(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
         let logical_size = LogicalSize::new(window_size.width as f64, window_size.height as f64);
         let window = WindowBuilder::new()
@@ -389,15 +406,7 @@ impl WindowImpl {
 
     fn size(&self) -> WindowSize {
         let window = self.window();
-        let (monitor, size) = (
-            window.get_current_monitor(),
-            window.get_inner_size().unwrap(),
-        );
-
-        WindowSize {
-            logical_size: vec2i(size.width as i32, size.height as i32),
-            backing_scale_factor: monitor.get_hidpi_factor() as f32,
-        }
+        window_size(window, window.inner_size())
     }
 
     fn get_event(&mut self) -> Event {
@@ -406,15 +415,15 @@ impl WindowImpl {
             let mouse_position = &mut self.mouse_position;
             let mouse_down = &mut self.mouse_down;
             let pending_events = &mut self.pending_events;
-            self.event_loop.run_forever(|winit_event| {
+            self.event_loop.run_return(|winit_event, _, control_flow| {
                 //println!("blocking {:?}", winit_event);
                 match convert_winit_event(winit_event, window, mouse_position, mouse_down) {
                     Some(event) => {
                         //println!("handled");
                         pending_events.push_back(event);
-                        ControlFlow::Break
+                        *control_flow = ControlFlow::Exit;
                     }
-                    None => ControlFlow::Continue,
+                    None => (),
                 }
             });
         }
@@ -428,7 +437,7 @@ impl WindowImpl {
             let mouse_position = &mut self.mouse_position;
             let mouse_down = &mut self.mouse_down;
             let pending_events = &mut self.pending_events;
-            self.event_loop.poll_events(|winit_event| {
+            self.event_loop.run_return(|winit_event, _, control_flow| {
                 //println!("nonblocking {:?}", winit_event);
                 if let Some(event) =
                     convert_winit_event(winit_event, window, mouse_position, mouse_down)
@@ -436,6 +445,7 @@ impl WindowImpl {
                     //println!("handled");
                     pending_events.push_back(event);
                 }
+                *control_flow = ControlFlow::Exit;
             });
         }
         self.pending_events.pop_front()
@@ -443,13 +453,13 @@ impl WindowImpl {
 }
 
 fn convert_winit_event(
-    winit_event: WinitEvent,
+    winit_event: WinitEvent<()>,
     window: &WinitWindow,
     mouse_position: &mut Vector2I,
     mouse_down: &mut bool,
 ) -> Option<Event> {
     match winit_event {
-        WinitEvent::Awakened => {
+        WinitEvent::UserEvent(()) => {
             let mut event_queue = EVENT_QUEUE.lock().unwrap();
             let event_queue = event_queue.as_mut().unwrap();
             match event_queue
@@ -520,12 +530,7 @@ fn convert_winit_event(
                 }),
             WindowEvent::CloseRequested => Some(Event::Quit),
             WindowEvent::Resized(new_size) => {
-                let logical_size = vec2i(new_size.width as i32, new_size.height as i32);
-                let backing_scale_factor = window.get_current_monitor().get_hidpi_factor() as f32;
-                Some(Event::WindowResized(WindowSize {
-                    logical_size,
-                    backing_scale_factor,
-                }))
+                Some(Event::WindowResized(window_size(window, new_size)))
             }
             _ => None,
         },

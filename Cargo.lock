@@ -923,8 +923,8 @@ dependencies = [
  "pathfinder_resources",
  "pathfinder_simd",
  "pretty_env_logger",
- "surfman 0.2.0",
- "winit 0.18.1",
+ "surfman 0.4.3",
+ "winit 0.24.0",
 ]
 
 [[package]]
