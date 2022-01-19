@@ -108,7 +108,7 @@ impl SceneProxy {
     ///
     /// Exactly equivalent to:
     ///
-    /// ```norun
+    /// ```no_run
     /// scene_proxy.build(build_options);
     /// scene_proxy.render(renderer);
     /// }

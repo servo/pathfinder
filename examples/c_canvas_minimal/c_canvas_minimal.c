@@ -10,7 +10,7 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
-#include <pathfinder/pathfinder.h>
+#include <pathfinder_c.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
