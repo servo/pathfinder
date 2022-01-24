@@ -773,7 +773,7 @@ impl Content {
             }
             Content::Pdf { ref file, ref mut cache, page_nr } => {
                 let page = file.get_page(page_nr).expect("no such page");
-                let (scene, _) = cache.render_page(file, &page).unwrap();
+                let (scene, _) = cache.render_page(file, &page, Transform2F::default()).unwrap();
                 (scene, String::new())
             }
         }
