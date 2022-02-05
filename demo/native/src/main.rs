@@ -26,7 +26,6 @@ use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
 use std::cell::Cell;
 use std::collections::VecDeque;
-use std::mem;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use surfman::{SurfaceAccess, SurfaceType, declare_surfman};
@@ -163,7 +162,7 @@ impl Window for WindowImpl {
     fn metal_device(&self) -> metal::Device {
         // FIXME(pcwalton): Remove once `surfman` upgrades `metal-rs` version.
         unsafe {
-            mem::transmute(self.metal_device.0.clone())
+            std::mem::transmute(self.metal_device.0.clone())
         }
     }
 
