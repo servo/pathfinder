@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut data = Vec::new();
     File::open(input)?.read_to_end(&mut data)?;
-    let svg = SVGScene::from_tree(&Tree::from_data(&data, &Options::default()).unwrap());
+    let svg = SVGScene::from_tree(&Tree::from_data(&data, &Options::default().to_ref()).unwrap());
 
     let scene = &svg.scene;
     let mut writer = BufWriter::new(File::create(&output)?);
