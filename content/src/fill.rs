@@ -16,8 +16,8 @@
 /// rule.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum FillRule {
-    /// The nonzero rule: https://en.wikipedia.org/wiki/Nonzero-rule
+    /// The nonzero rule: <https://en.wikipedia.org/wiki/Nonzero-rule>
     Winding,
-    /// The even-odd rule: https://en.wikipedia.org/wiki/Even%E2%80%93odd_rule
+    /// The even-odd rule: <https://en.wikipedia.org/wiki/Even%E2%80%93odd_rule>
     EvenOdd,
 }

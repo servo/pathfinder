@@ -13,7 +13,7 @@
 //! We don't render the demo UI text using Pathfinder itself so that we can use the debug UI to
 //! debug Pathfinder if it's totally busted.
 //!
-//! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
+//! The debug font atlas was generated using: <https://evanw.github.io/font-texture-generator/>
 
 use crate::gpu::options::RendererLevel;
 use crate::gpu::perf::{RenderStats, RenderTime};

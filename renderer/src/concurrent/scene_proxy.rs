@@ -108,10 +108,9 @@ impl SceneProxy {
     ///
     /// Exactly equivalent to:
     ///
-    /// ```norun
+    /// ```ignore
     /// scene_proxy.build(build_options);
     /// scene_proxy.render(renderer);
-    /// }
     /// ```
     #[inline]
     pub fn build_and_render<D>(&mut self, renderer: &mut Renderer<D>, build_options: BuildOptions)
