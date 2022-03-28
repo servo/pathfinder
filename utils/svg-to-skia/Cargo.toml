@@ -5,4 +5,4 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-usvg = "0.9"
+usvg = "0.20"

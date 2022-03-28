@@ -805,7 +805,7 @@ pub unsafe extern "C" fn PFSceneProxyDestroy(scene_proxy: PFSceneProxyRef) {
 pub unsafe extern "C" fn PFSVGSceneCreateWithMemory(bytes: *const c_char, byte_len: usize)
                                                     -> PFSVGSceneRef {
     let data = slice::from_raw_parts(bytes as *const _, byte_len);
-    let tree = match Tree::from_data(data, &Options::default()) {
+    let tree = match Tree::from_data(data, &Options::default().to_ref()) {
         Ok(tree) => tree,
         Err(_) => return ptr::null_mut(),
     };
@@ -817,8 +817,11 @@ pub unsafe extern "C" fn PFSVGSceneCreateWithMemory(bytes: *const c_char, byte_l
 #[no_mangle]
 pub unsafe extern "C" fn PFSVGSceneCreateWithPath(path: *const c_char) -> PFSVGSceneRef {
     let string = to_rust_string(&path, 0);
-    let path = PathBuf::from(string);
-    let tree = match Tree::from_file(path, &Options::default()) {
+    let data = match std::fs::read(PathBuf::from(string)) {
+        Ok(data) => data,
+        Err(_) => return ptr::null_mut(),
+    };
+    let tree = match Tree::from_data(&data, &Options::default().to_ref()) {
         Ok(tree) => tree,
         Err(_) => return ptr::null_mut(),
     };

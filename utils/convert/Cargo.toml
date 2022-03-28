@@ -9,4 +9,4 @@ edition = "2018"
 [dependencies]
 pathfinder_export = { path = "../../export" }
 pathfinder_svg = { path = "../../svg" }
-usvg = "0.9"
+usvg = "0.20"

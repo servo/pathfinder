@@ -12,7 +12,7 @@ keywords = ["pathfinder", "svg", "vector", "graphics", "gpu"]
 [dependencies]
 bitflags = "1.0"
 hashbrown = "0.7"
-usvg = "0.9"
+usvg = "0.20"
 
 [dependencies.pathfinder_color]
 path = "../color"

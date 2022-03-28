@@ -11,7 +11,7 @@ pf-gl = []
 clap = "2.32"
 gl = "0.14"
 rayon = "1.0"
-usvg = "0.9"
+usvg = "0.20"
 
 [dependencies.image]
 version = "0.23"

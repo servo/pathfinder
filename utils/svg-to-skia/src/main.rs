@@ -13,7 +13,7 @@ use usvg::{Node, NodeKind, Options, Paint, PathSegment, Tree};
 
 fn main() {
     let input_path = env::args().skip(1).next().unwrap();
-    let tree = Tree::from_file(&input_path, &Options::default()).unwrap();
+    let tree = Tree::from_data(&std::fs::read(&input_path).unwrap(), &Options::default().to_ref()).unwrap();
 
     println!("#ifndef PAINT_H");
     println!("#define PAINT_H");
