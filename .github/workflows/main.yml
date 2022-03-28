@@ -25,16 +25,16 @@ jobs:
         run: rustup target add aarch64-unknown-linux-gnu
         
       - uses: actions-rs/cargo@v1
-        working-directory: simd
         with:
           command: build
           args: --target aarch64-unknown-linux-gnu
+          working-directory: simd
 
       - uses: actions-rs/cargo@v1
-        working-directory: geometry
         with:
           command: build
           args: --target aarch64-unknown-linux-gnu
+          working-directory: geometry
 
       - uses: actions-rs/cargo@v1
         with:
