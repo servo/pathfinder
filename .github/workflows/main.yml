@@ -26,25 +26,19 @@ jobs:
       - name: Install rustc target
         run: rustup target add aarch64-unknown-linux-gnu
         
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target aarch64-unknown-linux-gnu
-          working-directory: simd
+      - name: Build arm64 simd
+        run: cargo build --target aarch64-unknown-linux-gnu
+        working-directory: simd
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --target aarch64-unknown-linux-gnu
-          working-directory: geometry
+      - name: Build arm64 geometry
+        run: cargo build --target aarch64-unknown-linux-gnu
+        working-directory: geometry
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
+      - name: Build
+        run: cargo build
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - name: Test
+        run: cargo test
 
   build_result:
     name: homu build finished
