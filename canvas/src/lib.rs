@@ -730,6 +730,11 @@ impl Path2D {
     }
 
     #[inline]
+    pub fn from_outline(outline: Outline) -> Path2D {
+        Path2D { outline, current_contour: Contour::new() }
+    }
+
+    #[inline]
     pub fn close_path(&mut self) {
         self.current_contour.close();
     }
@@ -819,6 +824,11 @@ impl Path2D {
             self.outline.push_contour(contour);
         }
         self.current_contour = last_contour.unwrap_or_else(Contour::new);
+    }
+
+    pub fn add_outline(&mut self, outline: Outline) {
+        self.flush_current_contour();
+        self.outline.push_outline(outline);
     }
 
     pub fn into_outline(mut self) -> Outline {
