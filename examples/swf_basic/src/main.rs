@@ -36,7 +36,7 @@ fn main() {
             Ok(bytes) => {
                 swf_bytes = bytes;
             },
-            Err(e) => panic!(e)
+            Err(e) => panic!("{}", e)
         }
     } else {
         // NOTE(jon): This is a version of the ghostscript tiger graphic flattened to a single
