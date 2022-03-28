@@ -32,10 +32,10 @@ impl<'a> OutlineDash<'a> {
     ///
     /// * `dashes`: The list of dashes, specified as alternating pixel lengths of lines and gaps
     ///   that describe the pattern. See
-    ///   https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setLineDash.
+    ///   <https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setLineDash>.
     ///
     /// * `offset`: The line dash offset, or "phase". See
-    ///   https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/lineDashOffset.
+    ///   <https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/lineDashOffset>.
     #[inline]
     pub fn new(input: &'a Outline, dashes: &'a [f32], offset: f32) -> OutlineDash<'a> {
         OutlineDash { input, output: Outline::new(), state: DashState::new(dashes, offset) }

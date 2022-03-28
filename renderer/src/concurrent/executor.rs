@@ -14,7 +14,7 @@
 pub trait Executor {
     /// Like the Rayon snippet:
     ///
-    /// ```norun
+    /// ```ignore
     /// (0..length).into_par_iter().map(builder).collect()
     /// ```
     fn build_vector<T, F>(&self, length: usize, builder: F) -> Vec<T>

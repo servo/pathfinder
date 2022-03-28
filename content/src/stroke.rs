@@ -25,7 +25,13 @@ const TOLERANCE: f32 = 0.01;
 /// 
 /// An example of use:
 /// 
-/// ```norun
+/// ```no_run
+/// use pathfinder_content::stroke::OutlineStrokeToFill;
+/// use pathfinder_content::stroke::StrokeStyle;
+/// use pathfinder_content::outline::Outline;
+///
+/// let input_outline = Outline::new();
+///
 /// let mut stroke_to_fill = OutlineStrokeToFill::new(&input_outline, StrokeStyle::default());
 /// stroke_to_fill.offset();
 /// let output_outline = stroke_to_fill.into_outline();
