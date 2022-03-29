@@ -12,7 +12,7 @@
 //! 
 //! This renderer supports OpenGL at least 4.3, OpenGL ES at least 3.1, and Metal of any version.
 
-use crate::gpu::d3d11::shaders::{BOUND_WORKGROUP_SIZE, DICE_WORKGROUP_SIZE};
+use crate::gpu::d3d11::shaders::{BOUND_WORKGROUP_SIZE, DICE_WORKGROUP_SIZE, BIN_WORKGROUP_SIZE};
 use crate::gpu::d3d11::shaders::{PROPAGATE_WORKGROUP_SIZE, ProgramsD3D11, SORT_WORKGROUP_SIZE};
 use crate::gpu::perf::TimeCategory;
 use crate::gpu::renderer::{FramebufferFlags, RendererCore};
@@ -186,7 +186,7 @@ impl<D> RendererD3D11<D> where D: Device {
                                                                         &core.options);
 
         let compute_dimensions = ComputeDimensions {
-            x: (microlines_storage.count + 63) / 64,
+            x: (microlines_storage.count + BIN_WORKGROUP_SIZE - 1) / BIN_WORKGROUP_SIZE,
             y: 1,
             z: 1,
         };
