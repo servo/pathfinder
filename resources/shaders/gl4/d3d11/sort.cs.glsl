@@ -29,20 +29,20 @@ precision highp float;
 
 uniform int uTileCount;
 
-layout(std430, binding = 0)buffer bTiles {
+restrict layout(std430, binding = 0)buffer bTiles {
 
 
 
 
-    restrict uint iTiles[];
+    uint iTiles[];
 };
 
-layout(std430, binding = 1)buffer bFirstTileMap {
-    restrict int iFirstTileMap[];
+restrict layout(std430, binding = 1)buffer bFirstTileMap {
+    int iFirstTileMap[];
 };
 
-layout(std430, binding = 2)buffer bZBuffer {
-    restrict readonly int iZBuffer[];
+restrict readonly layout(std430, binding = 2)buffer bZBuffer {
+    int iZBuffer[];
 };
 
 layout(local_size_x = 64)in;

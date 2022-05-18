@@ -32,70 +32,76 @@ layout(local_size_x = 64)in;
 
 
 
+
+
+
+
+
+
 uniform ivec2 uFramebufferTileSize;
 uniform int uColumnCount;
 uniform int uFirstAlphaTileIndex;
 
-layout(std430, binding = 0)buffer bDrawMetadata {
+restrict readonly layout(std430, binding = 0)buffer bDrawMetadata {
 
 
 
 
 
 
-    restrict readonly uvec4 iDrawMetadata[];
+    uvec4 iDrawMetadata[];
 };
 
-layout(std430, binding = 1)buffer bClipMetadata {
+restrict readonly layout(std430, binding = 1)buffer bClipMetadata {
 
 
 
 
 
-    restrict readonly uvec4 iClipMetadata[];
+    uvec4 iClipMetadata[];
 };
 
-layout(std430, binding = 2)buffer bBackdrops {
+restrict readonly layout(std430, binding = 2)buffer bBackdrops {
 
 
 
-    restrict readonly int iBackdrops[];
+    int iBackdrops[];
 };
 
-layout(std430, binding = 3)buffer bDrawTiles {
+restrict layout(std430, binding = 3)buffer bDrawTiles {
 
 
 
 
-    restrict uint iDrawTiles[];
+    uint iDrawTiles[];
 };
 
-layout(std430, binding = 4)buffer bClipTiles {
+restrict layout(std430, binding = 4)buffer bClipTiles {
 
 
 
 
-    restrict uint iClipTiles[];
+    uint iClipTiles[];
 };
 
-layout(std430, binding = 5)buffer bZBuffer {
+restrict layout(std430, binding = 5)buffer bZBuffer {
 
 
 
 
 
 
-    restrict int iZBuffer[];
+    int iZBuffer[];
 };
 
-layout(std430, binding = 6)buffer bFirstTileMap {
-    restrict int iFirstTileMap[];
+restrict layout(std430, binding = 6)buffer bFirstTileMap {
+    int iFirstTileMap[];
 };
 
-layout(std430, binding = 7)buffer bAlphaTiles {
+restrict layout(std430, binding = 7)buffer bAlphaTiles {
 
 
-    restrict uint iAlphaTiles[];
+    uint iAlphaTiles[];
 };
 
 uint calculateTileIndex(uint bufferOffset, uvec4 tileRect, uvec2 tileCoord){
@@ -202,6 +208,16 @@ void main(){
             (uint(drawAlphaTileIndex)& 0x00ffffffu)|(uint(drawBackdropDelta)<< 24);
         iDrawTiles[drawTileIndex * 4 + 3]=
             drawTileWord |(uint(drawTileBackdrop)<< 24);
+
+
+        if(drawTileBackdrop != 0){
+            int tileCtrl = int((drawTileWord >> 16)& 0xffu);
+            int maskCtrl =(tileCtrl >> 0)& 0x3;
+
+            if((maskCtrl & 0x2)!= 0 && mod(abs(drawTileBackdrop), 2)== 0){
+                zWrite = false;
+            }
+        }
 
 
         ivec2 tileCoord = ivec2(tileX, tileY)+ ivec2(drawTileRect . xy);

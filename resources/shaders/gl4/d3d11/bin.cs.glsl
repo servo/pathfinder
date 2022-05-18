@@ -39,18 +39,18 @@ uniform int uMicrolineCount;
 
 uniform int uMaxFillCount;
 
-layout(std430, binding = 0)buffer bMicrolines {
-    restrict readonly uvec4 iMicrolines[];
+restrict readonly layout(std430, binding = 0)buffer bMicrolines {
+    uvec4 iMicrolines[];
 };
 
-layout(std430, binding = 1)buffer bMetadata {
+restrict readonly layout(std430, binding = 1)buffer bMetadata {
 
 
 
 
 
 
-    restrict readonly ivec4 iMetadata[];
+    ivec4 iMetadata[];
 };
 
 
@@ -58,27 +58,27 @@ layout(std430, binding = 1)buffer bMetadata {
 
 
 
-layout(std430, binding = 2)buffer bIndirectDrawParams {
-    restrict uint iIndirectDrawParams[];
+restrict layout(std430, binding = 2)buffer bIndirectDrawParams {
+    uint iIndirectDrawParams[];
 };
 
-layout(std430, binding = 3)buffer bFills {
-    restrict writeonly uint iFills[];
+restrict writeonly layout(std430, binding = 3)buffer bFills {
+    uint iFills[];
 };
 
-layout(std430, binding = 4)buffer bTiles {
+restrict layout(std430, binding = 4)buffer bTiles {
 
 
 
 
-    restrict uint iTiles[];
+    uint iTiles[];
 };
 
-layout(std430, binding = 5)buffer bBackdrops {
+restrict layout(std430, binding = 5)buffer bBackdrops {
 
 
 
-    restrict uint iBackdrops[];
+    uint iBackdrops[];
 };
 
 uint computeTileIndexNoCheck(ivec2 tileCoords, ivec4 pathTileRect, uint pathTileOffset){

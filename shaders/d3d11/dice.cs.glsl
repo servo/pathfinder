@@ -40,37 +40,37 @@ uniform int uPathCount;
 uniform int uLastBatchSegmentIndex;
 uniform int uMaxMicrolineCount;
 
-layout(std430, binding = 0) buffer bComputeIndirectParams {
+restrict layout(std430, binding = 0) buffer bComputeIndirectParams {
     // [0]: number of x workgroups
     // [1]: number of y workgroups (always 1)
     // [2]: number of z workgroups (always 1)
     // [3]: number of output microlines
-    restrict uint iComputeIndirectParams[];
+    uint iComputeIndirectParams[];
 };
 
 // Indexed by batch path index.
-layout(std430, binding = 1) buffer bDiceMetadata {
+restrict readonly layout(std430, binding = 1) buffer bDiceMetadata {
     // x: global path ID
     // y: first global segment index
     // z: first batch segment index
     // w: unused
-    restrict readonly uvec4 iDiceMetadata[];
+    uvec4 iDiceMetadata[];
 };
 
-layout(std430, binding = 2) buffer bPoints {
-    restrict readonly vec2 iPoints[];
+restrict readonly layout(std430, binding = 2) buffer bPoints {
+    vec2 iPoints[];
 };
 
-layout(std430, binding = 3) buffer bInputIndices {
-    restrict readonly uvec2 iInputIndices[];
+restrict readonly layout(std430, binding = 3) buffer bInputIndices {
+    uvec2 iInputIndices[];
 };
 
-layout(std430, binding = 4) buffer bMicrolines {
+restrict layout(std430, binding = 4) buffer bMicrolines {
     // x: from (X, Y) whole pixels, packed signed 16-bit
     // y: to (X, Y) whole pixels, packed signed 16-bit
     // z: (from X, from Y, to X, to Y) fractional pixels, packed unsigned 8-bit (0.8 fixed point)
     // w: path ID
-    restrict uvec4 iMicrolines[];
+    uvec4 iMicrolines[];
 };
 
 void emitMicroline(vec4 microlineSegment, uint pathIndex, uint outputMicrolineIndex) {
