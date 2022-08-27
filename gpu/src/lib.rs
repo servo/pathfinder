@@ -130,12 +130,12 @@ pub trait Device: Sized {
         let image = image::load_from_memory_with_format(&data, ImageFormat::Png).unwrap();
         match format {
             TextureFormat::R8 => {
-                let image = image.to_luma();
+                let image = image.to_luma8();
                 let size = vec2i(image.width() as i32, image.height() as i32);
                 self.create_texture_from_data(format, size, TextureDataRef::U8(&image))
             }
             TextureFormat::RGBA8 => {
-                let image = image.to_rgba();
+                let image = image.to_rgba8();
                 let size = vec2i(image.width() as i32, image.height() as i32);
                 self.create_texture_from_data(format, size, TextureDataRef::U8(&image))
             }
@@ -152,13 +152,13 @@ pub trait Device: Sized {
         let image = image::load_from_memory_with_format(&data, ImageFormat::Png).unwrap();
         match format {
             TextureFormat::R8 => {
-                let image = image.to_luma();
+                let image = image.to_luma8();
                 let size = vec2i(image.width() as i32, image.height() as i32);
                 let rect = RectI::new(Vector2I::default(), size);
                 self.upload_to_texture(&texture, rect, TextureDataRef::U8(&image))
             }
             TextureFormat::RGBA8 => {
-                let image = image.to_rgba();
+                let image = image.to_rgba8();
                 let size = vec2i(image.width() as i32, image.height() as i32);
                 let rect = RectI::new(Vector2I::default(), size);
                 self.upload_to_texture(&texture, rect, TextureDataRef::U8(&image))
