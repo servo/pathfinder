@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: ['master', 'auto']
+    branches: ['master']
   pull_request:
-
+  merge_group:
+    types: [checks_requested]
+    
 jobs:
   Test:
     runs-on: ubuntu-latest
@@ -41,7 +43,7 @@ jobs:
         run: cargo test
 
   build_result:
-    name: homu build finished
+    name: Result
     runs-on: ubuntu-latest
     needs:
       - "Test"
