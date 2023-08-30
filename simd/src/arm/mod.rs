@@ -25,11 +25,11 @@ macro_rules! simd_shuffle2 {
             const IDX: [u32; 2] = $idx;
         }
 
-        simd_shuffle2($x, $y, ConstParam::<$($imm),+>::IDX)
+        simd_shuffle($x, $y, ConstParam::<$($imm),+>::IDX)
     }};
     ($x:expr, $y:expr, $idx:expr $(,)?) => {{
         const IDX: [u32; 2] = $idx;
-        simd_shuffle2($x, $y, IDX)
+        simd_shuffle($x, $y, IDX)
     }};
 }
 
@@ -40,11 +40,11 @@ macro_rules! simd_shuffle4 {
             const IDX: [u32; 4] = $idx;
         }
 
-        simd_shuffle4($x, $y, ConstParam::<$($imm),+>::IDX)
+        simd_shuffle($x, $y, ConstParam::<$($imm),+>::IDX)
     }};
     ($x:expr, $y:expr, $idx:expr $(,)?) => {{
         const IDX: [u32; 4] = $idx;
-        simd_shuffle4($x, $y, IDX)
+        simd_shuffle($x, $y, IDX)
     }};
 }
 
@@ -884,8 +884,7 @@ extern "platform-intrinsic" {
     fn simd_le<T, U>(x: T, y: T) -> U;
     fn simd_lt<T, U>(x: T, y: T) -> U;
 
-    fn simd_shuffle2<T, U>(x: T, y: T, idx: [u32; 2]) -> U;
-    fn simd_shuffle4<T, U>(x: T, y: T, idx: [u32; 4]) -> U;
+    fn simd_shuffle<T, I, U>(x: T, y: T, idx: I) -> U;
 
     fn simd_cast<T, U>(x: T) -> U;
 }

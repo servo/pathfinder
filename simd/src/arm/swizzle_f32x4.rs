@@ -17,11 +17,11 @@ macro_rules! simd_shuffle4 {
             const IDX: [u32; 4] = $idx;
         }
 
-        arm::simd_shuffle4($x, $y, ConstParam::<$($imm),+>::IDX)
+        arm::simd_shuffle($x, $y, ConstParam::<$($imm),+>::IDX)
     }};
     ($x:expr, $y:expr, $idx:expr $(,)?) => {{
         const IDX: [u32; 4] = $idx;
-        arm::simd_shuffle4($x, $y, IDX)
+        arm::simd_shuffle($x, $y, IDX)
     }};
 }
 
