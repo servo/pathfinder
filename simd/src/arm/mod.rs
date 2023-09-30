@@ -233,6 +233,13 @@ impl Sub<F32x2> for F32x2 {
     }
 }
 
+impl PartialEq for F32x2 {
+    #[inline]
+    fn eq(&self, other: &F32x2) -> bool {
+        self.packed_eq(*other).all_true()
+    }
+}
+
 // Four 32-bit floats
 
 #[derive(Clone, Copy)]
