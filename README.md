@@ -1,6 +1,6 @@
 # Pathfinder 3
 
-![Logo](https://github.com/servo/pathfinder/raw/master/resources/textures/pathfinder-logo.png)
+![Logo](https://github.com/servo/pathfinder/raw/main/resources/textures/pathfinder-logo.png)
 
 Pathfinder 3 is a fast, practical, GPU-based rasterizer for fonts and vector graphics using OpenGL
 3.0+, OpenGL ES 3.0+, WebGL 2, and Metal.
@@ -17,7 +17,7 @@ vector rendering to any Rust or C/C++ app with it. The library is available on `
 ### Demos
 
 Demo app sources are available in
-[demo/native](https://github.com/servo/pathfinder/tree/master/demo/native). Simply run:
+[demo/native](https://github.com/servo/pathfinder/tree/main/demo/native). Simply run:
 
     $ cd demo/native
     $ cargo run --release
@@ -69,8 +69,9 @@ The project features:
   in quality. This is intended to be useful for vector-graphics-based user interfaces in VR, for
   example.
 
-* Lightweight. Pathfinder is designed first and foremost for simplicity and generality instead of
-  a large number of specialized fast paths. It consists of a set of modular crates, so applications can pick and choose only the components that are necessary to minimize dependencies.
+* Lightweight. Pathfinder is designed first and foremost for simplicity and generality instead of a
+  large number of specialized fast paths. It consists of a set of modular crates, so applications
+  can pick and choose only the components that are necessary to minimize dependencies.
 
 * Portability to most GPUs manufactured in the last decade, including integrated and mobile GPUs.
   Any GPU capable of Direct3D 9/OpenGL 3.0/WebGL 2.0 should be able to run Pathfinder. Currently,
@@ -85,7 +86,7 @@ Pathfinder can be used from either Rust or C/C++. See the appropriate section be
 Simply run `cargo build --release` at top level to build all the crates. Pathfinder is a set of
 modular crates, allowing you to select only the parts of the library you need and omit the rest.
 The libraries are available on `crates.io` with the `pathfinder_` prefix (e.g.
-`pathfinder_canvas`), but you may wish to use the `master` branch for the latest features and bug
+`pathfinder_canvas`), but you may wish to use the `main` branch for the latest features and bug
 fixes.
 
 ### C
@@ -115,7 +116,7 @@ handle violations.)
 
 ## Build status
 
-[![Build Status](https://travis-ci.org/servo/pathfinder.svg?branch=master)](https://travis-ci.org/servo/pathfinder)
+[![Build Status](https://github.com/servo/pathfinder/actions/workflows/main.yml/badge.svg)](https://github.com/servo/pathfinder/actions)
 
 ## Authors
 
