@@ -9,6 +9,7 @@
 // except according to those terms.
 
 #![cfg_attr(pf_rustc_nightly, feature(link_llvm_intrinsics, platform_intrinsics))]
+#![cfg_attr(all(target_arch = "aarch64", nightly), feature(stdarch_arm_crc32))]
 #![cfg_attr(pf_rustc_nightly, feature(simd_ffi))]
 
 //! A minimal SIMD abstraction, usable outside of Pathfinder.
