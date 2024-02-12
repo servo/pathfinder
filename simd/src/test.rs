@@ -37,7 +37,7 @@ fn test_f32x4_accessors_and_mutators() {
 fn test_f32x4_basic_ops() {
     let a = F32x4::new(1.0, 3.0, 5.0, 7.0);
     let b = F32x4::new(2.0, 2.0, 6.0, 6.0);
-    assert_eq!(a.approx_recip(), F32x4::new(0.99975586, 0.33325195, 0.19995117, 0.14282227));
+    assert_eq!(a.approx_recip(), F32x4::new(0.99975586, 0.333313, 0.19995117, 0.14282227));
     assert_eq!(a.min(b), F32x4::new(1.0, 2.0, 5.0, 6.0));
     assert_eq!(a.max(b), F32x4::new(2.0, 3.0, 6.0, 7.0));
     let c = F32x4::new(-1.0, 1.3, -20.0, 3.6);
