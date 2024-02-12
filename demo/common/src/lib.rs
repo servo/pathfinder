@@ -50,8 +50,8 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use usvg::{Options as UsvgOptions, Tree as SvgTree};
-use pdf::file::File as PdfFile;
-use pdf_render::Cache as PdfRenderCache;
+use pdf::file::{CachedFile, FileOptions};
+use pdf_render::{Cache as PdfRenderCache, SceneBackend};
 
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use pathfinder_gl::GLDevice as DeviceImpl;
@@ -86,7 +86,7 @@ mod ui;
 enum Content {
     Svg(SvgTree),
     Pdf {
-        file: PdfFile<Vec<u8>>,
+        file: CachedFile<Vec<u8>>,
         cache: PdfRenderCache,
         page_nr: u32
     }
@@ -773,8 +773,9 @@ impl Content {
             }
             Content::Pdf { ref file, ref mut cache, page_nr } => {
                 let page = file.get_page(page_nr).expect("no such page");
-                let (scene, _) = cache.render_page(file, &page, Transform2F::default()).unwrap();
-                (scene, String::new())
+                let mut backend = SceneBackend::new(cache);
+                pdf_render::render_page(&mut backend, &file.resolver(), &page, Transform2F::default()).unwrap();
+                (backend.finish(), String::new())
             }
         }
     }
@@ -791,7 +792,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
 
     if let Ok(tree) = SvgTree::from_data(&data, &UsvgOptions::default()) {
         Content::Svg(tree)
-    } else if let Ok(file) = PdfFile::from_data(data) {
+    } else if let Ok(file) = FileOptions::cached().load(data) {
         Content::Pdf { file, cache: PdfRenderCache::new(), page_nr: 0 }
     } else {
         panic!("can't load data");
