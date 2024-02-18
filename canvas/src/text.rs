@@ -10,6 +10,7 @@
 
 use crate::{CanvasRenderingContext2D, State, TextAlign, TextBaseline};
 use font_kit::canvas::RasterizationOptions;
+use font_kit::error::{FontLoadingError, SelectionError};
 use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
 use font_kit::hinting::HintingOptions;
@@ -189,9 +190,11 @@ impl ToTextLayout for TextMetrics {
 #[derive(Clone)]
 pub struct CanvasFontContext(pub(crate) Rc<RefCell<CanvasFontContextData>>);
 
+/// The reason a font could not be loaded
+#[derive(Debug)]
 pub enum FontError {
-    NotFound,
-    LoadError,
+    NotFound(SelectionError),
+    LoadError(FontLoadingError),
 }
 
 pub(super) struct CanvasFontContextData {
@@ -237,8 +240,8 @@ impl CanvasFontContext {
         }
         this.font_source
             .select_by_postscript_name(postscript_name)
-            .map_err(|_| FontError::NotFound)?
-            .load().map_err(|_| FontError::LoadError)
+            .map_err(FontError::NotFound)?
+            .load().map_err(FontError::LoadError)
     }
 }
 
