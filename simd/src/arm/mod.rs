@@ -10,6 +10,7 @@
 
 use std::arch::aarch64::{self, float32x2_t, float32x4_t, int32x2_t, int32x4_t};
 use std::arch::aarch64::{uint32x2_t, uint32x4_t};
+use std::intrinsics::simd::*;
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -867,33 +868,6 @@ impl Index<usize> for U32x4 {
             mem::transmute::<*const u32, &u32>(ptr.offset(index as isize))
         }
     }
-}
-
-// Intrinsics
-
-extern "platform-intrinsic" {
-    fn simd_add<T>(x: T, y: T) -> T;
-    fn simd_div<T>(x: T, y: T) -> T;
-    fn simd_mul<T>(x: T, y: T) -> T;
-    fn simd_sub<T>(x: T, y: T) -> T;
-
-    fn simd_shr<T>(x: T, y: T) -> T;
-
-    fn simd_and<T>(x: T, y: T) -> T;
-    fn simd_or<T>(x: T, y: T) -> T;
-    fn simd_xor<T>(x: T, y: T) -> T;
-
-    fn simd_fmin<T>(x: T, y: T) -> T;
-    fn simd_fmax<T>(x: T, y: T) -> T;
-
-    fn simd_eq<T, U>(x: T, y: T) -> U;
-    fn simd_gt<T, U>(x: T, y: T) -> U;
-    fn simd_le<T, U>(x: T, y: T) -> U;
-    fn simd_lt<T, U>(x: T, y: T) -> U;
-
-    fn simd_shuffle<T, I, U>(x: T, y: T, idx: I) -> U;
-
-    fn simd_cast<T, U>(x: T) -> U;
 }
 
 extern "C" {
