@@ -1,6 +1,6 @@
 [package]
 name = "pathfinder_simd"
-version = "0.5.2"
+version = "0.5.3"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 build = "build.rs"
