@@ -367,14 +367,14 @@ impl Contour {
             return Contour::from_rect(rect);
         }
         let radius = radius.min(rect.size() * 0.5);
-        let contol_point_offset = radius * QUARTER_ARC_CP_FROM_OUTSIDE;
+        let control_point_offset = radius * QUARTER_ARC_CP_FROM_OUTSIDE;
 
         let mut contour = Contour::with_capacity(8);
 
         // upper left corner
         {
             let p0 = rect.origin();
-            let p1 = p0 + contol_point_offset;
+            let p1 = p0 + control_point_offset;
             let p2 = p0 + radius;
             contour.push_endpoint(vec2f(p0.x(), p2.y()));
             contour.push_cubic(
@@ -387,7 +387,7 @@ impl Contour {
         // upper right
         {
             let p0 = rect.upper_right();
-            let p1 = p0 + contol_point_offset * vec2f(-1.0, 1.0);
+            let p1 = p0 + control_point_offset * vec2f(-1.0, 1.0);
             let p2 = p0 + radius * vec2f(-1.0, 1.0);
             contour.push_endpoint(vec2f(p2.x(), p0.y()));
             contour.push_cubic(
@@ -400,7 +400,7 @@ impl Contour {
         // lower right
         {
             let p0 = rect.lower_right();
-            let p1 = p0 + contol_point_offset * vec2f(-1.0, -1.0);
+            let p1 = p0 + control_point_offset * vec2f(-1.0, -1.0);
             let p2 = p0 + radius * vec2f(-1.0, -1.0);
             contour.push_endpoint(vec2f(p0.x(), p2.y()));
             contour.push_cubic(
@@ -413,7 +413,7 @@ impl Contour {
         // lower left
         {
             let p0 = rect.lower_left();
-            let p1 = p0 + contol_point_offset * vec2f(1.0, -1.0);
+            let p1 = p0 + control_point_offset * vec2f(1.0, -1.0);
             let p2 = p0 + radius * vec2f(1.0, -1.0);
             contour.push_endpoint(vec2f(p2.x(), p0.y()));
             contour.push_cubic(
