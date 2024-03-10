@@ -377,8 +377,11 @@ pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offs
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetFontByPostScriptName(canvas: PFCanvasRef,
                                                          postscript_name: *const c_char,
-                                                         postscript_name_len: usize) {
-    (*canvas).set_font(to_rust_string(&postscript_name, postscript_name_len))
+                                                         postscript_name_len: usize) -> i32 {
+    match (*canvas).set_font(to_rust_string(&postscript_name, postscript_name_len)) {
+        Ok(_) => 0,
+        Err(_) => 1
+    }
 }
 
 #[no_mangle]

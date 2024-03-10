@@ -10,6 +10,7 @@
 
 use crate::{CanvasRenderingContext2D, State, TextAlign, TextBaseline};
 use font_kit::canvas::RasterizationOptions;
+use font_kit::error::{FontLoadingError, SelectionError};
 use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
 use font_kit::hinting::HintingOptions;
@@ -103,9 +104,10 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
-    pub fn set_font<FC>(&mut self, font_collection: FC) where FC: IntoFontCollection {
-        let font_collection = font_collection.into_font_collection(&self.canvas_font_context);
+    pub fn set_font<FC>(&mut self, font_collection: FC) -> Result<(), FontError> where FC: IntoFontCollection {
+        let font_collection = font_collection.into_font_collection(&self.canvas_font_context)?;
         self.current_state.font_collection = font_collection; 
+        Ok(())
     }
 
     #[inline]
@@ -188,6 +190,13 @@ impl ToTextLayout for TextMetrics {
 #[derive(Clone)]
 pub struct CanvasFontContext(pub(crate) Rc<RefCell<CanvasFontContextData>>);
 
+/// The reason a font could not be loaded
+#[derive(Debug)]
+pub enum FontError {
+    NotFound(SelectionError),
+    LoadError(FontLoadingError),
+}
+
 pub(super) struct CanvasFontContextData {
     pub(super) font_context: FontContext<Font>,
     #[allow(dead_code)]
@@ -224,16 +233,15 @@ impl CanvasFontContext {
         CanvasFontContext::new(Arc::new(MemSource::from_fonts(fonts).unwrap()))
     }
 
-    fn get_font_by_postscript_name(&self, postscript_name: &str) -> Font {
+    fn get_font_by_postscript_name(&self, postscript_name: &str) -> Result<Font, FontError> {
         let this = self.0.borrow();
         if let Some(cached_font) = this.font_context.get_cached_font(postscript_name) {
-            return (*cached_font).clone();
+            return Ok((*cached_font).clone());
         }
         this.font_source
             .select_by_postscript_name(postscript_name)
-            .expect("Couldn't find a font with that PostScript name!")
-            .load()
-            .expect("Failed to load the font!")
+            .map_err(FontError::NotFound)?
+            .load().map_err(FontError::LoadError)
     }
 }
 
@@ -523,46 +531,46 @@ impl VerticalMetrics {
 /// Various things that can be conveniently converted into font collections for use with
 /// `CanvasRenderingContext2D::set_font()`.
 pub trait IntoFontCollection {
-    fn into_font_collection(self, font_context: &CanvasFontContext) -> Arc<FontCollection>;
+    fn into_font_collection(self, font_context: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError>;
 }
 
 impl IntoFontCollection for Arc<FontCollection> {
     #[inline]
-    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
-        self
+    fn into_font_collection(self, _: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
+        Ok(self)
     }
 }
 
 impl IntoFontCollection for FontFamily {
     #[inline]
-    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+    fn into_font_collection(self, _: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
         let mut font_collection = FontCollection::new();
         font_collection.add_family(self);
-        Arc::new(font_collection)
+        Ok(Arc::new(font_collection))
     }
 }
 
 impl IntoFontCollection for Vec<FontFamily> {
     #[inline]
-    fn into_font_collection(self, _: &CanvasFontContext) -> Arc<FontCollection> {
+    fn into_font_collection(self, _: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
         let mut font_collection = FontCollection::new();
         for family in self {
             font_collection.add_family(family);
         }
-        Arc::new(font_collection)
+        Ok(Arc::new(font_collection))
     }
 }
 
 impl IntoFontCollection for Font {
     #[inline]
-    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
-        FontFamily::new_from_font(self).into_font_collection(context)
+    fn into_font_collection(self, context: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
+        Ok(FontFamily::new_from_font(self).into_font_collection(context)?)
     }
 }
 
 impl<'a> IntoFontCollection for &'a [Font] {
     #[inline]
-    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+    fn into_font_collection(self, context: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
         let mut family = FontFamily::new();
         for font in self {
             family.add_font(FontRef::new((*font).clone()))
@@ -573,19 +581,19 @@ impl<'a> IntoFontCollection for &'a [Font] {
 
 impl<'a> IntoFontCollection for &'a str {
     #[inline]
-    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
-        context.get_font_by_postscript_name(self).into_font_collection(context)
+    fn into_font_collection(self, context: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
+        context.get_font_by_postscript_name(self)?.into_font_collection(context)
     }
 }
 
 impl<'a, 'b> IntoFontCollection for &'a [&'b str] {
     #[inline]
-    fn into_font_collection(self, context: &CanvasFontContext) -> Arc<FontCollection> {
+    fn into_font_collection(self, context: &CanvasFontContext) -> Result<Arc<FontCollection>, FontError> {
         let mut font_collection = FontCollection::new();
         for postscript_name in self {
-            let font = context.get_font_by_postscript_name(postscript_name);
+            let font = context.get_font_by_postscript_name(postscript_name)?;
             font_collection.add_family(FontFamily::new_from_font(font));
         }
-        Arc::new(font_collection)
+        Ok(Arc::new(font_collection))
     }
 }
