@@ -729,6 +729,24 @@ kernel void main0(constant int2& uFramebufferTileSize [[buffer(3)]], constant in
             else
             {
                 backdrop = int(tileControlWord) >> 24;
+                if (backdrop != 0)
+                {
+                    int maskCtrl = (tileCtrl >> 0) & 3;
+                    bool _1751 = (maskCtrl & 2) != 0;
+                    bool _1759;
+                    if (_1751)
+                    {
+                        _1759 = mod(float(abs(backdrop)), 2.0) == 0.0;
+                    }
+                    else
+                    {
+                        _1759 = _1751;
+                    }
+                    if (_1759)
+                    {
+                        break;
+                    }
+                }
                 maskTileCoord = uint2(0u);
                 tileCtrl &= (-4);
             }
