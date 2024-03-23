@@ -1,0 +1,28 @@
+# This file must contain the paths of all resources that are used by the Pathfinder library.
+#
+# When you add a new resource, make sure to add it to this file.
+
+shaders/gl3/blit.fs.glsl
+shaders/gl3/blit.vs.glsl
+shaders/gl3/clear.fs.glsl
+shaders/gl3/clear.vs.glsl
+shaders/gl3/d3d9/fill.fs.glsl
+shaders/gl3/d3d9/fill.vs.glsl
+shaders/gl3/d3d9/tile.fs.glsl
+shaders/gl3/d3d9/tile.vs.glsl
+shaders/gl3/d3d9/tile_clip_combine.fs.glsl
+shaders/gl3/d3d9/tile_clip_combine.vs.glsl
+shaders/gl3/d3d9/tile_clip_copy.fs.glsl
+shaders/gl3/d3d9/tile_clip_copy.vs.glsl
+shaders/gl3/d3d9/tile_copy.fs.glsl
+shaders/gl3/d3d9/tile_copy.vs.glsl
+shaders/gl3/debug/solid.fs.glsl
+shaders/gl3/debug/solid.vs.glsl
+shaders/gl3/debug/texture.fs.glsl
+shaders/gl3/debug/texture.vs.glsl
+shaders/gl3/demo_ground.fs.glsl
+shaders/gl3/demo_ground.vs.glsl
+shaders/gl3/reproject.fs.glsl
+shaders/gl3/reproject.vs.glsl
+shaders/gl3/stencil.fs.glsl
+shaders/gl3/stencil.vs.glsl
