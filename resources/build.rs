@@ -23,25 +23,36 @@ fn main() {
     writeln!(&mut dest,
              "pub static RESOURCES: &'static [(&'static str, &'static [u8])] = &[").unwrap();
 
-    let src = BufReader::new(File::open("MANIFEST").unwrap());
-    for line in src.lines() {
-        let line = line.unwrap();
-        let line = line.trim_start().trim_end();
-        if line.is_empty() || line.starts_with("#") {
-            continue;
+    let mut add_manifest = |path: &str| {
+        let src = BufReader::new(File::open(path).unwrap());
+        for line in src.lines() {
+            let line = line.unwrap();
+            let line = line.trim_start().trim_end();
+            if line.is_empty() || line.starts_with("#") {
+                continue;
+            }
+    
+            let escaped_path = line.escape_default().to_string();
+            let mut full_path = cwd.clone();
+            full_path.push(line);
+            let escaped_full_path = full_path.to_str().unwrap().escape_default().to_string();
+    
+            writeln!(&mut dest,
+                     "    (\"{}\", include_bytes!(\"{}\")),",
+                     escaped_path,
+                     escaped_full_path).unwrap();
+    
+            println!("cargo:rerun-if-changed={}", line);
         }
+    };
 
-        let escaped_path = line.escape_default().to_string();
-        let mut full_path = cwd.clone();
-        full_path.push(line);
-        let escaped_full_path = full_path.to_str().unwrap().escape_default().to_string();
+    add_manifest("MANIFEST");
 
-        writeln!(&mut dest,
-                 "    (\"{}\", include_bytes!(\"{}\")),",
-                 escaped_path,
-                 escaped_full_path).unwrap();
-
-        println!("cargo:rerun-if-changed={}", line);
+    for part in ["debug", "gl3", "gl4", "metal"] {
+        let key = format!("CARGO_FEATURE_{part}");
+        if env::var(&key).is_ok() {
+            add_manifest(&format!("MANIFEST.{part}"));
+        }
     }
 
     writeln!(&mut dest, "];").unwrap();
