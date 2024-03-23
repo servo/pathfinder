@@ -49,7 +49,7 @@ fn main() {
     add_manifest("MANIFEST");
 
     for part in ["debug", "gl3", "gl4", "metal"] {
-        let key = format!("CARGO_FEATURE_{part}");
+        let key = format!("CARGO_FEATURE_{}", part.to_ascii_uppercase());
         if env::var(&key).is_ok() {
             add_manifest(&format!("MANIFEST.{part}"));
         }

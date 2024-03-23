@@ -32,4 +32,4 @@ shaders/gl4/demo_ground.vs.glsl
 shaders/gl4/reproject.fs.glsl
 shaders/gl4/reproject.vs.glsl
 shaders/gl4/stencil.fs.glsl
-shaders/gl4/stencil.vs.
+shaders/gl4/stencil.vs.glsl

@@ -2,4 +2,5 @@
 #
 # When you add a new resource, make sure to add it to this file.
 
+textures/area-lut.png
 textures/gamma-lut.png
