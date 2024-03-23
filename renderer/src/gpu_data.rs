@@ -64,12 +64,15 @@ pub enum RenderCommand {
     // Upload texture metadata.
     UploadTextureMetadata(Vec<TextureMetadataEntry>),
 
+    #[cfg(feature="d3d9")]
     // Adds fills to the queue.
     AddFillsD3D9(Vec<Fill>),
 
+    #[cfg(feature="d3d9")]
     // Flushes the queue of fills.
     FlushFillsD3D9,
 
+    #[cfg(feature="d3d11")]
     /// Upload a scene to GPU.
     /// 
     /// This will only be sent if dicing and binning is done on GPU.
@@ -85,12 +88,15 @@ pub enum RenderCommand {
     // Pops a render target from the stack.
     PopRenderTarget,
 
+    #[cfg(feature="d3d11")]
     // Computes backdrops for tiles, prepares any Z-buffers, and performs clipping.
     PrepareClipTilesD3D11(TileBatchDataD3D11),
 
+    #[cfg(feature="d3d9")]
     // Draws a batch of tiles to the render target on top of the stack.
     DrawTilesD3D9(DrawTileBatchD3D9),
 
+    #[cfg(feature="d3d11")]
     // Draws a batch of tiles to the render target on top of the stack.
     DrawTilesD3D11(DrawTileBatchD3D11),
 
@@ -210,7 +216,9 @@ pub struct GlobalPathId {
 
 #[derive(Clone, Debug)]
 pub enum DrawTileBatch {
+    #[cfg(feature="d3d9")]
     D3D9(DrawTileBatchD3D9),
+    #[cfg(feature="d3d11")]
     D3D11(DrawTileBatchD3D11),
 }
 
@@ -482,10 +490,13 @@ impl Debug for RenderCommand {
             RenderCommand::UploadTextureMetadata(ref metadata) => {
                 write!(formatter, "UploadTextureMetadata(x{})", metadata.len())
             }
+            #[cfg(feature="d3d9")]
             RenderCommand::AddFillsD3D9(ref fills) => {
                 write!(formatter, "AddFillsD3D9(x{})", fills.len())
             }
+            #[cfg(feature="d3d9")]
             RenderCommand::FlushFillsD3D9 => write!(formatter, "FlushFills"),
+            #[cfg(feature="d3d11")]
             RenderCommand::UploadSceneD3D11 { ref draw_segments, ref clip_segments } => {
                 write!(formatter,
                        "UploadSceneD3D11(DP x{}, DI x{}, CP x{}, CI x{})",
@@ -494,6 +505,7 @@ impl Debug for RenderCommand {
                        clip_segments.points.len(),
                        clip_segments.indices.len())
             }
+            #[cfg(feature="d3d11")]
             RenderCommand::PrepareClipTilesD3D11(ref batch) => {
                 let clipped_path_count = match batch.clipped_path_info {
                     None => 0,
@@ -508,9 +520,11 @@ impl Debug for RenderCommand {
                 write!(formatter, "PushRenderTarget({:?})", render_target_id)
             }
             RenderCommand::PopRenderTarget => write!(formatter, "PopRenderTarget"),
+            #[cfg(feature="d3d9")]
             RenderCommand::DrawTilesD3D9(ref batch) => {
                 write!(formatter, "DrawTilesD3D9(x{:?})", batch.tiles.len())
             }
+            #[cfg(feature="d3d11")]
             RenderCommand::DrawTilesD3D11(ref batch) => {
                 write!(formatter,
                        "DrawTilesD3D11({:?}, C0 {:?})",

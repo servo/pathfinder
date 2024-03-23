@@ -11,8 +11,11 @@
 //! The GPU renderer that processes commands necessary to render a scene.
 
 use crate::gpu::blend::{ToBlendState, ToCompositeCtrl};
+#[cfg(feature="d3d9")]
 use crate::gpu::d3d9::renderer::RendererD3D9;
+#[cfg(feature="d3d11")]
 use crate::gpu::d3d11::renderer::RendererD3D11;
+#[cfg(feature="ui")]
 use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu::options::{DestFramebuffer, RendererLevel, RendererMode, RendererOptions};
 use crate::gpu::perf::{PendingTimer, RenderStats, RenderTime, TimeCategory, TimerQueryCache};
@@ -85,15 +88,25 @@ pub struct Renderer<D> where D: Device {
     frame: Frame<D>,
 
     // Debug
+    #[cfg(feature="debug")]
     current_cpu_build_time: Option<Duration>,
+    #[cfg(feature="debug")]
     pending_timers: VecDeque<PendingTimer<D>>,
+    
+    #[cfg(feature="ui")]
     debug_ui_presenter: Option<DebugUIPresenter<D>>,
+    #[cfg(feature="ui")]
     last_stats: VecDeque<RenderStats>,
+
+    #[cfg(feature="debug")]
     last_rendering_time: Option<RenderTime>,
 }
 
 enum RendererLevelImpl<D> where D: Device {
+    #[cfg(feature="d3d9")]
     D3D9(RendererD3D9<D>),
+    
+    #[cfg(feature="d3d11")]
     D3D11(RendererD3D11<D>),
 }
 
@@ -261,12 +274,19 @@ impl<D> Renderer<D> where D: Device {
         };
 
         let level_impl = match core.mode.level {
+            #[cfg(feature="d3d9")]
             RendererLevel::D3D9 => {
                 RendererLevelImpl::D3D9(RendererD3D9::new(&mut core, resources))
             }
+            #[cfg(feature="d3d11")]
             RendererLevel::D3D11 => {
                 RendererLevelImpl::D3D11(RendererD3D11::new(&mut core, resources))
             }
+            #[cfg(not(feature="d3d9"))]
+            RendererLevel::D3D9 => unimplemented!("feature d3d9 not enabled"),
+
+            #[cfg(not(feature="d3d11"))]
+            RendererLevel::D3D11 => unimplemented!("feature d3d11 not enabled"),
         };
 
         let blit_program = BlitProgram::new(&core.device, resources);
@@ -274,6 +294,7 @@ impl<D> Renderer<D> where D: Device {
         let stencil_program = StencilProgram::new(&core.device, resources);
         let reprojection_program = ReprojectionProgram::new(&core.device, resources);
 
+        #[cfg(feature="ui")]
         let debug_ui_presenter = if core.options.show_debug_ui {
             Some(DebugUIPresenter::new(&core.device, resources, window_size, core.mode.level))
         } else {
@@ -303,10 +324,17 @@ impl<D> Renderer<D> where D: Device {
             stencil_program,
             reprojection_program,
 
+            #[cfg(feature="debug")]
             current_cpu_build_time: None,
+            #[cfg(feature="debug")]
             pending_timers: VecDeque::new(),
+
+            #[cfg(feature="ui")]
             debug_ui_presenter,
+            #[cfg(feature="ui")]
             last_stats: VecDeque::new(),
+
+            #[cfg(feature="debug")]
             last_rendering_time: None,
         }
     }
@@ -352,12 +380,15 @@ impl<D> Renderer<D> where D: Device {
             RenderCommand::UploadTextureMetadata(ref metadata) => {
                 self.upload_texture_metadata(metadata)
             }
+            #[cfg(feature="d3d9")]
             RenderCommand::AddFillsD3D9(ref fills) => {
                 self.level_impl.require_d3d9().add_fills(&mut self.core, fills)
             }
+            #[cfg(feature="d3d9")]
             RenderCommand::FlushFillsD3D9 => {
                 self.level_impl.require_d3d9().draw_buffered_fills(&mut self.core);
             }
+            #[cfg(feature="d3d11")]
             RenderCommand::UploadSceneD3D11 { ref draw_segments, ref clip_segments } => {
                 self.level_impl
                     .require_d3d11()
@@ -367,12 +398,15 @@ impl<D> Renderer<D> where D: Device {
                 self.push_render_target(render_target_id)
             }
             RenderCommand::PopRenderTarget => self.pop_render_target(),
+            #[cfg(feature="d3d11")]
             RenderCommand::PrepareClipTilesD3D11(ref batch) => {
                 self.level_impl.require_d3d11().prepare_tiles(&mut self.core, batch)
             }
+            #[cfg(feature="d3d9")]
             RenderCommand::DrawTilesD3D9(ref batch) => {
                 self.level_impl.require_d3d9().upload_and_draw_tiles(&mut self.core, batch)
             }
+            #[cfg(feature="d3d11")]
             RenderCommand::DrawTilesD3D11(ref batch) => {
                 self.level_impl.require_d3d11().prepare_and_draw_tiles(&mut self.core, batch)
             }
@@ -397,20 +431,27 @@ impl<D> Renderer<D> where D: Device {
         self.core.stats.gpu_bytes_committed = self.core.allocator.bytes_committed();
 
         match self.level_impl {
+            #[cfg(feature="d3d9")]
             RendererLevelImpl::D3D9(_) => {}
+            #[cfg(feature="d3d11")]
             RendererLevelImpl::D3D11(ref mut d3d11_renderer) => {
                 d3d11_renderer.end_frame(&mut self.core)
             }
         }
 
-        if let Some(timer) = self.core.current_timer.take() {
-            self.pending_timers.push_back(timer);
+        #[cfg(feature="debug")]
+        {
+            if let Some(timer) = self.core.current_timer.take() {
+                self.pending_timers.push_back(timer);
+            }
+            self.current_cpu_build_time = None;
         }
-        self.current_cpu_build_time = None;
 
-        self.update_debug_ui();
-        if self.core.options.show_debug_ui {
-            self.draw_debug_ui();
+        #[cfg(feature="ui")] {
+            self.update_debug_ui();
+            if self.core.options.show_debug_ui {
+                self.draw_debug_ui();
+            }
         }
 
         self.core.allocator.purge_if_needed();
@@ -450,6 +491,7 @@ impl<D> Renderer<D> where D: Device {
         self.core.render_targets.clear();
     }
 
+    #[cfg(feature="ui")]
     fn update_debug_ui(&mut self) {
         self.last_stats.push_back(self.core.stats);
         self.shift_rendering_time();
@@ -466,6 +508,7 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
+    #[cfg(feature="ui")]
     fn draw_debug_ui(&mut self) {
         if let Some(ref mut debug_ui_presenter) = self.debug_ui_presenter {
             let window_size = self.core.options.dest.window_size(&self.core.device);
@@ -474,6 +517,7 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
+    #[cfg(feature="debug")]
     fn shift_rendering_time(&mut self) {
         if let Some(mut pending_timer) = self.pending_timers.pop_front() {
             for old_query in pending_timer.poll(&self.core.device) {
@@ -488,6 +532,7 @@ impl<D> Renderer<D> where D: Device {
         self.last_rendering_time = None;
     }
 
+    #[cfg(feature="debug")]
     /// Returns GPU timing information for the last frame, if present.
     pub fn last_rendering_time(&self) -> Option<RenderTime> {
         self.last_rendering_time
@@ -543,11 +588,13 @@ impl<D> Renderer<D> where D: Device {
     #[inline]
     pub fn dest_framebuffer_size_changed(&mut self) {
         let new_framebuffer_size = self.core.main_viewport().size();
+        #[cfg(feature="ui")]
         if let Some(ref mut debug_ui_presenter) = self.debug_ui_presenter {
             debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
         }
     }
 
+    #[cfg(feature="ui")]
     /// Returns a mutable reference to the debug UI.
     /// 
     /// You can use this function to draw custom debug widgets on screen, as the demo does.
@@ -1286,20 +1333,26 @@ impl<D> Frame<D> where D: Device {
 }
 
 impl<D> RendererLevelImpl<D> where D: Device {
+    #[cfg(feature="d3d9")]
     #[inline]
     fn require_d3d9(&mut self) -> &mut RendererD3D9<D> {
         match *self {
+            #[cfg(feature="d3d9")]
             RendererLevelImpl::D3D9(ref mut d3d9_renderer) => d3d9_renderer,
+            #[cfg(feature="d3d11")]
             RendererLevelImpl::D3D11(_) => {
                 panic!("Tried to enter the D3D9 path with a D3D11 renderer!")
             }
         }
     }
 
+    #[cfg(feature="d3d11")]
     #[inline]
     fn require_d3d11(&mut self) -> &mut RendererD3D11<D> {
         match *self {
+            #[cfg(feature="d3d11")]
             RendererLevelImpl::D3D11(ref mut d3d11_renderer) => d3d11_renderer,
+            #[cfg(feature="d3d9")]
             RendererLevelImpl::D3D9(_) => {
                 panic!("Tried to enter the D3D11 path with a D3D9 renderer!")
             }
@@ -1353,6 +1406,7 @@ pub(crate) struct PatternTexturePage {
     pub(crate) must_preserve_contents: bool,
 }
 
+#[cfg(feature="ui")]
 /// A mutable reference to the debug UI presenter.
 /// 
 /// You can use this structure to draw custom debug widgets on screen, as the demo does.
