@@ -928,7 +928,12 @@ impl Contour {
 
 impl Debug for Contour {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        for (segment_index, segment) in self.iter(ContourIterFlags::IGNORE_CLOSE_SEGMENT)
+        let contour_flags = match formatter.alternate() {
+            false => ContourIterFlags::IGNORE_CLOSE_SEGMENT,
+            true => ContourIterFlags::empty(),
+        };
+
+        for (segment_index, segment) in self.iter(contour_flags)
                                             .enumerate() {
             if segment_index == 0 {
                 write!(
