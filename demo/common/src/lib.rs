@@ -790,7 +790,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader,
         DataPath::Path(ref path) => std::fs::read(path).unwrap().into()
     };
 
-    if let Ok(tree) = SvgTree::from_data(&data, &UsvgOptions::default()) {
+    if let Ok(tree) = SvgTree::from_data(&data, &UsvgOptions::default().to_ref()) {
         Content::Svg(tree)
     } else if let Ok(file) = FileOptions::cached().load(data) {
         Content::Pdf { file, cache: PdfRenderCache::new(), page_nr: 0 }

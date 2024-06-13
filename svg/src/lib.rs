@@ -100,7 +100,7 @@ impl SVGScene {
         state.transform = state.transform * node_transform;
         match *node.borrow() {
             NodeKind::Group(ref group) => {
-                if group.filter.is_some() {
+                if !group.filter.is_empty() {
                     self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
                 }
                 if group.mask.is_some() {
