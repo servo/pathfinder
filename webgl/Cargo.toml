@@ -21,6 +21,7 @@ path = "../gpu"
 
 [dependencies.pathfinder_renderer]
 path = "../renderer"
+default-features = false
 
 [dependencies.pathfinder_simd]
 path = "../simd"

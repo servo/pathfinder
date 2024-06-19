@@ -1,0 +1,16 @@
+# This file must contain the paths of all resources that are used by the Pathfinder library.
+#
+# When you add a new resource, make sure to add it to this file.
+
+debug-fonts/regular.json
+textures/debug-corner-fill.png
+textures/debug-corner-outline.png
+textures/debug-font.png
+textures/demo-background.png
+textures/demo-effects.png
+textures/demo-open.png
+textures/demo-rotate.png
+textures/demo-screenshot.png
+textures/demo-zoom-actual-size.png
+textures/demo-zoom-in.png
+textures/demo-zoom-out.png

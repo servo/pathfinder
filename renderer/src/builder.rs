@@ -186,29 +186,33 @@ impl<'a, 'b, 'c, 'd> SceneBuilder<'a, 'b, 'c, 'd> {
             PrepareMode::GPU { .. } => None,
         };
 
-        // TODO(pcwalton): Do this earlier?
-        let scene_is_dirty = match (&prepare_mode, &self.sink.last_scene) {
-            (&PrepareMode::GPU { .. }, &None) => true,
-            (&PrepareMode::GPU { .. }, &Some(LastSceneInfo {
-                 scene_id: ref last_scene_id,
-                 scene_epoch: ref last_scene_epoch,
-                 ..
-            })) => *last_scene_id != self.scene.id() || *last_scene_epoch != self.scene.epoch(),
-            _ => false,
-        };
 
-        if scene_is_dirty {
-            let built_segments = BuiltSegments::from_scene(&self.scene);
-            self.sink.listener.send(RenderCommand::UploadSceneD3D11 {
-                draw_segments: built_segments.draw_segments,
-                clip_segments: built_segments.clip_segments,
-            });
-            self.sink.last_scene = Some(LastSceneInfo {
-                scene_id: self.scene.id(),
-                scene_epoch: self.scene.epoch(),
-                draw_segment_ranges: built_segments.draw_segment_ranges,
-                clip_segment_ranges: built_segments.clip_segment_ranges,
-            });
+        #[cfg(feature="d3d11")]
+        {
+            // TODO(pcwalton): Do this earlier?
+            let scene_is_dirty = match (&prepare_mode, &self.sink.last_scene) {
+                (&PrepareMode::GPU { .. }, &None) => true,
+                (&PrepareMode::GPU { .. }, &Some(LastSceneInfo {
+                    scene_id: ref last_scene_id,
+                    scene_epoch: ref last_scene_epoch,
+                    ..
+                })) => *last_scene_id != self.scene.id() || *last_scene_epoch != self.scene.epoch(),
+                _ => false,
+            };
+
+            if scene_is_dirty {
+                let built_segments = BuiltSegments::from_scene(&self.scene);
+                self.sink.listener.send(RenderCommand::UploadSceneD3D11 {
+                    draw_segments: built_segments.draw_segments,
+                    clip_segments: built_segments.clip_segments,
+                });
+                self.sink.last_scene = Some(LastSceneInfo {
+                    scene_id: self.scene.id(),
+                    scene_epoch: self.scene.epoch(),
+                    draw_segment_ranges: built_segments.draw_segment_ranges,
+                    clip_segment_ranges: built_segments.clip_segment_ranges,
+                });
+            }
         }
 
         self.finish_building(&paint_metadata, built_paths, &prepare_mode);
@@ -314,6 +318,7 @@ impl<'a, 'b, 'c, 'd> SceneBuilder<'a, 'b, 'c, 'd> {
     }
 
     fn send_fills(&self, fills: Vec<Fill>) {
+        #[cfg(feature="d3d9")]
         if !fills.is_empty() {
             self.sink.listener.send(RenderCommand::AddFillsD3D9(fills));
         }
@@ -356,8 +361,9 @@ impl<'a, 'b, 'c, 'd> SceneBuilder<'a, 'b, 'c, 'd> {
                        built_paths: Option<BuiltPaths>,
                        prepare_mode: &PrepareMode) {
         match self.sink.renderer_level {
+            #[cfg(feature="d3d9")]
             RendererLevel::D3D9 => self.sink.listener.send(RenderCommand::FlushFillsD3D9),
-            RendererLevel::D3D11 => {}
+            _ => {}
         }
 
         self.build_tile_batches(paint_metadata, prepare_mode, built_paths);
@@ -837,13 +843,16 @@ impl SegmentsD3D11 {
 struct TileBatchBuilder {
     prepare_commands: Vec<RenderCommand>,
     draw_commands: Vec<RenderCommand>,
+    #[cfg(feature="d3d11")]
     clip_batches_d3d11: Option<ClipBatchesD3D11>,
     next_batch_id: TileBatchId,
     level: TileBatchBuilderLevel,
 }
 
 enum TileBatchBuilderLevel {
+    #[cfg(feature="d3d9")]
     D3D9 { built_paths: BuiltPaths },
+    #[cfg(feature="d3d11")]
     D3D11,
 }
 
@@ -853,6 +862,7 @@ impl TileBatchBuilder {
             prepare_commands: vec![],
             draw_commands: vec![],
             next_batch_id: TileBatchId(MAX_CLIP_BATCHES),
+            #[cfg(feature="d3d11")]
             clip_batches_d3d11: match built_paths {
                 None => {
                     Some(ClipBatchesD3D11 {
@@ -863,8 +873,12 @@ impl TileBatchBuilder {
                 Some(_) => None,
             },
             level: match built_paths {
+                #[cfg(feature="d3d11")]
                 None => TileBatchBuilderLevel::D3D11,
+                #[cfg(feature="d3d9")]
                 Some(built_paths) => TileBatchBuilderLevel::D3D9 { built_paths },
+                #[allow(unreachable_patterns)]
+                _ => unreachable!()
             },
         }
     }
@@ -880,6 +894,7 @@ impl TileBatchBuilder {
         for draw_path_id in draw_path_id_range.start.0..draw_path_id_range.end.0 {
             let draw_path_id = DrawPathId(draw_path_id);
             let draw_path = match self.level {
+                #[cfg(feature="d3d11")]
                 TileBatchBuilderLevel::D3D11 { .. } => {
                     match self.prepare_draw_path_for_gpu_binning(scene,
                                                                  built_options,
@@ -890,6 +905,7 @@ impl TileBatchBuilder {
                         Some(built_draw_path) => Cow::Owned(built_draw_path),
                     }
                 }
+                #[cfg(feature="d3d9")]
                 TileBatchBuilderLevel::D3D9 { ref built_paths } => {
                     Cow::Borrowed(&built_paths.draw[draw_path_id.0 as usize])
                 }
@@ -897,10 +913,12 @@ impl TileBatchBuilder {
 
             // Try to reuse the current batch if we can.
             let flush_needed = match draw_tile_batch {
+                #[cfg(feature="d3d11")]
                 Some(DrawTileBatch::D3D11(ref mut existing_batch)) => {
                     !fixup_batch_for_new_path_if_possible(&mut existing_batch.color_texture,
                                                           &draw_path)
                 }
+                #[cfg(feature="d3d9")]
                 Some(DrawTileBatch::D3D9(ref mut existing_batch)) => {
                     !fixup_batch_for_new_path_if_possible(&mut existing_batch.color_texture,
                                                           &draw_path)
@@ -911,9 +929,11 @@ impl TileBatchBuilder {
             // If we couldn't reuse the batch, flush it.
             if flush_needed {
                 match draw_tile_batch.take() {
+                    #[cfg(feature="d3d11")]
                     Some(DrawTileBatch::D3D11(batch_to_flush)) => {
                         self.draw_commands.push(RenderCommand::DrawTilesD3D11(batch_to_flush));
                     }
+                    #[cfg(feature="d3d9")]
                     Some(DrawTileBatch::D3D9(batch_to_flush)) => {
                         self.draw_commands.push(RenderCommand::DrawTilesD3D9(batch_to_flush));
                     }
@@ -924,6 +944,7 @@ impl TileBatchBuilder {
             // Create a new batch if necessary.
             if draw_tile_batch.is_none() {
                 draw_tile_batch = match self.level {
+                    #[cfg(feature="d3d9")]
                     TileBatchBuilderLevel::D3D9 { .. } => {
                         let tile_bounds = tiles::round_rect_out_to_tile_bounds(scene.view_box());
                         Some(DrawTileBatch::D3D9(DrawTileBatchD3D9 {
@@ -935,6 +956,7 @@ impl TileBatchBuilder {
                             blend_mode: draw_path.blend_mode,
                         }))
                     }
+                    #[cfg(feature="d3d11")]
                     TileBatchBuilderLevel::D3D11 { .. } => {
                         Some(DrawTileBatch::D3D11(DrawTileBatchD3D11 {
                             tile_batch_data: TileBatchDataD3D11::new(self.next_batch_id,
@@ -948,6 +970,7 @@ impl TileBatchBuilder {
             }
 
             // Add clip path if necessary.
+            #[cfg(feature="d3d11")]
             let clip_path = match self.clip_batches_d3d11 {
                 None => None,
                 Some(ref mut clip_batches_d3d11) => {
@@ -963,6 +986,7 @@ impl TileBatchBuilder {
 
             let draw_tile_batch = draw_tile_batch.as_mut().unwrap();
             match *draw_tile_batch {
+                #[cfg(feature="d3d11")]
                 DrawTileBatch::D3D11(ref mut draw_tile_batch) => {
                     draw_tile_batch.tile_batch_data.push(&draw_path.path,
                                                          draw_path_id.to_path_id(),
@@ -970,9 +994,12 @@ impl TileBatchBuilder {
                                                          draw_path.occludes,
                                                          sink);
                 }
+                #[cfg(feature="d3d9")]
                 DrawTileBatch::D3D9(ref mut draw_tile_batch) => {
                     let built_paths = match self.level {
+                        #[cfg(feature="d3d9")]
                         TileBatchBuilderLevel::D3D9 { ref built_paths } => built_paths,
+                        #[cfg(feature="d3d11")]
                         TileBatchBuilderLevel::D3D11 { .. } => unreachable!(),
                     };
 
@@ -1016,9 +1043,11 @@ impl TileBatchBuilder {
         }
 
         match draw_tile_batch {
+            #[cfg(feature="d3d11")]
             Some(DrawTileBatch::D3D11(draw_tile_batch)) => {
                 self.draw_commands.push(RenderCommand::DrawTilesD3D11(draw_tile_batch));
             }
+            #[cfg(feature="d3d9")]
             Some(DrawTileBatch::D3D9(draw_tile_batch)) => {
                 self.draw_commands.push(RenderCommand::DrawTilesD3D9(draw_tile_batch));
             }
@@ -1066,6 +1095,7 @@ impl TileBatchBuilder {
     }
 
     fn send_to(self, sink: &SceneSink) {
+        #[cfg(feature="d3d11")]
         if let Some(clip_batches_d3d11) = self.clip_batches_d3d11 {
             for prepare_batch in clip_batches_d3d11.prepare_batches.into_iter().rev() {
                 if prepare_batch.path_count > 0 {
@@ -1083,12 +1113,14 @@ impl TileBatchBuilder {
     }
 }
 
+#[cfg(feature="d3d11")]
 struct ClipBatchesD3D11 {
     // Will be submitted in reverse (LIFO) order.
     prepare_batches: Vec<TileBatchDataD3D11>,
     clip_id_to_path_batch_index: FxHashMap<ClipPathId, PathBatchIndex>,
 }
 
+#[cfg(feature="d3d11")]
 fn add_clip_path_to_batch(scene: &Scene,
                           sink: &SceneSink,
                           built_options: &PreparedBuildOptions,
@@ -1145,6 +1177,7 @@ fn add_clip_path_to_batch(scene: &Scene,
     }
 }
 
+#[cfg(feature="d3d11")]
 fn prepare_clip_path_for_gpu_binning(scene: &Scene,
                                      sink: &SceneSink,
                                      built_options: &PreparedBuildOptions,
