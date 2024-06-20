@@ -23,6 +23,13 @@ struct bTiles
 
 constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(16u, 4u, 1u);
 
+// Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
+template<typename Tx, typename Ty>
+inline Tx mod(Tx x, Ty y)
+{
+    return x - y * floor(x / y);
+}
+
 static inline __attribute__((always_inline))
 float4 computeCoverage(thread const float2& from, thread const float2& to, thread const texture2d<float> areaLUT, thread const sampler areaLUTSmplr)
 {
@@ -87,7 +94,17 @@ kernel void main0(constant int2& uAlphaTileRange [[buffer(1)]], const device bFi
     int2 param_1 = tileSubCoord;
     float4 _334 = accumulateCoverageForFillList(param, param_1, v_148, uAreaLUT, uAreaLUTSmplr);
     coverages += _334;
-    coverages = fast::clamp(abs(coverages), float4(0.0), float4(1.0));
+    uint tileControlWord = _294.iTiles[(tileIndex * 4u) + 3u];
+    int tileCtrl = int((tileControlWord >> uint(16)) & 255u);
+    int maskCtrl = (tileCtrl >> 0) & 3;
+    if ((maskCtrl & 1) != 0)
+    {
+        coverages = fast::clamp(abs(coverages), float4(0.0), float4(1.0));
+    }
+    else
+    {
+        coverages = fast::clamp(float4(1.0) - abs(float4(1.0) - mod(coverages, float4(2.0))), float4(0.0), float4(1.0));
+    }
     int clipTileIndex = int(_284.iAlphaTiles[(batchAlphaTileIndex * 2u) + 1u]);
     if (clipTileIndex >= 0)
     {

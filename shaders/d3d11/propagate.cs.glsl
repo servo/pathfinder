@@ -30,70 +30,76 @@ layout(local_size_x = 64) in;
 #define FILL_INDIRECT_DRAW_PARAMS_ALPHA_TILE_COUNT_INDEX    4
 #define FILL_INDIRECT_DRAW_PARAMS_SIZE                      8
 
+#define TILE_CTRL_MASK_MASK                     0x3
+#define TILE_CTRL_MASK_WINDING                  0x1
+#define TILE_CTRL_MASK_EVEN_ODD                 0x2
+
+#define TILE_CTRL_MASK_0_SHIFT                  0
+
 uniform ivec2 uFramebufferTileSize;
 uniform int uColumnCount;
 uniform int uFirstAlphaTileIndex;
 
-layout(std430, binding = 0) buffer bDrawMetadata {
+restrict readonly layout(std430, binding = 0) buffer bDrawMetadata {
     // [0]: tile rect
     // [1].x: tile offset
     // [1].y: path ID
     // [1].z: Z write enabled?
     // [1].w: clip path ID, or ~0
     // [2].x: backdrop column offset
-    restrict readonly uvec4 iDrawMetadata[];
+    uvec4 iDrawMetadata[];
 };
 
-layout(std430, binding = 1) buffer bClipMetadata {
+restrict readonly layout(std430, binding = 1) buffer bClipMetadata {
     // [0]: tile rect
     // [1].x: tile offset
     // [1].y: unused
     // [1].z: unused
     // [1].w: unused
-    restrict readonly uvec4 iClipMetadata[];
+    uvec4 iClipMetadata[];
 };
 
-layout(std430, binding = 2) buffer bBackdrops {
+restrict readonly layout(std430, binding = 2) buffer bBackdrops {
     // [0]: backdrop
     // [1]: tile X offset
     // [2]: path ID
-    restrict readonly int iBackdrops[];
+    int iBackdrops[];
 };
 
-layout(std430, binding = 3) buffer bDrawTiles {
+restrict layout(std430, binding = 3) buffer bDrawTiles {
     // [0]: next tile ID
     // [1]: first fill ID
     // [2]: backdrop delta upper 8 bits, alpha tile ID lower 24
     // [3]: color/ctrl/backdrop word
-    restrict uint iDrawTiles[];
+    uint iDrawTiles[];
 };
 
-layout(std430, binding = 4) buffer bClipTiles {
+restrict layout(std430, binding = 4) buffer bClipTiles {
     // [0]: next tile ID
     // [1]: first fill ID
     // [2]: backdrop delta upper 8 bits, alpha tile ID lower 24
     // [3]: color/ctrl/backdrop word
-    restrict uint iClipTiles[];
+    uint iClipTiles[];
 };
 
-layout(std430, binding = 5) buffer bZBuffer {
+restrict layout(std430, binding = 5) buffer bZBuffer {
     // [0]: vertexCount (6)
     // [1]: instanceCount (of fills)
     // [2]: vertexStart (0)
     // [3]: baseInstance (0)
     // [4]: alpha tile count
     // [8..]: z-buffer
-    restrict int iZBuffer[];
+    int iZBuffer[];
 };
 
-layout(std430, binding = 6) buffer bFirstTileMap {
-    restrict int iFirstTileMap[];
+restrict layout(std430, binding = 6) buffer bFirstTileMap {
+    int iFirstTileMap[];
 };
 
-layout(std430, binding = 7) buffer bAlphaTiles {
+restrict layout(std430, binding = 7) buffer bAlphaTiles {
     // [0]: alpha tile index
     // [1]: clip tile index
-    restrict uint iAlphaTiles[];
+    uint iAlphaTiles[];
 };
 
 uint calculateTileIndex(uint bufferOffset, uvec4 tileRect, uvec2 tileCoord) {
@@ -200,6 +206,16 @@ void main() {
             (uint(drawAlphaTileIndex) & 0x00ffffffu) | (uint(drawBackdropDelta) << 24);
         iDrawTiles[drawTileIndex * 4 + TILE_FIELD_CONTROL] =
             drawTileWord | (uint(drawTileBackdrop) << 24);
+
+        // Even-Odd fill rule will make some solid tiles invisible, so we shouldn't write them into the Z buffer.
+        if (drawTileBackdrop != 0) {
+            int tileCtrl = int((drawTileWord >> 16) & 0xffu);
+            int maskCtrl = (tileCtrl >> TILE_CTRL_MASK_0_SHIFT) & TILE_CTRL_MASK_MASK;
+
+            if ((maskCtrl & TILE_CTRL_MASK_EVEN_ODD) != 0 && mod(abs(drawTileBackdrop), 2) == 0) {
+                zWrite = false;
+            }
+        }
 
         // Write to Z-buffer if necessary.
         ivec2 tileCoord = ivec2(tileX, tileY) + ivec2(drawTileRect.xy);
