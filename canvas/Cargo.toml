@@ -13,7 +13,7 @@ keywords = ["pathfinder", "canvas", "vector", "graphics", "gpu"]
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-font-kit = { version = "0.6", optional = true }
+font-kit = { version = "0.10", optional = true }
 
 [dependencies.pathfinder_color]
 path = "../color"
