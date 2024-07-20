@@ -43,6 +43,7 @@ jobs:
         if: ${{ matrix.platform.os == 'windows-latest' }}
         with:
           install-linux-dependencies: true
+          add-to-environment: true
           version: 2-latest
           version-sdl-image: 2-latest
       - name: Install packages
