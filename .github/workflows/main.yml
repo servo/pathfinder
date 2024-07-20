@@ -39,6 +39,12 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.platform.target }}
+      - uses: libsdl-org/setup-sdl@main
+        if: ${{ matrix.platform.os == 'windows-latest' }}
+        with:
+          install-linux-dependencies: true
+          version: 2-latest
+          version-sdl-image: 2-latest
       - name: Install packages
         if: ${{ matrix.platform.os == 'ubuntu-latest' }}
         run: |
