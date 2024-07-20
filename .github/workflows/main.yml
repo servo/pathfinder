@@ -18,11 +18,18 @@ jobs:
       matrix:
         toolchain: [stable, nightly]
         platform:
-          - { target: aarch64-apple-darwin, os: macos-14 }
-          - { target: x86_64-apple-darwin, os: macos-13 }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-latest }
-          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          # native targets
+          - { target: aarch64-apple-darwin, os: macos-14, native: true }
+          - { target: x86_64-apple-darwin, os: macos-13, native: true }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, native: true }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest, native: true }
+          # arm64 linux
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-latest, native: false }
+          # all servo's android targets
+          - { target: aarch64-linux-android, os: ubuntu-latest, native: false }
+          - { target: armv7-linux-androideabi, os: ubuntu-latest, native: false }
+          - { target: i686-linux-android, os: ubuntu-latest, native: false }
+          - { target: x86_64-linux-android, os: ubuntu-latest, native: false }
     runs-on: ${{ matrix.platform.os }}
     env:
       HARFBUZZ_SYS_NO_PKG_CONFIG: true
@@ -38,22 +45,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1-mesa-dev libgtk-3-dev libsdl2-dev cmake
 
-      - name: Build arm64 simd
-        if: ${{ matrix.platform.target == 'aarch64-unknown-linux-gnu' }}
+      - name: Build simd
+        if: ${{ !matrix.platform.native }}
         run: cargo build --target ${{ matrix.platform.target }}
         working-directory: simd
 
-      - name: Build arm64 geometry
-        if: ${{ matrix.platform.target == 'aarch64-unknown-linux-gnu' }}
+      - name: Build geometry
+        if: ${{ !matrix.platform.native }}
         run: cargo build --target ${{ matrix.platform.target }}
         working-directory: geometry
 
       - name: Build
-        if: ${{ matrix.platform.target != 'aarch64-unknown-linux-gnu' }}
+        if: ${{ matrix.platform.native }}
         run: cargo build --target ${{ matrix.platform.target }}
 
       - name: Test
-        if: ${{ matrix.platform.target != 'aarch64-unknown-linux-gnu' }}
+        if: ${{ matrix.platform.native }}
         run: cargo test
 
   build_result:
