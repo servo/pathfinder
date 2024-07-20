@@ -16,14 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: ['stable', 'nightly']
-        include:
+        toolchain: [stable, nightly]
+        platform:
           - { target: aarch64-apple-darwin, os: macos-14 }
           - { target: x86_64-apple-darwin, os: macos-13 }
           - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
           - { target: aarch64-unknown-linux-gnu, os: ubuntu-latest }
           - { target: x86_64-pc-windows-msvc, os: windows-latest }
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.platform.os }}
     env:
       HARFBUZZ_SYS_NO_PKG_CONFIG: true
     steps:
@@ -31,21 +31,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ matrix.toolchain }}
-          target: ${{ matrix.target }}
+          target: ${{ matrix.platform.target }}
       - name: Install packages
-        if: ${{ matrix.os == 'ubuntu-latest' }}
+        if: ${{ matrix.platform.os == 'ubuntu-latest' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1-mesa-dev libgtk-3-dev libsdl2-dev cmake
-        
-      - name: Install rustc target
-        run: rustup target add aarch64-unknown-linux-gnu
 
       - name: Build
-        run: cargo build --target ${{ matrix.target }}
+        run: cargo build --target ${{ matrix.platform.target }}
 
       - name: Test
-        if: ${{ matrix.target != 'aarch64-unknown-linux-gnu' }}
+        if: ${{ matrix.platform.target != 'aarch64-unknown-linux-gnu' }}
         run: cargo test
 
   build_result:
