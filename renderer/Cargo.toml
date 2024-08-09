@@ -8,6 +8,13 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/servo/pathfinder"
 homepage = "https://github.com/servo/pathfinder"
 
+[features]
+d3d9 = []
+d3d11 = []
+ui = ["pathfinder_ui", "debug"]
+debug = []
+default = ["d3d9", "d3d11", "ui"]
+
 [dependencies]
 bitflags = "1.0"
 byte-slice-cast = "0.3"
@@ -54,6 +61,7 @@ version = "0.5"
 [dependencies.pathfinder_ui]
 path = "../ui"
 version = "0.5"
+optional = true
 
 [dev-dependencies]
 quickcheck = "0.9"
