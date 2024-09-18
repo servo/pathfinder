@@ -10,9 +10,9 @@
 
 use std::arch::aarch64::{self, float32x2_t, float32x4_t, int32x2_t, int32x4_t};
 use std::arch::aarch64::{uint32x2_t, uint32x4_t};
-use std::intrinsics::simd::*;
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
+use std::intrinsics::simd::*;
 use std::mem;
 use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Not, Shr, Sub};
 
@@ -201,7 +201,6 @@ impl IndexMut<usize> for F32x2 {
     }
 }
 
-
 impl Add<F32x2> for F32x2 {
     type Output = F32x2;
     #[inline]
@@ -352,7 +351,7 @@ impl F32x4 {
 
     #[inline]
     pub fn concat_xy_xy(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 2, 3])) }
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 4, 5])) }
     }
 
     #[inline]
@@ -363,6 +362,11 @@ impl F32x4 {
     #[inline]
     pub fn concat_zw_zw(self, other: F32x4) -> F32x4 {
         unsafe { F32x4(simd_shuffle4!(self.0, other.0, [2, 3, 6, 7])) }
+    }
+
+    #[inline]
+    pub fn concat_wz_yx(self, other: F32x4) -> F32x4 {
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [3, 2, 5, 4])) }
     }
 
     // Conversions
@@ -832,13 +836,22 @@ impl BitOr<U32x2> for U32x2 {
     }
 }
 
-
 // Four 32-bit unsigned integers
 
 #[derive(Clone, Copy)]
 pub struct U32x4(pub uint32x4_t);
 
 impl U32x4 {
+    #[inline]
+    pub fn new(a: u32, b: u32, c: u32, d: u32) -> U32x4 {
+        unsafe { U32x4(mem::transmute([a, b, c, d])) }
+    }
+
+    #[inline]
+    pub fn splat(x: u32) -> U32x4 {
+        U32x4::new(x, x, x, x)
+    }
+
     /// Returns true if all four booleans in this vector are true.
     ///
     /// The result is *undefined* if all four values in this vector are not booleans. A boolean is
@@ -856,6 +869,20 @@ impl U32x4 {
     pub fn all_false(&self) -> bool {
         unsafe { aarch64::vmaxvq_u32(self.0) == 0 }
     }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: U32x4) -> U32x4 {
+        unsafe { U32x4(simd_eq(self.0, other.0)) }
+    }
+}
+
+impl Debug for U32x4 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<{}, {}, {}, {}>", self[0], self[1], self[2], self[3])
+    }
 }
 
 impl Index<usize> for U32x4 {
@@ -867,6 +894,13 @@ impl Index<usize> for U32x4 {
             let ptr = &self.0 as *const uint32x4_t as *const u32;
             mem::transmute::<*const u32, &u32>(ptr.offset(index as isize))
         }
+    }
+}
+
+impl PartialEq for U32x4 {
+    #[inline]
+    fn eq(&self, other: &U32x4) -> bool {
+        self.packed_eq(*other).all_true()
     }
 }
 
