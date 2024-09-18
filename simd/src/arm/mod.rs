@@ -351,7 +351,7 @@ impl F32x4 {
 
     #[inline]
     pub fn concat_xy_xy(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 2, 3])) }
+        unsafe { F32x4(simd_shuffle4!(self.0, other.0, [0, 1, 4, 5])) }
     }
 
     #[inline]
