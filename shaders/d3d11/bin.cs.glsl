@@ -37,18 +37,18 @@ uniform int uMicrolineCount;
 // How many slots we have allocated for fills.
 uniform int uMaxFillCount;
 
-layout(std430, binding = 0) buffer bMicrolines {
-    restrict readonly uvec4 iMicrolines[];
+restrict readonly layout(std430, binding = 0) buffer bMicrolines {
+    uvec4 iMicrolines[];
 };
 
-layout(std430, binding = 1) buffer bMetadata {
+restrict readonly layout(std430, binding = 1) buffer bMetadata {
     // [0]: tile rect
     // [1].x: tile offset
     // [1].y: path ID
     // [1].z: z write flag
     // [1].w: clip path ID
     // [2].x: backdrop offset
-    restrict readonly ivec4 iMetadata[];
+    ivec4 iMetadata[];
 };
 
 // [0]: vertexCount (6)
@@ -56,27 +56,27 @@ layout(std430, binding = 1) buffer bMetadata {
 // [2]: vertexStart (0)
 // [3]: baseInstance (0)
 // [4]: alpha tile count
-layout(std430, binding = 2) buffer bIndirectDrawParams {
-    restrict uint iIndirectDrawParams[];
+restrict layout(std430, binding = 2) buffer bIndirectDrawParams {
+    uint iIndirectDrawParams[];
 };
 
-layout(std430, binding = 3) buffer bFills {
-    restrict writeonly uint iFills[];
+restrict writeonly layout(std430, binding = 3) buffer bFills {
+    uint iFills[];
 };
 
-layout(std430, binding = 4) buffer bTiles {
+restrict layout(std430, binding = 4) buffer bTiles {
     // [0]: next tile ID (initialized to -1)
     // [1]: first fill ID (initialized to -1)
     // [2]: backdrop delta upper 8 bits, alpha tile ID lower 24 (initialized to 0, -1 respectively)
     // [3]: color/ctrl/backdrop word
-    restrict uint iTiles[];
+    uint iTiles[];
 };
 
-layout(std430, binding = 5) buffer bBackdrops {
+restrict layout(std430, binding = 5) buffer bBackdrops {
     // [0]: backdrop
     // [1]: tile X offset
     // [2]: path ID
-    restrict uint iBackdrops[];
+    uint iBackdrops[];
 };
 
 uint computeTileIndexNoCheck(ivec2 tileCoords, ivec4 pathTileRect, uint pathTileOffset) {

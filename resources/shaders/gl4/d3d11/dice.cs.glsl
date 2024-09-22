@@ -42,37 +42,37 @@ uniform int uPathCount;
 uniform int uLastBatchSegmentIndex;
 uniform int uMaxMicrolineCount;
 
-layout(std430, binding = 0)buffer bComputeIndirectParams {
+restrict layout(std430, binding = 0)buffer bComputeIndirectParams {
 
 
 
 
-    restrict uint iComputeIndirectParams[];
+    uint iComputeIndirectParams[];
 };
 
 
-layout(std430, binding = 1)buffer bDiceMetadata {
+restrict readonly layout(std430, binding = 1)buffer bDiceMetadata {
 
 
 
 
-    restrict readonly uvec4 iDiceMetadata[];
+    uvec4 iDiceMetadata[];
 };
 
-layout(std430, binding = 2)buffer bPoints {
-    restrict readonly vec2 iPoints[];
+restrict readonly layout(std430, binding = 2)buffer bPoints {
+    vec2 iPoints[];
 };
 
-layout(std430, binding = 3)buffer bInputIndices {
-    restrict readonly uvec2 iInputIndices[];
+restrict readonly layout(std430, binding = 3)buffer bInputIndices {
+    uvec2 iInputIndices[];
 };
 
-layout(std430, binding = 4)buffer bMicrolines {
+restrict layout(std430, binding = 4)buffer bMicrolines {
 
 
 
 
-    restrict uvec4 iMicrolines[];
+    uvec4 iMicrolines[];
 };
 
 void emitMicroline(vec4 microlineSegment, uint pathIndex, uint outputMicrolineIndex){
