@@ -16,30 +16,49 @@ use pathfinder_simd::default::{F32x2, F32x4};
 use std::hash::{Hash, Hasher};
 use std::mem;
 
-pub(crate) fn hash_line_segment<H>(line_segment: LineSegment2F, state: &mut H) where H: Hasher {
+pub(crate) fn hash_line_segment<H>(line_segment: LineSegment2F, state: &mut H)
+where
+    H: Hasher,
+{
     hash_f32x4(line_segment.0, state);
 }
 
-pub(crate) fn hash_transform2f<H>(transform: Transform2F, state: &mut H) where H: Hasher {
+pub(crate) fn hash_transform2f<H>(transform: Transform2F, state: &mut H)
+where
+    H: Hasher,
+{
     hash_f32x4(transform.matrix.0, state);
     hash_f32x2(transform.vector.0, state);
 }
 
-pub(crate) fn hash_f32<H>(value: f32, state: &mut H) where H: Hasher {
+pub(crate) fn hash_f32<H>(value: f32, state: &mut H)
+where
+    H: Hasher,
+{
     unsafe {
         let data: u32 = mem::transmute::<f32, u32>(value);
         data.hash(state);
     }
 }
 
-pub(crate) fn hash_f32x2<H>(vector: F32x2, state: &mut H) where H: Hasher {
+pub(crate) fn hash_f32x2<H>(vector: F32x2, state: &mut H)
+where
+    H: Hasher,
+{
     unsafe {
+        #[cfg(target_arch = "wasm32")]
+        let data: [u32; 4] = mem::transmute::<F32x2, [u32; 4]>(vector);
+        #[cfg(not(target_arch = "wasm32"))]
         let data: [u32; 2] = mem::transmute::<F32x2, [u32; 2]>(vector);
+
         data.hash(state);
     }
 }
 
-pub(crate) fn hash_f32x4<H>(vector: F32x4, state: &mut H) where H: Hasher {
+pub(crate) fn hash_f32x4<H>(vector: F32x4, state: &mut H)
+where
+    H: Hasher,
+{
     unsafe {
         let data: [u32; 4] = mem::transmute::<F32x4, [u32; 4]>(vector);
         data.hash(state);

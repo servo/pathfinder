@@ -19,6 +19,7 @@ pub use crate::arm as default;
 #[cfg(any(
     feature = "pf-no-simd",
     not(any(
+        target_arch = "wasm32",
         target_arch = "x86",
         target_arch = "x86_64",
         all(pf_rustc_nightly, target_arch = "aarch64")
@@ -30,6 +31,11 @@ pub use crate::scalar as default;
     any(target_arch = "x86", target_arch = "x86_64")
 ))]
 pub use crate::x86 as default;
+#[cfg(all(
+    not(feature = "pf-no-simd"),
+    target_arch = "wasm32",
+))]
+pub use crate::wasm as default;
 
 #[cfg(all(pf_rustc_nightly, target_arch = "aarch64"))]
 pub mod arm;
@@ -37,6 +43,8 @@ mod extras;
 pub mod scalar;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
 
 #[cfg(test)]
 mod test;
