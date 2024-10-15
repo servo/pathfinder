@@ -134,7 +134,9 @@ impl F32x2 {
 
     #[inline]
     pub fn concat_xy_xy(self, other: F32x2) -> F32x4 {
-        self.to_f32x4().concat_xy_xy(other.to_f32x4())
+        F32x4(std::arch::wasm32::i32x4_shuffle::<0, 1, 4,5>(
+            self.0, other.0,
+        ))
     }
 }
 
@@ -390,7 +392,7 @@ impl F32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn concat_xy_xy(self, other: F32x4) -> F32x4 {
-        F32x4(std::arch::wasm32::i32x4_shuffle::<0, 1, 3, 4>(
+        F32x4(std::arch::wasm32::i32x4_shuffle::<0, 1, 4,5>(
             self.0, other.0,
         ))
     }
@@ -399,7 +401,7 @@ impl F32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn concat_xy_zw(self, other: F32x4) -> F32x4 {
-        F32x4(std::arch::wasm32::i32x4_shuffle::<0, 1, 4, 5>(
+        F32x4(std::arch::wasm32::i32x4_shuffle::<0, 1, 6, 7>(
             self.0, other.0,
         ))
     }
