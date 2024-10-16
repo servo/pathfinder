@@ -19,3 +19,4 @@ rustc_version = "0.4"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.0"
+fastrand = { version = "2.1.1", features = ["js"] }
