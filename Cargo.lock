@@ -1275,9 +1275,12 @@ dependencies = [
 
 [[package]]
 name = "fastrand"
-version = "2.0.1"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
+checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
+dependencies = [
+ "getrandom 0.2.12",
+]
 
 [[package]]
 name = "fax"
@@ -1497,8 +1500,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "190092ea657667030ac6a35e305e62fc4dd69fd98ac98631e5d3a2b1575a12b5"
 dependencies = [
  "cfg-if 1.0.0",
+ "js-sys",
  "libc 0.2.153",
  "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2992,6 +2997,7 @@ source = "git+https://github.com/servo/pathfinder#e4fcda0d5259d0acf902aee6de7d25
 name = "pathfinder_simd"
 version = "0.5.4"
 dependencies = [
+ "fastrand",
  "rustc_version 0.4.0",
  "wasm-bindgen-test",
 ]
