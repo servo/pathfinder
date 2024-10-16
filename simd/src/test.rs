@@ -864,6 +864,10 @@ mod tests {
             f32x2_equals(a_wasm.min(b_wasm), a_scalar.min(b_scalar));
             f32x2_equals(a_wasm.max(b_wasm), a_scalar.max(b_scalar));
 
+            u32x2_equals(a_wasm.packed_eq(b_wasm), a_scalar.packed_eq(b_scalar));
+            u32x2_equals(a_wasm.packed_gt(b_wasm), a_scalar.packed_gt(b_scalar));
+            u32x2_equals(a_wasm.packed_le(b_wasm), a_scalar.packed_le(b_scalar));
+
             let a64_wasm = a_wasm.concat_xy_xy(b_wasm);
             let a64_scalar = a_scalar.concat_xy_xy(b_scalar);
 
@@ -888,6 +892,7 @@ mod tests {
             f32x4_equals(c_wasm.approx_recip(), c_scalar.approx_recip());
             f32x4_equals(c_wasm.sqrt(), c_scalar.sqrt());
             f32x4_equals(c_wasm.to_i32x4().to_f32x4(), c_scalar.to_i32x4().to_f32x4());
+            f32x2_equals(c_wasm.to_i32x4().to_f32x4().xy(), c_scalar.to_i32x4().to_f32x4().xy());
         }
     }
 

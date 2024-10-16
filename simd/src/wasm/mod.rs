@@ -8,13 +8,27 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use std::arch::wasm32::v128;
 use std::cmp::PartialEq;
 use std::mem;
 use std::fmt::{self, Debug, Formatter};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Index, IndexMut, Mul, Not, Shr, Sub};
+use std::sync::OnceLock;
 
 mod swizzle_f32x4;
 mod swizzle_i32x4;
+
+
+// Define all our statics here...
+
+#[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
+fn xy_mask() -> &'static v128 {
+    static MEM: OnceLock<v128> = OnceLock::new();
+    MEM.get_or_init(|| {
+        std::arch::wasm32::u32x4(!0, !0, 0, 0)
+    })
+}
 
 // Two 32-bit floats
 
@@ -361,11 +375,7 @@ impl F32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn xy(self) -> F32x2 {
-        F32x2(std::arch::wasm32::v128_bitselect(
-            self.0,
-            std::arch::wasm32::f32x4_splat(0.0),
-            std::arch::wasm32::i32x4(!0,!0, 0, 0),
-        ))
+        F32x2(std::arch::wasm32::v128_and(self.0, *xy_mask()))
     }
 
     #[inline]
@@ -724,11 +734,7 @@ impl I32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn xy(self) -> I32x2 {
-        I32x2(std::arch::wasm32::v128_bitselect(
-            self.0,
-            std::arch::wasm32::i32x4_splat(0),
-            std::arch::wasm32::i32x4(!0, !0, 0, 0),
-        ))
+        I32x2(std::arch::wasm32::v128_and(self.0, *xy_mask()))
     }
 
     #[inline]
@@ -1126,11 +1132,7 @@ impl U32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn xy(self) -> U32x2 {
-        U32x2(std::arch::wasm32::v128_bitselect(
-            self.0,
-            std::arch::wasm32::u32x4_splat(0),
-            std::arch::wasm32::i32x4(!0, !0, 0, 0),
-        ))
+        U32x2(std::arch::wasm32::v128_and(self.0, *xy_mask()))
     }
 
     // Packed comparisons
