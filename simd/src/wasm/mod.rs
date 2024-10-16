@@ -350,7 +350,9 @@ impl F32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn to_i32x4(self) -> I32x4 {
-        I32x4(std::arch::wasm32::i32x4_trunc_sat_f32x4(self.0))
+        I32x4(std::arch::wasm32::i32x4_trunc_sat_f32x4(
+       std::arch::wasm32::f32x4_nearest(self.0)
+        ))
     }
 
     // Extraction
@@ -569,8 +571,10 @@ impl I32x2 {
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn to_f32x4(self) -> F32x4 {
-        self.to_i32x4().to_f32x4()
+        F32x4(std::arch::wasm32::f32x4_convert_i32x4(self.0))
     }
 
     /// Converts these packed integers to floats.
@@ -582,30 +586,32 @@ impl I32x2 {
     // Basic operations
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn max(self, other: I32x2) -> I32x2 {
-        self.to_i32x4().max(other.to_i32x4()).xy()
+        I32x2(std::arch::wasm32::i32x4_max(self.0, other.0))
     }
 
     #[inline]
     pub fn min(self, other: I32x2) -> I32x2 {
-        self.to_i32x4().min(other.to_i32x4()).xy()
+        I32x2(std::arch::wasm32::i32x4_min(self.0, other.0))
     }
 
     // Comparisons
 
     #[inline]
-    pub fn packed_eq(self, other: I32x2) -> U32x4 {
-        self.to_i32x4().packed_eq(other.to_i32x4())
+    pub fn packed_eq(self, other: I32x2) -> U32x2 {
+        U32x2(std::arch::wasm32::i32x4_eq(self.0, other.0))
     }
 
     #[inline]
-    pub fn packed_gt(self, other: I32x2) -> U32x4 {
-        self.to_i32x4().packed_gt(other.to_i32x4())
+    pub fn packed_gt(self, other: I32x2) -> U32x2 {
+        U32x2(std::arch::wasm32::i32x4_gt(self.0, other.0))
     }
 
     #[inline]
-    pub fn packed_le(self, other: I32x2) -> U32x4 {
-        self.to_i32x4().packed_le(other.to_i32x4())
+    pub fn packed_le(self, other: I32x2) -> U32x2 {
+        U32x2(std::arch::wasm32::i32x4_le(self.0, other.0))
     }
 }
 
@@ -642,27 +648,36 @@ impl IndexMut<usize> for I32x2 {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Add<I32x2> for I32x2 {
     type Output = I32x2;
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     fn add(self, other: I32x2) -> I32x2 {
-        (self.to_i32x4() + other.to_i32x4()).xy()
+        I32x2(std::arch::wasm32::i32x4_add(self.0, other.0))
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Sub<I32x2> for I32x2 {
     type Output = I32x2;
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     fn sub(self, other: I32x2) -> I32x2 {
-        (self.to_i32x4() - other.to_i32x4()).xy()
+        I32x2(std::arch::wasm32::i32x4_sub(self.0, other.0))
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Mul<I32x2> for I32x2 {
     type Output = I32x2;
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     fn mul(self, other: I32x2) -> I32x2 {
-        (self.to_i32x4() * other.to_i32x4()).xy()
+        I32x2(std::arch::wasm32::i32x4_mul(self.0, other.0))
     }
 }
 
@@ -963,7 +978,9 @@ impl U32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn all_true(self) -> bool {
-        std::arch::wasm32::i32x4_all_true(self.0)
+        std::arch::wasm32::i32x4_all_true(
+            std::arch::wasm32::i32x4_shuffle::<0, 1, 0, 1>(self.0, self.0)
+        )
     }
 
     /// Returns true if both booleans in this vector are false.
@@ -971,7 +988,9 @@ impl U32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn all_false(self) -> bool {
-        !std::arch::wasm32::v128_any_true(self.0)
+        !std::arch::wasm32::v128_any_true(
+            std::arch::wasm32::i32x4_shuffle::<0, 1, 0, 1>(self.0, self.0)
+        )
     }
 
     #[inline]
@@ -1052,7 +1071,7 @@ impl U32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn all_true(self) -> bool {
-        std::arch::wasm32::i32x4_all_true(self.0)
+        std::arch::wasm32::u32x4_all_true(self.0)
     }
 
     /// Returns true if all four booleans in this vector are false.

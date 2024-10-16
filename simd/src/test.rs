@@ -43,6 +43,10 @@ fn test_f32x4_basic_ops() {
     //     a.approx_recip(),
     //     F32x4::new(0.99975586, 0.333313, 0.19995117, 0.14282227)
     // );
+    assert_eq!(a[0], 1.0);
+    assert_eq!(a[1], 3.0);
+    assert_eq!(a[2], 5.0);
+    assert_eq!(a[3], 7.0);
     assert_eq!(a.min(b), F32x4::new(1.0, 2.0, 5.0, 6.0));
     assert_eq!(a.max(b), F32x4::new(2.0, 3.0, 6.0, 7.0));
     let c = F32x4::new(-1.0, 1.3, -20.0, 3.6);
@@ -59,9 +63,22 @@ fn test_f32x4_basic_ops() {
 fn test_f32x4_packed_comparisons() {
     let a = F32x4::new(7.0, 3.0, 6.0, -2.0);
     let b = F32x4::new(10.0, 3.0, 5.0, -2.0);
-    assert_eq!(a.packed_eq(b), U32x4::new(0, !0, 0, !0));
-    assert_eq!(a.packed_gt(b), U32x4::new(0, 0, !0, 0));
-    assert_eq!(a.packed_le(b), U32x4::new(!0, !0, 0, !0));
+
+    let a_eq_b = a.packed_eq(b);
+    let a_gt_b = a.packed_gt(b);
+    let a_le_b = a.packed_le(b);
+
+    assert_eq!(a_eq_b, U32x4::new(0, !0, 0, !0));
+    assert_eq!(a_gt_b, U32x4::new(0, 0, !0, 0));
+    assert_eq!(a_le_b, U32x4::new(!0, !0, 0, !0));
+
+    assert_eq!(a_eq_b.all_true(), false);
+    assert_eq!(a_gt_b.all_true(), false);
+    assert_eq!(a_le_b.all_true(), false);
+
+    let c = F32x4::splat(1.);
+    let d = F32x4::splat(0.);
+    assert_eq!(c.packed_eq(c).all_true(), true);
 }
 
 #[wasm_bindgen_test]
