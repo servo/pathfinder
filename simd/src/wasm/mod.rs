@@ -37,7 +37,7 @@ impl F32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn splat(x: f32) -> F32x2 {
-        F32x2(std::arch::wasm32::f32x4_splat(x))
+        F32x2::new(x, x)
     }
 
     // Basic operations
@@ -146,7 +146,7 @@ impl Default for F32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     fn default() -> F32x2 {
-        F32x2(std::arch::wasm32::f32x4(0.0, 0.0, 0.0, 0.0))
+        F32x2::new(0.0, 0.0)
     }
 }
 
@@ -364,7 +364,7 @@ impl F32x4 {
         F32x2(std::arch::wasm32::v128_bitselect(
             self.0,
             std::arch::wasm32::f32x4_splat(0.0),
-            std::arch::wasm32::i32x4(1, 1, 0, 0),
+            std::arch::wasm32::i32x4(!0,!0, 0, 0),
         ))
     }
 
@@ -539,7 +539,7 @@ impl I32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn splat(x: i32) -> I32x2 {
-        I32x2(std::arch::wasm32::i32x4_splat(x))
+        I32x2::new(x, x)
     }
 
     // Accessors
@@ -727,7 +727,7 @@ impl I32x4 {
         I32x2(std::arch::wasm32::v128_bitselect(
             self.0,
             std::arch::wasm32::i32x4_splat(0),
-            std::arch::wasm32::i32x4(1, 1, 0, 0),
+            std::arch::wasm32::i32x4(!0, !0, 0, 0),
         ))
     }
 
@@ -735,36 +735,28 @@ impl I32x4 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn xw(self) -> I32x2 {
-        I32x2(std::arch::wasm32::i32x4_shuffle::<0, 2, 1, 3>(
-            self.0, self.0,
-        ))
+        self.xwyz().xy()
     }
 
     #[inline]
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn yx(self) -> I32x2 {
-        I32x2(std::arch::wasm32::i32x4_shuffle::<1, 0, 2, 3>(
-            self.0, self.0,
-        ))
+        self.yxwz().xy()
     }
 
     #[inline]
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn zy(self) -> I32x2 {
-        I32x2(std::arch::wasm32::i32x4_shuffle::<2, 1, 3, 0>(
-            self.0, self.0,
-        ))
+        self.zyxw().xy()
     }
 
     #[inline]
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn zw(self) -> I32x2 {
-        I32x2(std::arch::wasm32::i32x4_shuffle::<3, 2, 1, 0>(
-            self.0, self.0,
-        ))
+        self.zwxy().xy()
     }
 
     // Concatenations
@@ -970,7 +962,14 @@ impl U32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     pub fn splat(x: u32) -> U32x2 {
-        U32x2(std::arch::wasm32::u32x4_splat(x))
+        U32x2::new(x, x)
+    }
+
+    #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
+    pub fn packed_eq(self, other: U32x2) -> U32x2 {
+        U32x2(std::arch::wasm32::i32x4_eq(self.0, other.0))
     }
 
     /// Returns true if both booleans in this vector are true.
@@ -1006,7 +1005,37 @@ impl Not for U32x2 {
     #[cfg(target_arch = "wasm32")]
     #[target_feature(enable = "simd128")]
     fn not(self) -> U32x2 {
-        U32x2(std::arch::wasm32::v128_not(self.0))
+        U32x2(std::arch::wasm32::v128_bitselect(
+            std::arch::wasm32::v128_not(self.0),
+            std::arch::wasm32::u32x4_splat(0),
+            std::arch::wasm32::i32x4(!0, !0, 0, 0),
+        ))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Debug for U32x2 {
+    #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "<{}, {}>",
+            std::arch::wasm32::u32x4_extract_lane::<0>(self.0),
+            std::arch::wasm32::u32x4_extract_lane::<1>(self.0)
+        )
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Index<usize> for U32x2 {
+    type Output = u32;
+    #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
+    fn index(&self, index: usize) -> &u32 {
+        unsafe { &mem::transmute::<&std::arch::wasm32::v128, &[u32; 4]>(&self.0)[index] }
     }
 }
 
@@ -1031,6 +1060,15 @@ impl BitOr<U32x2> for U32x2 {
         U32x2(std::arch::wasm32::v128_or(self.0, other.0))
     }
 }
+
+#[cfg(target_arch = "wasm32")]
+impl PartialEq for U32x2 {
+    #[inline]
+    fn eq(&self, other: &U32x2) -> bool {
+        self.packed_eq(*other).all_true()
+    }
+}
+
 // Four 32-bit unsigned integers
 
 #[derive(Clone, Copy)]
@@ -1091,7 +1129,7 @@ impl U32x4 {
         U32x2(std::arch::wasm32::v128_bitselect(
             self.0,
             std::arch::wasm32::u32x4_splat(0),
-            std::arch::wasm32::i32x4(1, 1, 0, 0),
+            std::arch::wasm32::i32x4(!0, !0, 0, 0),
         ))
     }
 
@@ -1162,4 +1200,3 @@ impl Shr<u32> for U32x4 {
         U32x4(std::arch::wasm32::u32x4_shr(self.0, amount))
     }
 }
-
