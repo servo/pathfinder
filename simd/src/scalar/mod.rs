@@ -214,23 +214,29 @@ impl F32x4 {
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn min(self, other: F32x4) -> F32x4 {
-        F32x4([
-            self[0].min(other[0]),
-            self[1].min(other[1]),
-            self[2].min(other[2]),
-            self[3].min(other[3]),
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+
+            F32x4(std::mem::transmute(f32x4_pmin(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn max(self, other: F32x4) -> F32x4 {
-        F32x4([
-            self[0].max(other[0]),
-            self[1].max(other[1]),
-            self[2].max(other[2]),
-            self[3].max(other[3]),
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+
+            F32x4(std::mem::transmute(f32x4_pmax(one, other)))
+        }
     }
 
     #[inline]
@@ -239,91 +245,109 @@ impl F32x4 {
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn abs(self) -> F32x4 {
-        F32x4([self[0].abs(), self[1].abs(), self[2].abs(), self[3].abs()])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_abs(one)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn floor(self) -> F32x4 {
-        F32x4([
-            self[0].floor(),
-            self[1].floor(),
-            self[2].floor(),
-            self[3].floor(),
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_floor(one)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn ceil(self) -> F32x4 {
-        F32x4([
-            self[0].ceil(),
-            self[1].ceil(),
-            self[2].ceil(),
-            self[3].ceil(),
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_ceil(one)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn sqrt(self) -> F32x4 {
-        F32x4([
-            self[0].sqrt(),
-            self[1].sqrt(),
-            self[2].sqrt(),
-            self[3].sqrt(),
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_sqrt(one)))
+        }
     }
 
     // Packed comparisons
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_eq(self, other: F32x4) -> U32x4 {
-        U32x4([
-            if self[0] == other[0] { !0 } else { 0 },
-            if self[1] == other[1] { !0 } else { 0 },
-            if self[2] == other[2] { !0 } else { 0 },
-            if self[3] == other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(f32x4_eq(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_gt(self, other: F32x4) -> U32x4 {
-        U32x4([
-            if self[0] > other[0] { !0 } else { 0 },
-            if self[1] > other[1] { !0 } else { 0 },
-            if self[2] > other[2] { !0 } else { 0 },
-            if self[3] > other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(f32x4_gt(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_le(self, other: F32x4) -> U32x4 {
-        U32x4([
-            if self[0] <= other[0] { !0 } else { 0 },
-            if self[1] <= other[1] { !0 } else { 0 },
-            if self[2] <= other[2] { !0 } else { 0 },
-            if self[3] <= other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(f32x4_le(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_lt(self, other: F32x4) -> U32x4 {
-        U32x4([
-            if self[0] < other[0] { !0 } else { 0 },
-            if self[1] < other[1] { !0 } else { 0 },
-            if self[2] < other[2] { !0 } else { 0 },
-            if self[3] < other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(f32x4_lt(one, other)))
+        }
     }
 
     /// Converts these packed floats to integers via rounding.
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn to_i32x4(self) -> I32x4 {
-        I32x4([
-            self[0].round() as i32,
-            self[1].round() as i32,
-            self[2].round() as i32,
-            self[3].round() as i32,
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            I32x4(std::mem::transmute::<v128, [i32; 4]>(i32x4_trunc_sat_f32x4(one)))
+        }
     }
 
     // Swizzle conversions
@@ -398,55 +422,63 @@ impl Debug for F32x4 {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Add<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
+    #[target_feature(enable = "simd128")]
     fn add(self, other: F32x4) -> F32x4 {
-        F32x4([
-            self[0] + other[0],
-            self[1] + other[1],
-            self[2] + other[2],
-            self[3] + other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_add(one, other)))
+        }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Div<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
+    #[target_feature(enable = "simd128")]
     fn div(self, other: F32x4) -> F32x4 {
-        F32x4([
-            self[0] / other[0],
-            self[1] / other[1],
-            self[2] / other[2],
-            self[3] / other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_div(one, other)))
+        }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
+    #[target_feature(enable = "simd128")]
     fn mul(self, other: F32x4) -> F32x4 {
-        F32x4([
-            self[0] * other[0],
-            self[1] * other[1],
-            self[2] * other[2],
-            self[3] * other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_mul(one, other)))
+        }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Sub<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
+    #[target_feature(enable = "simd128")]
     fn sub(self, other: F32x4) -> F32x4 {
-        F32x4([
-            self[0] - other[0],
-            self[1] - other[1],
-            self[2] - other[2],
-            self[3] - other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_sub(one, other)))
+        }
     }
 }
 
@@ -622,43 +654,51 @@ impl I32x4 {
     // Packed comparisons
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_eq(self, other: I32x4) -> U32x4 {
-        U32x4([
-            if self[0] == other[0] { !0 } else { 0 },
-            if self[1] == other[1] { !0 } else { 0 },
-            if self[2] == other[2] { !0 } else { 0 },
-            if self[3] == other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(i32x4_eq(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_gt(self, other: I32x4) -> U32x4 {
-        U32x4([
-            if self[0] > other[0] { !0 } else { 0 },
-            if self[1] > other[1] { !0 } else { 0 },
-            if self[2] > other[2] { !0 } else { 0 },
-            if self[3] > other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(i32x4_gt(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_le(self, other: I32x4) -> U32x4 {
-        U32x4([
-            if self[0] <= other[0] { !0 } else { 0 },
-            if self[1] <= other[1] { !0 } else { 0 },
-            if self[2] <= other[2] { !0 } else { 0 },
-            if self[3] <= other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(i32x4_le(one, other)))
+        }
     }
 
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn packed_lt(self, other: I32x4) -> U32x4 {
-        U32x4([
-            if self[0] < other[0] { !0 } else { 0 },
-            if self[1] < other[1] { !0 } else { 0 },
-            if self[2] < other[2] { !0 } else { 0 },
-            if self[3] < other[3] { !0 } else { 0 },
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            U32x4(std::mem::transmute::<v128, [u32; 4]>(i32x4_lt(one, other)))
+        }
     }
 
     // Concatenations
@@ -699,13 +739,14 @@ impl I32x4 {
 
     /// Converts these packed integers to floats.
     #[inline]
+    #[cfg(target_arch = "wasm32")]
+    #[target_feature(enable = "simd128")]
     pub fn to_f32x4(self) -> F32x4 {
-        F32x4([
-            self[0] as f32,
-            self[1] as f32,
-            self[2] as f32,
-            self[3] as f32,
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            F32x4(std::mem::transmute::<v128, [f32; 4]>(f32x4_convert_i32x4(one)))
+        }
     }
 
     /// Converts these packed signed integers to unsigned integers.
@@ -734,16 +775,18 @@ impl IndexMut<usize> for I32x4 {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Add<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
+    #[target_feature(enable = "simd128")]
     fn add(self, other: I32x4) -> I32x4 {
-        I32x4([
-            self[0] + other[0],
-            self[1] + other[1],
-            self[2] + other[2],
-            self[3] + other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            I32x4(std::mem::transmute::<v128, [i32; 4]>(i32x4_add(one, other)))
+        }
     }
 }
 
@@ -751,12 +794,12 @@ impl Sub<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn sub(self, other: I32x4) -> I32x4 {
-        I32x4([
-            self[0] - other[0],
-            self[1] - other[1],
-            self[2] - other[2],
-            self[3] - other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            I32x4(std::mem::transmute::<v128, [i32; 4]>(i32x4_sub(one, other)))
+        }
     }
 }
 
@@ -764,12 +807,12 @@ impl Mul<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn mul(self, other: I32x4) -> I32x4 {
-        I32x4([
-            self[0] * other[0],
-            self[1] * other[1],
-            self[2] * other[2],
-            self[3] * other[3],
-        ])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            I32x4(std::mem::transmute::<v128, [i32; 4]>(i32x4_mul(one, other)))
+        }
     }
 }
 
@@ -777,7 +820,12 @@ impl BitAnd<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn bitand(self, other: I32x4) -> I32x4 {
-        I32x4([self[0] & other[0], self[1] & other[1], self[2] & other[2], self[3] & other[3]])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            I32x4(std::mem::transmute::<v128, [i32; 4]>(v128_and(one, other)))
+        }
     }
 }
 
@@ -785,7 +833,12 @@ impl BitOr<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn bitor(self, other: I32x4) -> I32x4 {
-        I32x4([self[0] | other[0], self[1] | other[1], self[2] | other[2], self[3] | other[3]])
+        use std::arch::wasm32::*;
+        unsafe {
+            let one = v128_load(self.0.as_ptr() as *const v128);
+            let other = v128_load(other.0.as_ptr() as *const v128);
+            I32x4(std::mem::transmute::<v128, [i32; 4]>(v128_or(one, other)))
+        }
     }
 }
 

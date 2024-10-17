@@ -48,7 +48,7 @@ where
     unsafe {
         #[cfg(target_arch = "wasm32")]
         {
-            let data: [u32; 4] = mem::transmute::<F32x2, [u32; 4]>(vector);
+            let data: [u32; 2] = mem::transmute::<F32x2, [u32; 2]>(vector);
             data[..2].hash(state);
         }
         #[cfg(not(target_arch = "wasm32"))]
