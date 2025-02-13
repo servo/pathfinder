@@ -19,17 +19,20 @@ use std::ops::{Add, BitAnd, BitOr, Div, Index, IndexMut, Mul, Not, Shr, Sub};
 mod swizzle_f32x4;
 mod swizzle_i32x4;
 
+#[repr(simd)]
+pub(crate) struct Simd<T, const N: usize>([T; N]);
+
 macro_rules! simd_shuffle2 {
     ($x:expr, $y:expr, <$(const $imm:ident : $ty:ty),+> $idx:expr $(,)?) => {{
         struct ConstParam<$(const $imm: $ty),+>;
         impl<$(const $imm: $ty),+> ConstParam<$($imm),+> {
-            const IDX: [u32; 2] = $idx;
+            const IDX: Simd<u32, 2> = Simd($idx);
         }
 
         simd_shuffle($x, $y, ConstParam::<$($imm),+>::IDX)
     }};
     ($x:expr, $y:expr, $idx:expr $(,)?) => {{
-        const IDX: [u32; 2] = $idx;
+        const IDX: Simd<u32, 2>  = Simd($idx);
         simd_shuffle($x, $y, IDX)
     }};
 }
@@ -38,13 +41,13 @@ macro_rules! simd_shuffle4 {
     ($x:expr, $y:expr, <$(const $imm:ident : $ty:ty),+> $idx:expr $(,)?) => {{
         struct ConstParam<$(const $imm: $ty),+>;
         impl<$(const $imm: $ty),+> ConstParam<$($imm),+> {
-            const IDX: [u32; 4] = $idx;
+            const IDX: Simd<u32; 4> = Simd($idx);
         }
 
         simd_shuffle($x, $y, ConstParam::<$($imm),+>::IDX)
     }};
     ($x:expr, $y:expr, $idx:expr $(,)?) => {{
-        const IDX: [u32; 4] = $idx;
+        const IDX: Simd<u32, 4> = Simd($idx);
         simd_shuffle($x, $y, IDX)
     }};
 }
