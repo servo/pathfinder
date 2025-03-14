@@ -2907,31 +2907,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder_magicleap_demo"
-version = "0.1.0"
-dependencies = [
- "crossbeam-channel",
- "egl",
- "gl",
- "glutin",
- "log",
- "pathfinder_color",
- "pathfinder_content",
- "pathfinder_demo",
- "pathfinder_geometry",
- "pathfinder_gl",
- "pathfinder_gpu",
- "pathfinder_renderer",
- "pathfinder_resources 0.5.0",
- "pathfinder_simd",
- "pathfinder_svg",
- "pathfinder_ui",
- "rayon",
- "smallvec 1.13.1",
- "usvg",
-]
-
-[[package]]
 name = "pathfinder_metal"
 version = "0.5.1"
 dependencies = [
