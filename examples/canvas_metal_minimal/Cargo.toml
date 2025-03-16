@@ -7,10 +7,13 @@ edition = "2018"
 [dependencies]
 foreign-types = "0.3"
 gl = "0.14"
-metal = "0.18"
-objc = "0.2"
+
 sdl2 = "0.33"
 sdl2-sys = "0.33"
+
+[target.'cfg(any(target_os = "macos",target_os = "ios"))'.dependencies]
+metal = "0.18"
+objc = "0.2"
 
 [dependencies.pathfinder_canvas]
 features = ["pf-text"]
