@@ -11,6 +11,7 @@
 #![cfg_attr(pf_rustc_nightly, allow(internal_features))]
 #![cfg_attr(pf_rustc_nightly, feature(link_llvm_intrinsics, core_intrinsics))]
 #![cfg_attr(pf_rustc_nightly, feature(simd_ffi))]
+#![cfg_attr(pf_rustc_nightly, feature(repr_simd))]
 
 //! A minimal SIMD abstraction, usable outside of Pathfinder.
 
