@@ -8,25 +8,31 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use foreign_types::ForeignTypeRef;
-use metal::{CAMetalLayer, CoreAnimationLayerRef};
-use pathfinder_canvas::{Canvas, CanvasFontContext, Path2D};
-use pathfinder_color::ColorF;
-use pathfinder_geometry::vector::{vec2f, vec2i};
-use pathfinder_geometry::rect::RectF;
-use pathfinder_metal::MetalDevice;
-use pathfinder_renderer::concurrent::rayon::RayonExecutor;
-use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
-use pathfinder_renderer::gpu::renderer::Renderer;
-use pathfinder_renderer::options::BuildOptions;
-use pathfinder_resources::embedded::EmbeddedResourceLoader;
-use sdl2::event::Event;
-use sdl2::hint;
-use sdl2::keyboard::Keycode;
-use sdl2_sys::SDL_RenderGetMetalLayer;
-
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn main() {
+    println!("This example is only supported on apple platforms")
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn main() {
+    use foreign_types::ForeignTypeRef;
+    use metal::{CAMetalLayer, CoreAnimationLayerRef};
+    use pathfinder_canvas::{Canvas, CanvasFontContext, Path2D};
+    use pathfinder_color::ColorF;
+    use pathfinder_geometry::rect::RectF;
+    use pathfinder_geometry::vector::{vec2f, vec2i};
+    use pathfinder_metal::MetalDevice;
+    use pathfinder_renderer::concurrent::rayon::RayonExecutor;
+    use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
+    use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererMode, RendererOptions};
+    use pathfinder_renderer::gpu::renderer::Renderer;
+    use pathfinder_renderer::options::BuildOptions;
+    use pathfinder_resources::embedded::EmbeddedResourceLoader;
+    use sdl2::event::Event;
+    use sdl2::hint;
+    use sdl2::keyboard::Keycode;
+    use sdl2_sys::SDL_RenderGetMetalLayer;
+
     // Set up SDL2.
     assert!(hint::set("SDL_RENDER_DRIVER", "metal"));
     let sdl_context = sdl2::init().unwrap();
@@ -34,10 +40,15 @@ fn main() {
 
     // Open a window.
     let window_size = vec2i(640, 480);
-    let window = video.window("Minimal example", window_size.x() as u32, window_size.y() as u32)
-                      .opengl()
-                      .build()
-                      .unwrap();
+    let window = video
+        .window(
+            "Minimal example",
+            window_size.x() as u32,
+            window_size.y() as u32,
+        )
+        .opengl()
+        .build()
+        .unwrap();
 
     // Create a Metal context.
     let canvas = window.into_canvas().present_vsync().build().unwrap();
@@ -48,9 +59,7 @@ fn main() {
     let drawable = metal_layer.next_drawable().unwrap();
 
     // Create a Pathfinder renderer.
-    let device = unsafe {
-        MetalDevice::new(metal_device, drawable.clone())
-    };
+    let device = unsafe { MetalDevice::new(metal_device, drawable.clone()) };
     let mode = RendererMode::default_for_device(&device);
     let options = RendererOptions {
         dest: DestFramebuffer::full_window(window_size),
@@ -81,9 +90,11 @@ fn main() {
     canvas.stroke_path(path);
 
     // Render the canvas to screen.
-    let mut scene = SceneProxy::from_scene(canvas.into_canvas().into_scene(),
-                                           renderer.mode().level,
-                                           RayonExecutor);
+    let mut scene = SceneProxy::from_scene(
+        canvas.into_canvas().into_scene(),
+        renderer.mode().level,
+        RayonExecutor,
+    );
     scene.build_and_render(&mut renderer, BuildOptions::default());
     renderer.device().present_drawable(drawable);
 
@@ -91,7 +102,11 @@ fn main() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     loop {
         match event_pump.wait_event() {
-            Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return,
+            Event::Quit { .. }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => return,
             _ => {}
         }
     }

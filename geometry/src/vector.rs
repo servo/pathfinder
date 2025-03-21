@@ -178,6 +178,11 @@ impl Vector2F {
     pub fn to_i32(self) -> Vector2I {
         Vector2I(self.0.to_i32x2())
     }
+
+    #[inline]
+    pub fn scale(self, factor: f32) -> Vector2F {
+        Vector2F(self.0 * F32x2::splat(factor))
+    }
 }
 
 /// A convenience alias for `Vector2F::new()`.

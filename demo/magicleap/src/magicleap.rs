@@ -55,7 +55,9 @@ use pathfinder_geometry::transform3d::Transform4F;
 use pathfinder_geometry::util;
 use pathfinder_geometry::vector::Vector2I;
 use pathfinder_geometry::vector::Vector2F;
+use pathfinder_geometry::vector::Vector4F;
 use pathfinder_geometry::vector::vec2i;
+use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
 use pathfinder_resources::ResourceLoader;
 use pathfinder_resources::fs::FilesystemResourceLoader;
@@ -142,7 +144,7 @@ impl Window for MagicLeapWindow {
         debug!("Made {} current.", eye);
     }
 
-    fn present(&mut self) {
+    fn present(&mut self, _device:&mut GLDevice) {
         self.end_frame();
         self.begin_frame();
     }
@@ -235,7 +237,7 @@ impl MagicLeapWindow {
             }
             let virtual_camera_array = &self.virtual_camera_array;
             let initial_camera = self.initial_camera_transform.get_or_insert_with(|| {
-                let initial_offset = Transform4F::from_translation(0.0, 0.0, 1.0);
+                let initial_offset = Transform4F::from_translation(Vector4f::new(0.0, 0.0, 1.0));
 	        let mut camera = virtual_camera_array.virtual_cameras[0].transform;
 		for i in 1..virtual_camera_array.num_virtual_cameras {
 		    let next = virtual_camera_array.virtual_cameras[i as usize].transform;
@@ -365,7 +367,7 @@ impl From<MLTransform> for Transform4F {
 
 impl From<MLVec3f> for Transform4F {
     fn from(v: MLVec3f) -> Self {
-        Transform4F::from_translation(v.x, v.y, v.z)
+        Transform4F::from_translation(Vector4F::new(v.x, v.y, v.z, 1))
     }
 }
 
@@ -396,4 +398,3 @@ impl From<MLMat4f> for Transform4F {
                                   a[3], a[7], a[11], a[15])
     }
 }
-
