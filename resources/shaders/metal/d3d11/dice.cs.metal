@@ -100,7 +100,7 @@ kernel void main0(constant int& uMaxMicrolineCount [[buffer(0)]], constant int& 
         if (_241)
         {
             uint midPathIndex = lowPathIndex + ((highPathIndex - lowPathIndex) / 2u);
-            uint midBatchSegmentIndex = _253.iDiceMetadata[midPathIndex].z;
+            uint midBatchSegmentIndex = ((device uint*)&_253.iDiceMetadata[midPathIndex])[2u];
             if (batchSegmentIndex < midBatchSegmentIndex)
             {
                 highPathIndex = midPathIndex;
