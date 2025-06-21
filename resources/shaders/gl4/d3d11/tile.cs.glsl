@@ -695,6 +695,12 @@ void computeTileVaryings(vec2 position,
 
 
 
+
+
+
+
+
+
 uniform int uLoadAction;
 uniform vec4 uClearColor;
 uniform vec2 uTileSize;
@@ -711,17 +717,17 @@ uniform vec2 uFramebufferSize;
 uniform ivec2 uFramebufferTileSize;
 layout(rgba8)uniform image2D uDestImage;
 
-layout(std430, binding = 0)buffer bTiles {
+restrict readonly layout(std430, binding = 0)buffer bTiles {
 
 
 
 
 
-    restrict readonly uint iTiles[];
+    uint iTiles[];
 };
 
-layout(std430, binding = 1)buffer bFirstTileMap {
-    restrict readonly int iFirstTileMap[];
+restrict readonly layout(std430, binding = 1)buffer bFirstTileMap {
+    int iFirstTileMap[];
 };
 
 uint calculateTileIndex(uint bufferOffset, uvec4 tileRect, uvec2 tileCoord){
@@ -772,6 +778,16 @@ void main(){
             } else {
 
                 backdrop = int(tileControlWord)>> 24;
+
+
+                if(backdrop != 0){
+                    int maskCtrl =(tileCtrl >> 0)& 0x3;
+
+                    if((maskCtrl & 0x2)!= 0 && mod(abs(backdrop), 2)== 0){
+                        break;
+                    }
+                }
+
                 maskTileCoord = uvec2(0u);
                 tileCtrl &= ~(0x3 << 0);
             }

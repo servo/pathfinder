@@ -41,7 +41,7 @@ kernel void main0(constant int& uTileCount [[buffer(0)]], constant int& uPathCou
         if (_50)
         {
             uint midPathIndex = lowPathIndex + ((highPathIndex - lowPathIndex) / 2u);
-            uint midTileIndex = _64.iTilePathInfo[midPathIndex].z;
+            uint midTileIndex = ((device uint*)&_64.iTilePathInfo[midPathIndex])[2u];
             if (tileIndex < midTileIndex)
             {
                 highPathIndex = midPathIndex;

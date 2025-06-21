@@ -57,27 +57,33 @@ layout(local_size_x = 16, local_size_y = 4)in;
 
 
 
+
+
+
+
+
+
 layout(rgba8)uniform image2D uDest;
 uniform sampler2D uAreaLUT;
 uniform ivec2 uAlphaTileRange;
 
-layout(std430, binding = 0)buffer bFills {
-    restrict readonly uint iFills[];
+restrict readonly layout(std430, binding = 0)buffer bFills {
+    uint iFills[];
 };
 
-layout(std430, binding = 1)buffer bTiles {
+restrict layout(std430, binding = 1)buffer bTiles {
 
 
 
 
 
-    restrict uint iTiles[];
+    uint iTiles[];
 };
 
-layout(std430, binding = 2)buffer bAlphaTiles {
+restrict readonly layout(std430, binding = 2)buffer bAlphaTiles {
 
 
-    restrict readonly uint iAlphaTiles[];
+    uint iAlphaTiles[];
 };
 
 
@@ -130,10 +136,17 @@ void main(){
     int fillIndex = int(iTiles[tileIndex * 4 + 1]);
     int backdrop = int(iTiles[tileIndex * 4 + 3])>> 24;
 
-
     vec4 coverages = vec4(backdrop);
     coverages += accumulateCoverageForFillList(fillIndex, tileSubCoord);
-    coverages = clamp(abs(coverages), 0.0, 1.0);
+
+    uint tileControlWord = iTiles[tileIndex * 4 + 3];
+    int tileCtrl = int((tileControlWord >> 16)& 0xffu);
+    int maskCtrl =(tileCtrl >> 0)& 0x3;
+    if((maskCtrl & 0x1)!= 0){
+        coverages = clamp(abs(coverages), 0.0, 1.0);
+    } else {
+        coverages = clamp(1.0 - abs(1.0 - mod(coverages, 2.0)), 0.0, 1.0);
+    }
 
 
     int clipTileIndex = int(iAlphaTiles[batchAlphaTileIndex * 2 + 1]);
