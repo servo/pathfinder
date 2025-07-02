@@ -11,7 +11,7 @@ usvg = "0.9"
 egl = "0.2"
 log = "0.4"
 smallvec = { version = "1.2", features = ["write"] }
-glutin = { version = "0.23", optional = true }
+glutin = { version = "0.25", optional = true }
 crossbeam-channel = "0.4"
 
 [lib]

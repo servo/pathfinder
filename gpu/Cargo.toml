@@ -15,7 +15,7 @@ half = "1.5"
 log = "0.4"
 
 [dependencies.image]
-version = "0.23"
+version = "0.25"
 default-features = false
 features = ["png"]
 
