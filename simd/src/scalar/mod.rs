@@ -119,13 +119,13 @@ impl F32x2 {
     /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x2(self) -> I32x2 {
-        I32x2([self[0].round() as i32, self[1].round() as i32])
+        I32x2([self[0].round_ties_even() as i32, self[1].round_ties_even() as i32])
     }
 
     /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        I32x4([self[0].round() as i32, self[1].round() as i32, 0, 0])
+        I32x4([self[0].round_ties_even() as i32, self[1].round_ties_even() as i32, 0, 0])
     }
 
     // Swizzle
@@ -319,10 +319,10 @@ impl F32x4 {
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
         I32x4([
-            self[0].round() as i32,
-            self[1].round() as i32,
-            self[2].round() as i32,
-            self[3].round() as i32,
+            self[0].round_ties_even() as i32,
+            self[1].round_ties_even() as i32,
+            self[2].round_ties_even() as i32,
+            self[3].round_ties_even() as i32,
         ])
     }
 
