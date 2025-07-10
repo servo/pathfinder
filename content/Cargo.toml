@@ -15,7 +15,7 @@ log = "0.4"
 smallvec = "1.2"
 
 [dependencies.image]
-version = "0.23"
+version = "0.25"
 default-features = false
 features = []
 optional = true
