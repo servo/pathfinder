@@ -150,8 +150,8 @@ kernel void main0(constant int& uMaxFillCount [[buffer(2)]], constant int& uMicr
     uint pathIndex = param_1;
     float4 lineSegment = _354;
     int4 pathTileRect = _360.iMetadata[(pathIndex * 3u) + 0u];
-    uint pathTileOffset = uint(_360.iMetadata[(pathIndex * 3u) + 1u].x);
-    uint pathBackdropOffset = uint(_360.iMetadata[(pathIndex * 3u) + 2u].x);
+    uint pathTileOffset = uint(((device int*)&_360.iMetadata[(pathIndex * 3u) + 1u])[0u]);
+    uint pathBackdropOffset = uint(((device int*)&_360.iMetadata[(pathIndex * 3u) + 2u])[0u]);
     int2 tileSize = int2(16);
     int4 tileLineSegment = int4(floor(lineSegment / float4(tileSize.xyxy)));
     int2 fromTileCoords = tileLineSegment.xy;
