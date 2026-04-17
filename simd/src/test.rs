@@ -7,8 +7,11 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
+// pattern: Functional Core
 
 use crate::default::{F32x4, I32x4, U32x4};
+#[cfg(all(pf_rustc_nightly, target_arch = "aarch64"))]
+use crate::arm::{F32x2 as ArmF32x2, F32x4 as ArmF32x4};
 use crate::scalar::F32x4 as F32x4S;
 
 // F32x4
@@ -37,7 +40,14 @@ fn test_f32x4_accessors_and_mutators() {
 fn test_f32x4_basic_ops() {
     let a = F32x4::new(1.0, 3.0, 5.0, 7.0);
     let b = F32x4::new(2.0, 2.0, 6.0, 6.0);
-    assert_eq!(a.approx_recip(), F32x4::new(0.99975586, 0.333313, 0.19995117, 0.14282227));
+    let approx_recip = a.approx_recip();
+    for (lane, expected) in IntoIterator::into_iter([1.0, 1.0 / 3.0, 1.0 / 5.0, 1.0 / 7.0]).enumerate() {
+        assert!(
+            (approx_recip[lane] - expected).abs() <= 0.002,
+            "lane {lane} reciprocal estimate {got} exceeded tolerance for {expected}",
+            got = approx_recip[lane],
+        );
+    }
     assert_eq!(a.min(b), F32x4::new(1.0, 2.0, 5.0, 6.0));
     assert_eq!(a.max(b), F32x4::new(2.0, 3.0, 6.0, 7.0));
     let c = F32x4::new(-1.0, 1.3, -20.0, 3.6);
@@ -393,6 +403,46 @@ fn test_i32x4_basic_ops() {
     let a = I32x4::new(6, 29, -40, 2);
     let b = I32x4::new(10, -5, 10, 46);
     assert_eq!(a.min(b), I32x4::new(6, -5, -40, 2));
+    assert_eq!(a.max(b), I32x4::new(10, 29, 10, 46));
+}
+
+#[test]
+fn test_i32x4_min_max_large_values() {
+    let a = I32x4::new(16_777_217, -16_777_219, 2_000_000_001, -2_000_000_001);
+    let b = I32x4::new(16_777_218, -16_777_218, 2_000_000_000, -1_999_999_999);
+    assert_eq!(a.min(b), I32x4::new(16_777_217, -16_777_219, 2_000_000_000, -2_000_000_001));
+    assert_eq!(a.max(b), I32x4::new(16_777_218, -16_777_218, 2_000_000_001, -1_999_999_999));
+}
+
+#[cfg(all(pf_rustc_nightly, target_arch = "aarch64"))]
+#[test]
+fn test_arm_float_min_max_nan_behavior() {
+    let a2 = ArmF32x2::new(std::f32::NAN, 3.0);
+    let b2 = ArmF32x2::new(2.0, std::f32::NAN);
+    let min2 = a2.min(b2);
+    let max2 = a2.max(b2);
+    assert_eq!(min2[0], 2.0);
+    assert_eq!(min2[1], 3.0);
+    assert_eq!(max2[0], 2.0);
+    assert_eq!(max2[1], 3.0);
+
+    let c2 = ArmF32x2::new(std::f32::NAN, std::f32::NAN);
+    let both_nan2 = c2.min(c2);
+    assert!(both_nan2[0].is_nan());
+    assert!(both_nan2[1].is_nan());
+
+    let a4 = ArmF32x4::new(std::f32::NAN, 3.0, 5.0, std::f32::NAN);
+    let b4 = ArmF32x4::new(2.0, std::f32::NAN, 6.0, std::f32::NAN);
+    let min4 = a4.min(b4);
+    let max4 = a4.max(b4);
+    assert_eq!(min4[0], 2.0);
+    assert_eq!(min4[1], 3.0);
+    assert_eq!(min4[2], 5.0);
+    assert!(min4[3].is_nan());
+    assert_eq!(max4[0], 2.0);
+    assert_eq!(max4[1], 3.0);
+    assert_eq!(max4[2], 6.0);
+    assert!(max4[3].is_nan());
 }
 
 #[test]

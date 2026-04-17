@@ -7,6 +7,7 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
+// pattern: Functional Core
 
 use std::arch::aarch64::{self, float32x2_t, float32x4_t, int32x2_t, int32x4_t};
 use std::arch::aarch64::{uint32x2_t, uint32x4_t};
@@ -79,12 +80,12 @@ impl F32x2 {
 
     #[inline]
     pub fn min(self, other: F32x2) -> F32x2 {
-        unsafe { F32x2(simd_fmin(self.0, other.0)) }
+        unsafe { F32x2(simd_minimum_number_nsz(self.0, other.0)) }
     }
 
     #[inline]
     pub fn max(self, other: F32x2) -> F32x2 {
-        unsafe { F32x2(simd_fmax(self.0, other.0)) }
+        unsafe { F32x2(simd_maximum_number_nsz(self.0, other.0)) }
     }
 
     #[inline]
@@ -268,12 +269,12 @@ impl F32x4 {
 
     #[inline]
     pub fn min(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_fmin(self.0, other.0)) }
+        unsafe { F32x4(simd_minimum_number_nsz(self.0, other.0)) }
     }
 
     #[inline]
     pub fn max(self, other: F32x4) -> F32x4 {
-        unsafe { F32x4(simd_fmax(self.0, other.0)) }
+        unsafe { F32x4(simd_maximum_number_nsz(self.0, other.0)) }
     }
 
     #[inline]
@@ -604,12 +605,12 @@ impl I32x4 {
 
     #[inline]
     pub fn max(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(simd_cast(simd_fmax(self.to_f32x4().0, other.to_f32x4().0))) }
+        unsafe { I32x4(simd_select(self.packed_lt(other).0, other.0, self.0)) }
     }
 
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(simd_cast(simd_fmin(self.to_f32x4().0, other.to_f32x4().0))) }
+        unsafe { I32x4(simd_select(self.packed_lt(other).0, self.0, other.0)) }
     }
 
     // Packed comparisons
