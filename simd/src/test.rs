@@ -37,7 +37,17 @@ fn test_f32x4_accessors_and_mutators() {
 fn test_f32x4_basic_ops() {
     let a = F32x4::new(1.0, 3.0, 5.0, 7.0);
     let b = F32x4::new(2.0, 2.0, 6.0, 6.0);
-    assert_eq!(a.approx_recip(), F32x4::new(0.99975586, 0.333313, 0.19995117, 0.14282227));
+    let approx_recip = a.approx_recip();
+
+    // The greatest diff we observe between the correct answer to the reciprocal and the answer that
+    // llvm gives us is 1.0 vs 0.9980469, so we need to have the allowable diff be 0.002 so that it
+    // passes. It's approximate, so it's fine to be a bit off.
+    const ALLOWABLE_RECIP_DIFF: f32 = 0.002;
+    assert!((approx_recip[0] - (1. / 1.)).abs() < ALLOWABLE_RECIP_DIFF);
+    assert!((approx_recip[1] - (1. / 3.)).abs() < ALLOWABLE_RECIP_DIFF);
+    assert!((approx_recip[2] - (1. / 5.)).abs() < ALLOWABLE_RECIP_DIFF);
+    assert!((approx_recip[3] - (1. / 7.)).abs() < ALLOWABLE_RECIP_DIFF);
+
     assert_eq!(a.min(b), F32x4::new(1.0, 2.0, 5.0, 6.0));
     assert_eq!(a.max(b), F32x4::new(2.0, 3.0, 6.0, 7.0));
     let c = F32x4::new(-1.0, 1.3, -20.0, 3.6);
