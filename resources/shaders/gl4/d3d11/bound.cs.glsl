@@ -32,20 +32,20 @@ layout(local_size_x = 64)in;
 uniform int uPathCount;
 uniform int uTileCount;
 
-layout(std430, binding = 0)buffer bTilePathInfo {
+restrict readonly layout(std430, binding = 0)buffer bTilePathInfo {
 
 
 
 
-    restrict readonly uvec4 iTilePathInfo[];
+    uvec4 iTilePathInfo[];
 };
 
-layout(std430, binding = 1)buffer bTiles {
+restrict layout(std430, binding = 1)buffer bTiles {
 
 
 
 
-    restrict uint iTiles[];
+    uint iTiles[];
 };
 
 void main(){
