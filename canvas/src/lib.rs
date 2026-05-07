@@ -164,6 +164,11 @@ impl CanvasRenderingContext2D {
     }
 
     // Extensions
+    pub fn reset(&mut self) {
+        self.saved_states = vec![];
+        self.current_state.reset();
+        self.clear();
+    }
 
     /// Clears the current canvas.
     pub fn clear(&mut self) {
@@ -677,6 +682,10 @@ impl State {
             global_composite_operation: CompositeOperation::SourceOver,
             clip_path: None,
         }
+    }
+
+    fn reset(&mut self) {
+        *self = State::default(self.font_collection.clone());
     }
 
     fn resolve_paint<'a>(&self, paint: &'a Paint) -> Cow<'a, Paint> {
