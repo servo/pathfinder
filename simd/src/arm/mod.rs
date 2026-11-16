@@ -74,7 +74,7 @@ impl F32x2 {
 
     #[inline]
     pub fn approx_recip(self) -> F32x2 {
-        unsafe { F32x2(vrecpe_v2f32(self.0)) }
+        unsafe { F32x2(aarch64::vrecpe_f32(self.0)) }
     }
 
     #[inline]
@@ -94,22 +94,22 @@ impl F32x2 {
 
     #[inline]
     pub fn abs(self) -> F32x2 {
-        unsafe { F32x2(fabs_v2f32(self.0)) }
+        unsafe { F32x2(aarch64::vabs_f32(self.0)) }
     }
 
     #[inline]
     pub fn floor(self) -> F32x2 {
-        unsafe { F32x2(floor_v2f32(self.0)) }
+        unsafe { F32x2(aarch64::vrndm_f32(self.0)) }
     }
 
     #[inline]
     pub fn ceil(self) -> F32x2 {
-        unsafe { F32x2(ceil_v2f32(self.0)) }
+        unsafe { F32x2(aarch64::vrndp_f32(self.0)) }
     }
 
     #[inline]
     pub fn sqrt(self) -> F32x2 {
-        unsafe { F32x2(sqrt_v2f32(self.0)) }
+        unsafe { F32x2(aarch64::vsqrt_f32(self.0)) }
     }
 
     // Packed comparisons
@@ -144,7 +144,7 @@ impl F32x2 {
     /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x2(self) -> I32x2 {
-        unsafe { I32x2(simd_cast(round_v2f32(self.0))) }
+        unsafe { I32x2(simd_cast(aarch64::vrnda_f32(self.0))) }
     }
 
     #[inline]
@@ -263,7 +263,7 @@ impl F32x4 {
 
     #[inline]
     pub fn approx_recip(self) -> F32x4 {
-        unsafe { F32x4(vrecpe_v4f32(self.0)) }
+        unsafe { F32x4(aarch64::vrecpeq_f32(self.0)) }
     }
 
     #[inline]
@@ -283,22 +283,22 @@ impl F32x4 {
 
     #[inline]
     pub fn abs(self) -> F32x4 {
-        unsafe { F32x4(fabs_v4f32(self.0)) }
+        unsafe { F32x4(aarch64::vabsq_f32(self.0)) }
     }
 
     #[inline]
     pub fn floor(self) -> F32x4 {
-        unsafe { F32x4(floor_v4f32(self.0)) }
+        unsafe { F32x4(aarch64::vrndmq_f32(self.0)) }
     }
 
     #[inline]
     pub fn ceil(self) -> F32x4 {
-        unsafe { F32x4(ceil_v4f32(self.0)) }
+        unsafe { F32x4(aarch64::vrndpq_f32(self.0)) }
     }
 
     #[inline]
     pub fn sqrt(self) -> F32x4 {
-        unsafe { F32x4(sqrt_v4f32(self.0)) }
+        unsafe { F32x4(aarch64::vsqrtq_f32(self.0)) }
     }
 
     // Packed comparisons
@@ -377,7 +377,7 @@ impl F32x4 {
     /// Converts these packed floats to integers via rounding.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        unsafe { I32x4(simd_cast(round_v4f32(self.0))) }
+        unsafe { I32x4(simd_cast(aarch64::vrndaq_f32(self.0))) }
     }
 }
 
@@ -905,34 +905,4 @@ impl PartialEq for U32x4 {
     fn eq(&self, other: &U32x4) -> bool {
         self.packed_eq(*other).all_true()
     }
-}
-
-extern "C" {
-    #[link_name = "llvm.fabs.v2f32"]
-    fn fabs_v2f32(a: float32x2_t) -> float32x2_t;
-    #[link_name = "llvm.floor.v2f32"]
-    fn floor_v2f32(a: float32x2_t) -> float32x2_t;
-    #[link_name = "llvm.ceil.v2f32"]
-    fn ceil_v2f32(a: float32x2_t) -> float32x2_t;
-    #[link_name = "llvm.round.v2f32"]
-    fn round_v2f32(a: float32x2_t) -> float32x2_t;
-    #[link_name = "llvm.sqrt.v2f32"]
-    fn sqrt_v2f32(a: float32x2_t) -> float32x2_t;
-
-    #[link_name = "llvm.fabs.v4f32"]
-    fn fabs_v4f32(a: float32x4_t) -> float32x4_t;
-    #[link_name = "llvm.floor.v4f32"]
-    fn floor_v4f32(a: float32x4_t) -> float32x4_t;
-    #[link_name = "llvm.ceil.v4f32"]
-    fn ceil_v4f32(a: float32x4_t) -> float32x4_t;
-    #[link_name = "llvm.round.v4f32"]
-    fn round_v4f32(a: float32x4_t) -> float32x4_t;
-    #[link_name = "llvm.sqrt.v4f32"]
-    fn sqrt_v4f32(a: float32x4_t) -> float32x4_t;
-
-    #[link_name = "llvm.aarch64.neon.frecpe.v2f32"]
-    fn vrecpe_v2f32(a: float32x2_t) -> float32x2_t;
-
-    #[link_name = "llvm.aarch64.neon.frecpe.v4f32"]
-    fn vrecpe_v4f32(a: float32x4_t) -> float32x4_t;
 }
