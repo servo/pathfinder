@@ -2,39 +2,27 @@ name: CI
 
 on:
   push:
-    branches: ['main']
+    branches: ["main"]
   pull_request:
   merge_group:
     types: [checks_requested]
-    
+
 jobs:
   Test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     env:
       HARFBUZZ_SYS_NO_PKG_CONFIG: true
+    strategy:
+      matrix:
+        runner: [ubuntu-26.04-arm, ubuntu-26.04]
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          profile: minimal
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install packages
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1-mesa-dev libgtk-3-dev libsdl2-dev cmake
-        
-      - name: Install rustc target
-        run: rustup target add aarch64-unknown-linux-gnu
-        
-      - name: Build arm64 simd
-        run: cargo build --target aarch64-unknown-linux-gnu
-        working-directory: simd
-
-      - name: Build arm64 geometry
-        run: cargo build --target aarch64-unknown-linux-gnu
-        working-directory: geometry
 
       - name: Build
         run: cargo build
