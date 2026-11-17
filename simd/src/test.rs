@@ -61,6 +61,19 @@ fn test_f32x4_basic_ops() {
 }
 
 #[test]
+fn test_f32x4_rounding_ops() {
+    let positive = F32x4::new(0.0, 0.3, 0.5, 0.7);
+    let negative = F32x4::new(-0.0, -0.3, -0.5, -0.7);
+    assert_eq!(positive.floor(), F32x4::new(0.0, 0.0, 0.0, 0.0));
+    assert_eq!(negative.floor(), F32x4::new(-0.0, -1.0, -1.0, -1.0));
+    assert_eq!(positive.ceil(), F32x4::new(0.0, 1.0, 1.0, 1.0));
+    assert_eq!(negative.ceil(), F32x4::new(-0.0, -0.0, -0.0, -0.0));
+    // calls round
+    assert_eq!(positive.to_i32x4(), I32x4::new(0, 0, 0, 1));
+    assert_eq!(negative.to_i32x4(), I32x4::new(0, 0, 0, -1));
+}
+
+#[test]
 fn test_f32x4_packed_comparisons() {
     let a = F32x4::new(7.0, 3.0, 6.0, -2.0);
     let b = F32x4::new(10.0, 3.0, 5.0, -2.0);
