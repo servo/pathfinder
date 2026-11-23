@@ -11,6 +11,29 @@
 use crate::default::{F32x4, I32x4, U32x4};
 use crate::scalar::F32x4 as F32x4S;
 
+#[cfg(all(pf_rustc_nightly, target_arch = "aarch64"))]
+mod test_arm_i32x4_min_max_precision {
+    use crate::arm::I32x4;
+
+    #[test]
+    fn min_max_preserve_values_above_f32_integer_precision() {
+        // The ARM I32x4::{min,max} implementations must compare integer lanes directly.
+        // Converting through f32 loses precision above 2^24, so values such as 16_777_217
+        // round to neighboring integers and can produce a numerically wrong vector.
+        let a = I32x4::new(16_777_217, -16_777_217, 16_777_219, -16_777_219);
+        let b = I32x4::new(0, 0, 16_777_218, -16_777_218);
+
+        assert_eq!(
+            a.max(b),
+            I32x4::new(16_777_217, 0, 16_777_219, -16_777_218)
+        );
+        assert_eq!(
+            a.min(b),
+            I32x4::new(0, -16_777_217, 16_777_218, -16_777_219)
+        );
+    }
+}
+
 // F32x4
 
 #[test]

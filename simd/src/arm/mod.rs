@@ -604,12 +604,12 @@ impl I32x4 {
 
     #[inline]
     pub fn max(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(simd_cast(simd_maximum_number_nsz(self.to_f32x4().0, other.to_f32x4().0))) }
+        unsafe { I32x4(aarch64::vmaxq_s32(self.0, other.0)) }
     }
 
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
-        unsafe { I32x4(simd_cast(simd_minimum_number_nsz(self.to_f32x4().0, other.to_f32x4().0))) }
+        unsafe { I32x4(aarch64::vminq_s32(self.0, other.0)) }
     }
 
     // Packed comparisons
