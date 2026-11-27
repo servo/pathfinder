@@ -225,8 +225,8 @@ impl F32x4 {
 
     #[inline]
     pub fn new(a: f32, b: f32, c: f32, d: f32) -> F32x4 {
+        let vector = [a, b, c, d];
         unsafe {
-            let vector = [a, b, c, d];
             F32x4(x86::_mm_loadu_ps(vector.as_ptr()))
         }
     }
@@ -619,8 +619,8 @@ impl I32x4 {
 
     #[inline]
     pub fn new(a: i32, b: i32, c: i32, d: i32) -> I32x4 {
+        let vector = [a, b, c, d];
         unsafe {
-            let vector = [a, b, c, d];
             I32x4(x86::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
         }
     }
@@ -885,8 +885,8 @@ impl U32x4 {
 
     #[inline]
     pub fn new(a: u32, b: u32, c: u32, d: u32) -> U32x4 {
+        let vector = [a, b, c, d];
         unsafe {
-            let vector = [a, b, c, d];
             U32x4(x86::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
         }
     }
