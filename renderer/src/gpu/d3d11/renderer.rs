@@ -12,6 +12,7 @@
 //! 
 //! This renderer supports OpenGL at least 4.3, OpenGL ES at least 3.1, and Metal of any version.
 
+use std::mem;
 use crate::gpu::d3d11::shaders::{BOUND_WORKGROUP_SIZE, DICE_WORKGROUP_SIZE, BIN_WORKGROUP_SIZE};
 use crate::gpu::d3d11::shaders::{PROPAGATE_WORKGROUP_SIZE, ProgramsD3D11, SORT_WORKGROUP_SIZE};
 use crate::gpu::perf::TimeCategory;
@@ -563,7 +564,7 @@ impl<D> RendererD3D11<D> where D: Device {
         let z_buffer = core.allocator.get_general_buffer(z_buffer_id);
         let z_buffer_size = core.tile_size();
         let tile_area = z_buffer_size.area() as usize;
-        core.device.upload_to_buffer(z_buffer, 0, &vec![0i32; tile_area], BufferTarget::Storage);
+        core.device.upload_to_buffer(z_buffer, FILL_INDIRECT_DRAW_PARAMS_SIZE * mem::size_of::<i32>(), &vec![0i32; tile_area], BufferTarget::Storage);
 
         // TODO(pcwalton): Initialize the first tiles buffer on GPU?
         let first_tile_map_storage_buffer = core.allocator
