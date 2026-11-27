@@ -50,13 +50,20 @@ struct bFirstTileMap
 
 constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(64u, 1u, 1u);
 
+// Implementation of the GLSL mod() function, which is slightly different than Metal fmod()
+template<typename Tx, typename Ty>
+inline Tx mod(Tx x, Ty y)
+{
+    return x - y * floor(x / y);
+}
+
 static inline __attribute__((always_inline))
 uint calculateTileIndex(thread const uint& bufferOffset, thread const uint4& tileRect, thread const uint2& tileCoord)
 {
     return (bufferOffset + (tileCoord.y * (tileRect.z - tileRect.x))) + tileCoord.x;
 }
 
-kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirstAlphaTileIndex [[buffer(8)]], constant int2& uFramebufferTileSize [[buffer(9)]], const device bBackdrops& _59 [[buffer(1)]], const device bDrawMetadata& _85 [[buffer(2)]], const device bClipMetadata& _126 [[buffer(3)]], device bDrawTiles& _175 [[buffer(4)]], device bClipTiles& _252 [[buffer(5)]], device bZBuffer& _302 [[buffer(6)]], device bAlphaTiles& _310 [[buffer(7)]], device bFirstTileMap& _395 [[buffer(10)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
+kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirstAlphaTileIndex [[buffer(8)]], constant int2& uFramebufferTileSize [[buffer(9)]], const device bBackdrops& _59 [[buffer(1)]], const device bDrawMetadata& _85 [[buffer(2)]], const device bClipMetadata& _126 [[buffer(3)]], device bDrawTiles& _175 [[buffer(4)]], device bClipTiles& _252 [[buffer(5)]], device bZBuffer& _302 [[buffer(6)]], device bAlphaTiles& _310 [[buffer(7)]], device bFirstTileMap& _427 [[buffer(10)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
 {
     uint columnIndex = gl_GlobalInvocationID.x;
     if (int(columnIndex) >= uColumnCount)
@@ -157,16 +164,35 @@ kernel void main0(constant int& uColumnCount [[buffer(0)]], constant int& uFirst
         }
         _175.iDrawTiles[(drawTileIndex * 4u) + 2u] = (uint(drawAlphaTileIndex) & 16777215u) | (uint(drawBackdropDelta) << uint(24));
         _175.iDrawTiles[(drawTileIndex * 4u) + 3u] = drawTileWord | (uint(drawTileBackdrop) << uint(24));
+        if (drawTileBackdrop != 0)
+        {
+            int tileCtrl = int((drawTileWord >> uint(16)) & 255u);
+            int maskCtrl = (tileCtrl >> 0) & 3;
+            bool _365 = (maskCtrl & 2) != 0;
+            bool _376;
+            if (_365)
+            {
+                _376 = mod(float(abs(drawTileBackdrop)), 2.0) == 0.0;
+            }
+            else
+            {
+                _376 = _365;
+            }
+            if (_376)
+            {
+                zWrite = false;
+            }
+        }
         int2 tileCoord_1 = int2(tileX, int(tileY)) + int2(drawTileRect.xy);
         int tileMapIndex = (tileCoord_1.y * uFramebufferTileSize.x) + tileCoord_1.x;
         if ((zWrite && (drawTileBackdrop != 0)) && (drawAlphaTileIndex < 0))
         {
-            int _383 = atomic_fetch_max_explicit((device atomic_int*)&_302.iZBuffer[tileMapIndex + 8], int(drawTileIndex), memory_order_relaxed);
+            int _415 = atomic_fetch_max_explicit((device atomic_int*)&_302.iZBuffer[tileMapIndex + 8], int(drawTileIndex), memory_order_relaxed);
         }
         if ((drawTileBackdrop != 0) || (drawAlphaTileIndex >= 0))
         {
-            int _400 = atomic_exchange_explicit((device atomic_int*)&_395.iFirstTileMap[tileMapIndex], int(drawTileIndex), memory_order_relaxed);
-            int nextTileIndex = _400;
+            int _432 = atomic_exchange_explicit((device atomic_int*)&_427.iFirstTileMap[tileMapIndex], int(drawTileIndex), memory_order_relaxed);
+            int nextTileIndex = _432;
             _175.iDrawTiles[(drawTileIndex * 4u) + 0u] = uint(nextTileIndex);
         }
         currentBackdrop += drawBackdropDelta;

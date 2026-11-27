@@ -30,20 +30,20 @@ layout(local_size_x = 64) in;
 uniform int uPathCount;
 uniform int uTileCount;
 
-layout(std430, binding = 0) buffer bTilePathInfo {
+restrict readonly layout(std430, binding = 0) buffer bTilePathInfo {
     // x: tile upper left, 16-bit packed x/y
     // y: tile lower right, 16-bit packed x/y
     // z: first tile index in this path
     // w: color/ctrl/backdrop word
-    restrict readonly uvec4 iTilePathInfo[];
+    uvec4 iTilePathInfo[];
 };
 
-layout(std430, binding = 1) buffer bTiles {
+restrict layout(std430, binding = 1) buffer bTiles {
     // [0]: next tile ID (initialized to -1)
     // [1]: first fill ID (initialized to -1)
     // [2]: backdrop delta upper 8 bits, alpha tile ID lower 24 (initialized to 0, -1 respectively)
     // [3]: color/ctrl/backdrop word
-    restrict uint iTiles[];
+    uint iTiles[];
 };
 
 void main() {
